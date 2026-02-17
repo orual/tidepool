@@ -9,6 +9,7 @@ pub fn alpha_eq(lhs: &CoreExpr, rhs: &CoreExpr) -> bool {
     if lhs.nodes.is_empty() || rhs.nodes.is_empty() {
         return false;
     }
+    let mut next_canon = 0u64;
     alpha_eq_at(
         lhs,
         rhs,
@@ -16,7 +17,7 @@ pub fn alpha_eq(lhs: &CoreExpr, rhs: &CoreExpr) -> bool {
         rhs.nodes.len() - 1,
         &mut HashMap::new(),
         &mut HashMap::new(),
-        &mut 0,
+        &mut next_canon,
     )
 }
 
@@ -319,7 +320,7 @@ fn alpha_eq_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RecursiveTree;
+    use crate::{RecursiveTree, JoinId};
 
     #[test]
     fn test_alpha_eq_lam() {
@@ -382,5 +383,128 @@ mod tests {
             ],
         };
         assert!(alpha_eq(&lhs, &lhs));
+    }
+
+    #[test]
+    fn test_alpha_eq_let_rec() {
+        let x = VarId(1);
+        let y = VarId(2);
+        let a = VarId(3);
+        let b = VarId(4);
+        // LetRec [(x, x)] x
+        let lhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x),
+                CoreFrame::LetRec {
+                    bindings: vec![(x, 0)],
+                    body: 0,
+                },
+            ],
+        };
+        // LetRec [(y, y)] y
+        let rhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(y),
+                CoreFrame::LetRec {
+                    bindings: vec![(y, 0)],
+                    body: 0,
+                },
+            ],
+        };
+        assert!(alpha_eq(&lhs, &rhs));
+
+        // LetRec [(a, b)] a  != LetRec [(a, a)] a
+        let lhs2 = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(b),
+                CoreFrame::Var(a),
+                CoreFrame::LetRec {
+                    bindings: vec![(a, 0)],
+                    body: 1,
+                },
+            ],
+        };
+        let rhs2 = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(a),
+                CoreFrame::LetRec {
+                    bindings: vec![(a, 0)],
+                    body: 0,
+                },
+            ],
+        };
+        assert!(!alpha_eq(&lhs2, &rhs2));
+    }
+
+    #[test]
+    fn test_alpha_eq_case() {
+        let x = VarId(1);
+        let y = VarId(2);
+        let z = VarId(3);
+        // Case(x, y, [Default => y])
+        let lhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x),
+                CoreFrame::Var(y),
+                CoreFrame::Case {
+                    scrutinee: 0,
+                    binder: y,
+                    alts: vec![crate::types::Alt {
+                        con: crate::types::AltCon::Default,
+                        binders: vec![],
+                        body: 1,
+                    }],
+                },
+            ],
+        };
+        // Case(x, z, [Default => z])
+        let rhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x),
+                CoreFrame::Var(z),
+                CoreFrame::Case {
+                    scrutinee: 0,
+                    binder: z,
+                    alts: vec![crate::types::Alt {
+                        con: crate::types::AltCon::Default,
+                        binders: vec![],
+                        body: 1,
+                    }],
+                },
+            ],
+        };
+        assert!(alpha_eq(&lhs, &rhs));
+    }
+
+    #[test]
+    fn test_alpha_eq_join() {
+        let x = VarId(1);
+        let y = VarId(2);
+        // Join(j, [x], x, y)
+        let lhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x),
+                CoreFrame::Var(y),
+                CoreFrame::Join {
+                    label: JoinId(1),
+                    params: vec![x],
+                    rhs: 0,
+                    body: 1,
+                },
+            ],
+        };
+        // Join(j, [y], y, y)
+        let rhs = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(y),
+                CoreFrame::Join {
+                    label: JoinId(1),
+                    params: vec![y],
+                    rhs: 0,
+                    body: 0,
+                },
+            ],
+        };
+        assert!(alpha_eq(&lhs, &rhs));
     }
 }

@@ -234,7 +234,7 @@ fn subst_at(tree: &CoreExpr, idx: usize, ctx: &mut SubstCtx, env: &HashMap<VarId
                 let mut alt_env = case_env.clone();
                 let mut new_pattern_binders = Vec::new();
                 for b in &alt.binders {
-                    let actual_b = env.get(b).copied().unwrap_or(*b);
+                    let actual_b = case_env.get(b).copied().unwrap_or(*b);
                     if actual_b == ctx.target {
                         alt_shadow = true;
                     }
@@ -317,6 +317,9 @@ fn subst_at(tree: &CoreExpr, idx: usize, ctx: &mut SubstCtx, env: &HashMap<VarId
 }
 
 fn splice_tree(replacement: &CoreExpr, new_nodes: &mut Vec<CoreFrame<usize>>) -> usize {
+    if replacement.nodes.is_empty() {
+        panic!("Cannot splice an empty replacement tree");
+    }
     let offset = new_nodes.len();
     for node in &replacement.nodes {
         let mapped = node.clone().map_layer(|idx| idx + offset);
@@ -507,6 +510,118 @@ mod tests {
             }
         } else {
             panic!("Result should be Lam");
+        }
+    }
+
+    #[test]
+    fn test_subst_let_rec() {
+        let x = VarId(1);
+        let y = VarId(2);
+        // LetRec [(x, Var(y))] Var(x)
+        let tree = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(y), // 0: rhs
+                CoreFrame::Var(x), // 1: body
+                CoreFrame::LetRec {
+                    bindings: vec![(x, 0)],
+                    body: 1,
+                }, // 2
+            ],
+        };
+        // Var(42)
+        let replacement = leaf(CoreFrame::Lit(Literal::LitInt(42)));
+
+        // Substitute x -> 42. Since x is bound in LetRec, it should be a no-op for body.
+        // But y is free in rhs, let's substitute y -> 42.
+        let result = subst(&tree, y, &replacement);
+
+        if let CoreFrame::LetRec { bindings, .. } = &result.nodes[result.nodes.len() - 1] {
+            if let CoreFrame::Lit(Literal::LitInt(42)) = &result.nodes[bindings[0].1] {
+                // OK
+            } else {
+                panic!("rhs should be substituted");
+            }
+        } else {
+            panic!("Result should be LetRec");
+        }
+    }
+
+    #[test]
+    fn test_subst_case_capture() {
+        let x = VarId(1);
+        let y = VarId(2);
+        let z = VarId(3);
+        // Case(x, y, [Default => z])
+        // Let's substitute z -> Var(y). Case binder y should be renamed.
+        let tree = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x), // 0: scrutinee
+                CoreFrame::Var(z), // 1: alt body
+                CoreFrame::Case {
+                    scrutinee: 0,
+                    binder: y,
+                    alts: vec![Alt {
+                        con: AltCon::Default,
+                        binders: vec![],
+                        body: 1,
+                    }],
+                }, // 2
+            ],
+        };
+        let replacement = leaf(CoreFrame::Var(y));
+
+        let result = subst(&tree, z, &replacement);
+
+        if let CoreFrame::Case { binder, alts, .. } = &result.nodes[result.nodes.len() - 1] {
+            assert_ne!(*binder, y);
+            if let CoreFrame::Var(v) = &result.nodes[alts[0].body] {
+                assert_eq!(*v, y);
+            } else {
+                panic!("Body should be Var(y)");
+            }
+        } else {
+            panic!("Result should be Case");
+        }
+    }
+
+    #[test]
+    fn test_subst_join() {
+        let x = VarId(1);
+        // Join(j, [x], x, x)
+        // Substitute x -> 42. x is bound in rhs, but NOT in body (if we follow Join scoping rules: params bound in rhs).
+        // Wait, spec says: "Join label scopes over body (and rhs references label via Jump, not as free var)".
+        // "params" are bound in RHS.
+        let tree = RecursiveTree {
+            nodes: vec![
+                CoreFrame::Var(x), // 0: rhs
+                CoreFrame::Var(x), // 1: body
+                CoreFrame::Join {
+                    label: JoinId(1),
+                    params: vec![x],
+                    rhs: 0,
+                    body: 1,
+                },
+            ],
+        };
+        let replacement = leaf(CoreFrame::Lit(Literal::LitInt(42)));
+
+        let result = subst(&tree, x, &replacement);
+
+        if let CoreFrame::Join { rhs, body, .. } = &result.nodes[result.nodes.len() - 1] {
+            // x in rhs is shadowed, should NOT be substituted
+            if let CoreFrame::Var(v) = &result.nodes[*rhs] {
+                assert_eq!(*v, x);
+            } else {
+                panic!("RHS x should be shadowed");
+            }
+            // x in body is NOT shadowed by params, should be substituted
+            if let CoreFrame::Lit(Literal::LitInt(42)) = &result.nodes[*body] {
+                // OK
+            } else {
+                panic!("Body x should be substituted");
+            }
+        } else {
+            panic!("Result should be Join");
         }
     }
 }

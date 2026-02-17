@@ -202,4 +202,63 @@ mod tests {
         expected.insert(a);
         assert_eq!(free_vars(&expr), expected);
     }
+
+    #[test]
+    fn test_free_vars_con() {
+        let x = VarId(1);
+        let y = VarId(2);
+        let expr = tree(vec![
+            CoreFrame::Var(x),
+            CoreFrame::Var(y),
+            CoreFrame::Con {
+                tag: DataConId(1),
+                fields: vec![0, 1],
+            },
+        ]);
+        let mut expected = HashSet::new();
+        expected.insert(x);
+        expected.insert(y);
+        assert_eq!(free_vars(&expr), expected);
+    }
+
+    #[test]
+    fn test_free_vars_join_jump() {
+        let x = VarId(1);
+        let y = VarId(2);
+        let expr = tree(vec![
+            CoreFrame::Var(y), // 0: Jump arg
+            CoreFrame::Jump {
+                label: JoinId(1),
+                args: vec![0],
+            }, // 1: rhs
+            CoreFrame::Var(x), // 2: body
+            CoreFrame::Join {
+                label: JoinId(1),
+                params: vec![x],
+                rhs: 1,
+                body: 2,
+            }, // 3
+        ]);
+        // x is bound in rhs by Join params, but NOT in body. y is free in rhs.
+        let mut expected = HashSet::new();
+        expected.insert(y);
+        expected.insert(x);
+        assert_eq!(free_vars(&expr), expected);
+    }
+
+    #[test]
+    fn test_free_vars_primop() {
+        let x = VarId(1);
+        let expr = tree(vec![
+            CoreFrame::Var(x),
+            CoreFrame::Lit(Literal::LitInt(1)),
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![0, 1],
+            },
+        ]);
+        let mut expected = HashSet::new();
+        expected.insert(x);
+        assert_eq!(free_vars(&expr), expected);
+    }
 }
