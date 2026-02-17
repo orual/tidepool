@@ -1,4 +1,4 @@
-use crate::{AltCon, CoreExpr, CoreFrame, types::*};
+use crate::{types::*, AltCon, CoreExpr, CoreFrame};
 
 /// Pretty-print a CoreExpr to a human-readable string.
 pub fn pretty_print(expr: &CoreExpr) -> String {
@@ -64,11 +64,7 @@ fn pp_at(expr: &CoreExpr, idx: usize) -> String {
             binder,
             alts,
         } => {
-            let mut s = format!(
-                "case {} of v_{} {{\n",
-                pp_at(expr, *scrutinee),
-                binder.0
-            );
+            let mut s = format!("case {} of v_{} {{\n", pp_at(expr, *scrutinee), binder.0);
             for alt in alts {
                 s.push_str(&format!(
                     "  {} -> {}\n",
@@ -250,21 +246,49 @@ mod tests {
     #[test]
     fn test_all_variants_coverage() {
         let nodes = vec![
-            var(1),                                      // 0: v_1
-            lit_int(42),                                 // 1: 42#
-            CoreFrame::App { fun: 0, arg: 1 },           // 2: v_1 42#
-            CoreFrame::Lam { binder: VarId(2), body: 2 }, // 3: \v_2 -> v_1 42#
-            CoreFrame::LetNonRec { binder: VarId(3), rhs: 1, body: 0 }, // 4: let v_3 = 42# in v_1
-            CoreFrame::LetRec { bindings: vec![(VarId(4), 1)], body: 0 }, // 5: let rec v_4 = 42# in v_1
+            var(1),                            // 0: v_1
+            lit_int(42),                       // 1: 42#
+            CoreFrame::App { fun: 0, arg: 1 }, // 2: v_1 42#
+            CoreFrame::Lam {
+                binder: VarId(2),
+                body: 2,
+            }, // 3: \v_2 -> v_1 42#
+            CoreFrame::LetNonRec {
+                binder: VarId(3),
+                rhs: 1,
+                body: 0,
+            }, // 4: let v_3 = 42# in v_1
+            CoreFrame::LetRec {
+                bindings: vec![(VarId(4), 1)],
+                body: 0,
+            }, // 5: let rec v_4 = 42# in v_1
             CoreFrame::Case {
                 scrutinee: 1,
                 binder: VarId(5),
-                alts: vec![Alt { con: AltCon::Default, binders: vec![], body: 0 }],
+                alts: vec![Alt {
+                    con: AltCon::Default,
+                    binders: vec![],
+                    body: 0,
+                }],
             }, // 6: case 42# of v_5 { DEFAULT -> v_1 }
-            CoreFrame::Con { tag: DataConId(7), fields: vec![1] }, // 7: Con_7(42#)
-            CoreFrame::Join { label: JoinId(8), params: vec![VarId(9)], rhs: 1, body: 0 }, // 8: join j_8 (v_9) = 42# in v_1
-            CoreFrame::Jump { label: JoinId(10), args: vec![1] }, // 9: jump j_10(42#)
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![1, 1] }, // 10: intAdd#(42#, 42#)
+            CoreFrame::Con {
+                tag: DataConId(7),
+                fields: vec![1],
+            }, // 7: Con_7(42#)
+            CoreFrame::Join {
+                label: JoinId(8),
+                params: vec![VarId(9)],
+                rhs: 1,
+                body: 0,
+            }, // 8: join j_8 (v_9) = 42# in v_1
+            CoreFrame::Jump {
+                label: JoinId(10),
+                args: vec![1],
+            }, // 9: jump j_10(42#)
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 1],
+            }, // 10: intAdd#(42#, 42#)
         ];
 
         for i in 0..nodes.len() {
@@ -280,9 +304,9 @@ mod tests {
     fn test_app_associativity() {
         // App(App(f, x), y) -> f x y
         let nodes = vec![
-            var(1),                           // 0: f
-            var(2),                           // 1: x
-            var(3),                           // 2: y
+            var(1),                            // 0: f
+            var(2),                            // 1: x
+            var(3),                            // 2: y
             CoreFrame::App { fun: 0, arg: 1 }, // 3: f x
             CoreFrame::App { fun: 3, arg: 2 }, // 4: f x y
         ];
@@ -294,9 +318,9 @@ mod tests {
     fn test_app_arg_parens() {
         // App(f, App(g, x)) -> f (g x)
         let nodes = vec![
-            var(1),                           // 0: f
-            var(2),                           // 1: g
-            var(3),                           // 2: x
+            var(1),                            // 0: f
+            var(2),                            // 1: g
+            var(3),                            // 2: x
             CoreFrame::App { fun: 1, arg: 2 }, // 3: g x
             CoreFrame::App { fun: 0, arg: 3 }, // 4: f (g x)
         ];
@@ -308,9 +332,15 @@ mod tests {
     fn test_lambda_chaining() {
         // Lam(x, Lam(y, body)) -> \v_x v_y -> body
         let nodes = vec![
-            var(3),                                      // 0: body
-            CoreFrame::Lam { binder: VarId(2), body: 0 }, // 1: \v_2 -> v_3
-            CoreFrame::Lam { binder: VarId(1), body: 1 }, // 2: \v_1 v_2 -> v_3
+            var(3), // 0: body
+            CoreFrame::Lam {
+                binder: VarId(2),
+                body: 0,
+            }, // 1: \v_2 -> v_3
+            CoreFrame::Lam {
+                binder: VarId(1),
+                body: 1,
+            }, // 2: \v_1 v_2 -> v_3
         ];
         let expr = RecursiveTree { nodes };
         assert_eq!(pretty_print(&expr), r"\v_1 v_2 -> v_3");
@@ -366,82 +396,62 @@ mod tests {
         assert!(s.contains("42# -> v_2"));
     }
 
-        #[test]
+    #[test]
 
-        fn test_primop() {
+    fn test_primop() {
+        let nodes = vec![
+            lit_int(1),
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
 
-            let nodes = vec![
+                args: vec![0, 0],
+            },
+        ];
 
-                lit_int(1),
+        let expr = RecursiveTree { nodes };
 
-                CoreFrame::PrimOp {
-
-                    op: PrimOpKind::IntAdd,
-
-                    args: vec![0, 0],
-
-                },
-
-            ];
-
-            let expr = RecursiveTree { nodes };
-
-            assert_eq!(pretty_print(&expr), "intAdd#(1#, 1#)");
-
-        }
-
-    
-
-        #[test]
-
-        fn test_literals() {
-
-            let nodes = vec![
-
-                CoreFrame::Lit(Literal::LitWord(42)),
-
-                CoreFrame::Lit(Literal::LitChar('x')),
-
-                CoreFrame::Lit(Literal::LitString(b"hello".to_vec())),
-
-                CoreFrame::Lit(Literal::LitFloat(3.14f32.to_bits() as u64)),
-
-                CoreFrame::Lit(Literal::LitDouble(3.14f64.to_bits())),
-
-            ];
-
-    
-
-            let expr_word = RecursiveTree { nodes: vec![nodes[0].clone()] };
-
-            assert_eq!(pretty_print(&expr_word), "42##");
-
-    
-
-            let expr_char = RecursiveTree { nodes: vec![nodes[1].clone()] };
-
-            assert_eq!(pretty_print(&expr_char), "'x'#");
-
-    
-
-            let expr_string = RecursiveTree { nodes: vec![nodes[2].clone()] };
-
-            assert_eq!(pretty_print(&expr_string), "\"hello\"#");
-
-    
-
-            let expr_float = RecursiveTree { nodes: vec![nodes[3].clone()] };
-
-            assert_eq!(pretty_print(&expr_float), "3.14#");
-
-    
-
-            let expr_double = RecursiveTree { nodes: vec![nodes[4].clone()] };
-
-            assert_eq!(pretty_print(&expr_double), "3.14##");
-
-        }
-
+        assert_eq!(pretty_print(&expr), "intAdd#(1#, 1#)");
     }
 
-    
+    #[test]
+
+    fn test_literals() {
+        let nodes = vec![
+            CoreFrame::Lit(Literal::LitWord(42)),
+            CoreFrame::Lit(Literal::LitChar('x')),
+            CoreFrame::Lit(Literal::LitString(b"hello".to_vec())),
+            CoreFrame::Lit(Literal::LitFloat(3.14f32.to_bits() as u64)),
+            CoreFrame::Lit(Literal::LitDouble(3.14f64.to_bits())),
+        ];
+
+        let expr_word = RecursiveTree {
+            nodes: vec![nodes[0].clone()],
+        };
+
+        assert_eq!(pretty_print(&expr_word), "42##");
+
+        let expr_char = RecursiveTree {
+            nodes: vec![nodes[1].clone()],
+        };
+
+        assert_eq!(pretty_print(&expr_char), "'x'#");
+
+        let expr_string = RecursiveTree {
+            nodes: vec![nodes[2].clone()],
+        };
+
+        assert_eq!(pretty_print(&expr_string), "\"hello\"#");
+
+        let expr_float = RecursiveTree {
+            nodes: vec![nodes[3].clone()],
+        };
+
+        assert_eq!(pretty_print(&expr_float), "3.14#");
+
+        let expr_double = RecursiveTree {
+            nodes: vec![nodes[4].clone()],
+        };
+
+        assert_eq!(pretty_print(&expr_double), "3.14##");
+    }
+}

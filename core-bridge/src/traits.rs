@@ -1,6 +1,6 @@
-use core_repr::DataConTable;
-use core_eval::Value;
 use crate::error::BridgeError;
+use core_eval::Value;
+use core_repr::DataConTable;
 
 /// Convert a Core Value (from evaluation) to a Rust type.
 ///

@@ -1,4 +1,4 @@
-use core_repr::{CoreFrame, RecursiveTree, MapLayer};
+use core_repr::{CoreFrame, MapLayer, RecursiveTree};
 
 /// Builds a RecursiveTree by appending nodes bottom-up.
 #[derive(Debug, Clone)]

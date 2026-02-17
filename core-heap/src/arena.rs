@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use core_eval::{Heap, ThunkState, ThunkId};
 use core_eval::value::Value;
+use core_eval::{Heap, ThunkId, ThunkState};
 use core_repr::CoreExpr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -56,14 +56,16 @@ impl ArenaHeap {
     /// The returned pointer is 8-byte aligned and valid for `size` bytes.
     pub fn alloc_raw(&self, size: usize) -> *mut u8 {
         // Round up to 8-byte alignment, check for overflow.
-        let aligned_size = size.checked_add(7)
+        let aligned_size = size
+            .checked_add(7)
             .map(|s| s & !7)
             .expect("Allocation size overflow");
 
         // Check for nursery exhaustion and reserve space atomically.
         let mut prev_used = self.used.load(Ordering::SeqCst);
         loop {
-            if prev_used.checked_add(aligned_size)
+            if prev_used
+                .checked_add(aligned_size)
                 .is_none_or(|new_used| new_used > self.nursery_limit)
             {
                 panic!("Nursery exhausted: call collect_garbage then retry");
@@ -83,7 +85,7 @@ impl ArenaHeap {
         // for layouts with alignment <= 16.
         let layout = std::alloc::Layout::from_size_align(aligned_size, 8)
             .expect("Invalid layout for alloc_raw");
-        
+
         self.arena.alloc_layout(layout).as_ptr()
     }
 
@@ -134,9 +136,7 @@ impl ArenaHeap {
     pub fn children_of(&self, id: ThunkId) -> Vec<ThunkId> {
         match self.read(id) {
             ThunkState::Unevaluated(env, _) => {
-                env.values()
-                    .flat_map(Self::collect_thunk_refs)
-                    .collect()
+                env.values().flat_map(Self::collect_thunk_refs).collect()
             }
             ThunkState::BlackHole => vec![],
             ThunkState::Evaluated(val) => Self::collect_thunk_refs(val),
@@ -147,12 +147,8 @@ impl ArenaHeap {
         match val {
             Value::ThunkRef(id) => vec![*id],
             Value::Con(_, fields) => fields.iter().flat_map(Self::collect_thunk_refs).collect(),
-            Value::Closure(env, _, _) => {
-                env.values().flat_map(Self::collect_thunk_refs).collect()
-            }
-            Value::JoinCont(_, _, env) => {
-                env.values().flat_map(Self::collect_thunk_refs).collect()
-            }
+            Value::Closure(env, _, _) => env.values().flat_map(Self::collect_thunk_refs).collect(),
+            Value::JoinCont(_, _, env) => env.values().flat_map(Self::collect_thunk_refs).collect(),
             Value::Lit(_) => vec![],
         }
     }
@@ -183,16 +179,18 @@ impl Heap for ArenaHeap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_repr::{CoreFrame, RecursiveTree, Literal, VarId};
+    use crate::layout::*;
     use core_eval::env::Env;
     use core_eval::value::Value;
-    use crate::layout::*;
+    use core_repr::{CoreFrame, Literal, RecursiveTree, VarId};
 
     #[test]
     fn test_heap_trait_impl() {
         let mut heap = ArenaHeap::new();
         let env = Env::new();
-        let expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
 
         let id1 = heap.alloc(env.clone(), expr.clone());
         let id2 = heap.alloc(env.clone(), expr.clone());
@@ -222,10 +220,15 @@ mod tests {
     #[test]
     fn test_alloc_raw_alignment() {
         let heap = ArenaHeap::new();
-        
+
         for _ in 0..10 {
             let ptr = heap.alloc_raw(13);
-            assert_eq!(ptr as usize % 8, 0, "Pointer {:?} is not 8-byte aligned", ptr);
+            assert_eq!(
+                ptr as usize % 8,
+                0,
+                "Pointer {:?} is not 8-byte aligned",
+                ptr
+            );
         }
     }
 
@@ -278,7 +281,9 @@ mod tests {
     fn test_collect_garbage() {
         let mut heap = ArenaHeap::new();
         let env = Env::new();
-        let expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
 
         // Allocate 3 thunks: id0, id1, id2
         let id0 = heap.alloc(env.clone(), expr.clone());
@@ -314,7 +319,9 @@ mod tests {
     fn test_collect_garbage_rewrites_refs() {
         let mut heap = ArenaHeap::new();
         let env = Env::new();
-        let expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
 
         // id0 is a leaf thunk
         let id0 = heap.alloc(env.clone(), expr.clone());
@@ -345,7 +352,7 @@ mod tests {
         let heap = ArenaHeap::new();
         let ptr1 = heap.alloc_raw(8);
         let ptr2 = heap.alloc_raw(8);
-        
+
         assert_ne!(ptr1, ptr2);
         let diff = (ptr2 as usize).abs_diff(ptr1 as usize);
         assert!(diff >= 8);

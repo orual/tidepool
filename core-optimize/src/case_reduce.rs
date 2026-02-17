@@ -1,5 +1,5 @@
-use core_repr::{AltCon, CoreExpr, CoreFrame, MapLayer};
 use core_eval::{Changed, Pass};
+use core_repr::{AltCon, CoreExpr, CoreFrame, MapLayer};
 use std::collections::HashMap;
 
 /// A pass that performs case-of-known-constructor and case-of-known-literal reductions.
@@ -214,7 +214,7 @@ mod tests {
                 tag: DataConId(1),
                 fields: vec![0],
             }, // 1
-            CoreFrame::Var(VarId(3)), // 2: y
+            CoreFrame::Var(VarId(3)),            // 2: y
             CoreFrame::Case {
                 scrutinee: 1,
                 binder: VarId(2), // w
@@ -244,8 +244,8 @@ mod tests {
                 tag: DataConId(1),
                 fields: vec![0, 1],
             }, // 2
-            CoreFrame::Var(VarId(10)),                                     // 3: a
-            CoreFrame::Var(VarId(11)),                                     // 4: b
+            CoreFrame::Var(VarId(10)),          // 3: a
+            CoreFrame::Var(VarId(11)),          // 4: b
             CoreFrame::PrimOp {
                 op: PrimOpKind::IntAdd,
                 args: vec![3, 4],
@@ -392,7 +392,7 @@ mod tests {
                 tag: DataConId(1),
                 fields: vec![0],
             }, // 1
-            CoreFrame::Var(VarId(2)), // 2: w
+            CoreFrame::Var(VarId(2)),            // 2: w
             CoreFrame::Case {
                 scrutinee: 1,
                 binder: VarId(2), // w
@@ -431,13 +431,13 @@ mod tests {
                 tag: DataConId(1),
                 fields: vec![0, 1],
             }, // 2
-            CoreFrame::Var(VarId(10)),                                     // 3: a
-            CoreFrame::Var(VarId(11)),                                     // 4: b
+            CoreFrame::Var(VarId(10)),          // 3: a
+            CoreFrame::Var(VarId(11)),          // 4: b
             CoreFrame::PrimOp {
                 op: PrimOpKind::IntAdd,
                 args: vec![3, 4],
             }, // 5
-            CoreFrame::Lit(Literal::LitInt(0)),                             // 6
+            CoreFrame::Lit(Literal::LitInt(0)), // 6
             CoreFrame::Case {
                 scrutinee: 2,
                 binder: VarId(12),
@@ -478,7 +478,10 @@ mod tests {
                     }
                 }
             }
-            (v1, v2) => panic!("Value mismatch or unsupported for eval check: {:?}, {:?}", v1, v2),
+            (v1, v2) => panic!(
+                "Value mismatch or unsupported for eval check: {:?}, {:?}",
+                v1, v2
+            ),
         }
     }
 }

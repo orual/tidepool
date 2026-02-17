@@ -1,9 +1,9 @@
-pub mod pipeline;
-pub mod occ;
 pub mod beta;
 pub mod case_reduce;
-pub mod inline;
 pub mod dce;
+pub mod inline;
+pub mod occ;
 pub mod partial;
+pub mod pipeline;
 
-pub use pipeline::{optimize, default_passes, run_pipeline, PipelineStats};
+pub use pipeline::{default_passes, optimize, run_pipeline, PipelineStats};

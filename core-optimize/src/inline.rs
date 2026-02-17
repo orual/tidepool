@@ -1,6 +1,6 @@
+use crate::occ::{get_occ, occ_analysis, Occ};
 use core_eval::{Changed, Pass};
 use core_repr::{CoreExpr, CoreFrame, MapLayer};
-use crate::occ::{occ_analysis, get_occ, Occ};
 use std::collections::HashMap;
 
 /// Inlining pass: eliminates single-use `LetNonRec` bindings by substituting the RHS directly at the use site.
@@ -41,8 +41,7 @@ fn try_inline_at(expr: &CoreExpr, idx: usize, occ_map: &crate::occ::OccMap) -> O
                 Some(replace_subtree(expr, idx, &inlined))
             } else {
                 // Try children
-                try_inline_at(expr, *rhs, occ_map)
-                    .or_else(|| try_inline_at(expr, *body, occ_map))
+                try_inline_at(expr, *rhs, occ_map).or_else(|| try_inline_at(expr, *body, occ_map))
             }
         }
         // Never inline LetRec, even if Once (it might be recursive via own RHS)
@@ -121,9 +120,9 @@ fn rebuild(
         old_to_new.insert(idx, root);
         return root;
     }
-    let mapped = expr.nodes[idx].clone().map_layer(|child| {
-        rebuild(expr, child, target, replacement, new_nodes, old_to_new)
-    });
+    let mapped = expr.nodes[idx]
+        .clone()
+        .map_layer(|child| rebuild(expr, child, target, replacement, new_nodes, old_to_new));
     let new_idx = new_nodes.len();
     new_nodes.push(mapped);
     old_to_new.insert(idx, new_idx);
@@ -134,7 +133,7 @@ fn rebuild(
 mod tests {
     use super::*;
     use core_eval::{eval, Env, VecHeap};
-    use core_repr::{Literal, VarId, PrimOpKind};
+    use core_repr::{Literal, PrimOpKind, VarId};
 
     fn tree(nodes: Vec<CoreFrame<usize>>) -> CoreExpr {
         CoreExpr { nodes }
@@ -145,9 +144,13 @@ mod tests {
     fn test_inline_single_use() {
         let x = VarId(1);
         let mut expr = tree(vec![
-            CoreFrame::Lit(Literal::LitInt(42)),            // 0
-            CoreFrame::Var(x),                              // 1
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 1 }, // 2
+            CoreFrame::Lit(Literal::LitInt(42)), // 0
+            CoreFrame::Var(x),                   // 1
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 1,
+            }, // 2
         ]);
         let pass = Inline;
         let changed = pass.run(&mut expr);
@@ -164,8 +167,15 @@ mod tests {
             CoreFrame::Lit(Literal::LitInt(42)), // 0
             CoreFrame::Var(x),                   // 1
             CoreFrame::Var(x),                   // 2
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![1, 2] }, // 3
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 3 },            // 4
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 2],
+            }, // 3
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 3,
+            }, // 4
         ]);
         let pass = Inline;
         let changed = pass.run(&mut expr);
@@ -179,7 +189,11 @@ mod tests {
         let mut expr = tree(vec![
             CoreFrame::Lit(Literal::LitInt(42)), // 0
             CoreFrame::Lit(Literal::LitInt(0)),  // 1
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 1 }, // 2
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 1,
+            }, // 2
         ]);
         let pass = Inline;
         let changed = pass.run(&mut expr);
@@ -192,14 +206,22 @@ mod tests {
         let x = VarId(1);
         let y = VarId(2);
         let mut expr = tree(vec![
-            CoreFrame::Lit(Literal::LitInt(1)),                 // 0
-            CoreFrame::Var(x),                                   // 1
-            CoreFrame::Var(y),                                   // 2
-            CoreFrame::LetNonRec { binder: y, rhs: 1, body: 2 }, // 3
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 3 }, // 4
+            CoreFrame::Lit(Literal::LitInt(1)), // 0
+            CoreFrame::Var(x),                  // 1
+            CoreFrame::Var(y),                  // 2
+            CoreFrame::LetNonRec {
+                binder: y,
+                rhs: 1,
+                body: 2,
+            }, // 3
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 3,
+            }, // 4
         ]);
         let pass = Inline;
-        
+
         // Pass 1: inline x = 1 (outer let), producing: let y = 1 in y
         assert!(pass.run(&mut expr));
         // Pass 2: inline y = 1 (inner let), producing: 1
@@ -216,7 +238,10 @@ mod tests {
         let mut expr = tree(vec![
             CoreFrame::Var(f), // 0
             CoreFrame::Var(f), // 1
-            CoreFrame::LetRec { bindings: vec![(f, 0)], body: 1 }, // 2
+            CoreFrame::LetRec {
+                bindings: vec![(f, 0)],
+                body: 1,
+            }, // 2
         ]);
         let pass = Inline;
         let changed = pass.run(&mut expr);
@@ -229,15 +254,19 @@ mod tests {
         let x = VarId(1);
         let y = VarId(2);
         let mut expr = tree(vec![
-            CoreFrame::Var(y),                                  // 0: rhs
-            CoreFrame::Var(x),                                  // 1
-            CoreFrame::Lam { binder: y, body: 1 },              // 2: body
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 2 }, // 3
+            CoreFrame::Var(y),                     // 0: rhs
+            CoreFrame::Var(x),                     // 1
+            CoreFrame::Lam { binder: y, body: 1 }, // 2: body
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 2,
+            }, // 3
         ]);
         let pass = Inline;
         let changed = pass.run(&mut expr);
         assert!(changed);
-        
+
         // Result should be \y'. y
         let root = expr.nodes.len() - 1;
         if let CoreFrame::Lam { binder, body } = &expr.nodes[root] {
@@ -256,16 +285,20 @@ mod tests {
     #[test]
     fn test_inline_preserves_eval() {
         let x = VarId(1);
-        
+
         // Case A: Once (should inline)
         let expr_once = tree(vec![
             CoreFrame::Lit(Literal::LitInt(21)),
             CoreFrame::Var(x),
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 1 },
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 1,
+            },
         ]);
         let mut expr_once_reduced = expr_once.clone();
         Inline.run(&mut expr_once_reduced);
-        
+
         let mut heap = VecHeap::new();
         let env = Env::new();
         let v1 = eval(&expr_once, &env, &mut heap).unwrap();
@@ -280,8 +313,15 @@ mod tests {
             CoreFrame::Lit(Literal::LitInt(21)),
             CoreFrame::Var(x),
             CoreFrame::Var(x),
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![1, 2] },
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 3 },
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 2],
+            },
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 3,
+            },
         ]);
         let expr_many_orig = expr_many.clone();
         Inline.run(&mut expr_many);

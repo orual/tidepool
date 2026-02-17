@@ -1,5 +1,5 @@
-use crate::value::{Value, ThunkId};
 use crate::env::Env;
+use crate::value::{ThunkId, Value};
 use core_repr::CoreExpr;
 
 /// State of a thunk in the thunk store.
@@ -57,13 +57,15 @@ impl Heap for VecHeap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_repr::{CoreFrame, RecursiveTree, Literal, VarId};
+    use core_repr::{CoreFrame, Literal, RecursiveTree, VarId};
 
     #[test]
     fn test_vecheap_ops() {
         let mut heap = VecHeap::new();
         let env = Env::new();
-        let expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
 
         let id1 = heap.alloc(env.clone(), expr.clone());
         let id2 = heap.alloc(env.clone(), expr.clone());
@@ -96,7 +98,9 @@ mod tests {
     fn test_thunk_state_machine() {
         let mut heap = VecHeap::new();
         let env = Env::new();
-        let expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
         let id = heap.alloc(env, expr);
 
         // Unevaluated

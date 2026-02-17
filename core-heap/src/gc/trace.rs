@@ -1,6 +1,6 @@
+use core_eval::env::Env;
 use core_eval::heap::{Heap, ThunkState};
 use core_eval::value::{ThunkId, Value};
-use core_eval::env::Env;
 use std::collections::VecDeque;
 
 /// Maps old ThunkIds to new ThunkIds.
@@ -38,7 +38,7 @@ pub fn trace(roots: &[ThunkId], heap: &dyn Heap) -> ForwardingTable {
 
     while let Some(old_id) = queue.pop_front() {
         let idx = old_id.0 as usize;
-        
+
         if idx < mapping.len() && mapping[idx].is_some() {
             continue;
         }
@@ -97,10 +97,12 @@ fn scan_env(env: &Env, queue: &mut VecDeque<ThunkId>) {
 mod tests {
     use super::*;
     use core_eval::heap::VecHeap;
-    use core_repr::{CoreFrame, RecursiveTree, Literal, VarId, DataConId};
+    use core_repr::{CoreFrame, DataConId, Literal, RecursiveTree, VarId};
 
     fn empty_expr() -> core_repr::CoreExpr {
-        RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] }
+        RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        }
     }
 
     #[test]
@@ -122,7 +124,7 @@ mod tests {
     fn test_trace_transitive_closure() {
         let mut heap = VecHeap::new();
         let id2 = heap.alloc(Env::new(), empty_expr());
-        
+
         let mut env1 = Env::new();
         env1.insert(VarId(0), Value::ThunkRef(id2));
         let id1 = heap.alloc(env1, empty_expr());
@@ -136,7 +138,7 @@ mod tests {
     fn test_trace_double_referenced() {
         let mut heap = VecHeap::new();
         let id_shared = heap.alloc(Env::new(), empty_expr());
-        
+
         let mut env1 = Env::new();
         env1.insert(VarId(0), Value::ThunkRef(id_shared));
         let id1 = heap.alloc(env1, empty_expr());
@@ -149,7 +151,7 @@ mod tests {
         assert_eq!(table.lookup(id1), ThunkId(0));
         assert_eq!(table.lookup(id2), ThunkId(1));
         assert_eq!(table.lookup(id_shared), ThunkId(2));
-        
+
         // Ensure no other IDs are in the table (max 3 reachable)
         let reachable_count = table.mapping.iter().flatten().count();
         assert_eq!(reachable_count, 3);
@@ -170,15 +172,16 @@ mod tests {
         let mut heap = VecHeap::new();
         let id3 = heap.alloc(Env::new(), empty_expr());
         let id2 = heap.alloc(Env::new(), empty_expr());
-        
-        let val = Value::Con(DataConId(1), vec![
-            Value::Lit(Literal::LitInt(1)),
-            Value::ThunkRef(id2),
-            Value::Con(DataConId(2), vec![
-                Value::ThunkRef(id3)
-            ])
-        ]);
-        
+
+        let val = Value::Con(
+            DataConId(1),
+            vec![
+                Value::Lit(Literal::LitInt(1)),
+                Value::ThunkRef(id2),
+                Value::Con(DataConId(2), vec![Value::ThunkRef(id3)]),
+            ],
+        );
+
         let id1 = heap.alloc(Env::new(), empty_expr());
         heap.write(id1, ThunkState::Evaluated(val));
 

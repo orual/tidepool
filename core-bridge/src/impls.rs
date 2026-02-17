@@ -1,7 +1,7 @@
-use core_repr::{DataConTable, Literal};
-use core_eval::Value;
 use crate::error::BridgeError;
 use crate::traits::{FromCore, ToCore};
+use core_eval::Value;
+use core_repr::{DataConTable, Literal};
 
 // Helper for type mismatch errors
 fn type_mismatch(expected: &str, got: &Value) -> BridgeError {
@@ -94,8 +94,12 @@ impl FromCore for bool {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Con(id, fields) => {
-                let true_id = table.get_by_name("True").ok_or(BridgeError::UnknownDataConName("True".into()))?;
-                let false_id = table.get_by_name("False").ok_or(BridgeError::UnknownDataConName("False".into()))?;
+                let true_id = table
+                    .get_by_name("True")
+                    .ok_or(BridgeError::UnknownDataConName("True".into()))?;
+                let false_id = table
+                    .get_by_name("False")
+                    .ok_or(BridgeError::UnknownDataConName("False".into()))?;
 
                 if *id == true_id {
                     if fields.is_empty() {
@@ -129,7 +133,9 @@ impl FromCore for bool {
 impl ToCore for bool {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
         let name = if *self { "True" } else { "False" };
-        let id = table.get_by_name(name).ok_or_else(|| BridgeError::UnknownDataConName(name.into()))?;
+        let id = table
+            .get_by_name(name)
+            .ok_or_else(|| BridgeError::UnknownDataConName(name.into()))?;
         Ok(Value::Con(id, vec![]))
     }
 }
@@ -175,8 +181,12 @@ impl<T: FromCore> FromCore for Option<T> {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Con(id, fields) => {
-                let nothing_id = table.get_by_name("Nothing").ok_or(BridgeError::UnknownDataConName("Nothing".into()))?;
-                let just_id = table.get_by_name("Just").ok_or(BridgeError::UnknownDataConName("Just".into()))?;
+                let nothing_id = table
+                    .get_by_name("Nothing")
+                    .ok_or(BridgeError::UnknownDataConName("Nothing".into()))?;
+                let just_id = table
+                    .get_by_name("Just")
+                    .ok_or(BridgeError::UnknownDataConName("Just".into()))?;
 
                 if *id == nothing_id {
                     if fields.is_empty() {
@@ -211,11 +221,15 @@ impl<T: ToCore> ToCore for Option<T> {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
         match self {
             None => {
-                let id = table.get_by_name("Nothing").ok_or_else(|| BridgeError::UnknownDataConName("Nothing".into()))?;
+                let id = table
+                    .get_by_name("Nothing")
+                    .ok_or_else(|| BridgeError::UnknownDataConName("Nothing".into()))?;
                 Ok(Value::Con(id, vec![]))
             }
             Some(x) => {
-                let id = table.get_by_name("Just").ok_or_else(|| BridgeError::UnknownDataConName("Just".into()))?;
+                let id = table
+                    .get_by_name("Just")
+                    .ok_or_else(|| BridgeError::UnknownDataConName("Just".into()))?;
                 Ok(Value::Con(id, vec![x.to_value(table)?]))
             }
         }
@@ -224,8 +238,12 @@ impl<T: ToCore> ToCore for Option<T> {
 
 impl<T: FromCore> FromCore for Vec<T> {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
-        let nil_id = table.get_by_name("[]").ok_or(BridgeError::UnknownDataConName("[]".into()))?;
-        let cons_id = table.get_by_name(":").ok_or(BridgeError::UnknownDataConName(":".into()))?;
+        let nil_id = table
+            .get_by_name("[]")
+            .ok_or(BridgeError::UnknownDataConName("[]".into()))?;
+        let cons_id = table
+            .get_by_name(":")
+            .ok_or(BridgeError::UnknownDataConName(":".into()))?;
 
         let mut res = Vec::new();
         let mut curr = value;
@@ -268,8 +286,12 @@ impl<T: FromCore> FromCore for Vec<T> {
 
 impl<T: ToCore> ToCore for Vec<T> {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let nil_id = table.get_by_name("[]").ok_or_else(|| BridgeError::UnknownDataConName("[]".into()))?;
-        let cons_id = table.get_by_name(":").ok_or_else(|| BridgeError::UnknownDataConName(":".into()))?;
+        let nil_id = table
+            .get_by_name("[]")
+            .ok_or_else(|| BridgeError::UnknownDataConName("[]".into()))?;
+        let cons_id = table
+            .get_by_name(":")
+            .ok_or_else(|| BridgeError::UnknownDataConName(":".into()))?;
 
         let mut res = Value::Con(nil_id, vec![]);
         for x in self.iter().rev() {
@@ -283,8 +305,14 @@ impl<T: FromCore, E: FromCore> FromCore for Result<T, E> {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Con(id, fields) => {
-                let right_id = table.get_by_name("Right").or_else(|| table.get_by_name("Ok")).ok_or(BridgeError::UnknownDataConName("Right/Ok".into()))?;
-                let left_id = table.get_by_name("Left").or_else(|| table.get_by_name("Err")).ok_or(BridgeError::UnknownDataConName("Left/Err".into()))?;
+                let right_id = table
+                    .get_by_name("Right")
+                    .or_else(|| table.get_by_name("Ok"))
+                    .ok_or(BridgeError::UnknownDataConName("Right/Ok".into()))?;
+                let left_id = table
+                    .get_by_name("Left")
+                    .or_else(|| table.get_by_name("Err"))
+                    .ok_or(BridgeError::UnknownDataConName("Left/Err".into()))?;
 
                 if *id == right_id {
                     if fields.len() == 1 {
@@ -319,11 +347,17 @@ impl<T: ToCore, E: ToCore> ToCore for Result<T, E> {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
         match self {
             Ok(x) => {
-                let id = table.get_by_name("Right").or_else(|| table.get_by_name("Ok")).ok_or_else(|| BridgeError::UnknownDataConName("Right/Ok".into()))?;
+                let id = table
+                    .get_by_name("Right")
+                    .or_else(|| table.get_by_name("Ok"))
+                    .ok_or_else(|| BridgeError::UnknownDataConName("Right/Ok".into()))?;
                 Ok(Value::Con(id, vec![x.to_value(table)?]))
             }
             Err(e) => {
-                let id = table.get_by_name("Left").or_else(|| table.get_by_name("Err")).ok_or_else(|| BridgeError::UnknownDataConName("Left/Err".into()))?;
+                let id = table
+                    .get_by_name("Left")
+                    .or_else(|| table.get_by_name("Err"))
+                    .ok_or_else(|| BridgeError::UnknownDataConName("Left/Err".into()))?;
                 Ok(Value::Con(id, vec![e.to_value(table)?]))
             }
         }
@@ -336,10 +370,15 @@ impl<A: FromCore, B: FromCore> FromCore for (A, B) {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Con(id, fields) => {
-                let pair_id = table.get_by_name("(,)").ok_or(BridgeError::UnknownDataConName("(,)".into()))?;
+                let pair_id = table
+                    .get_by_name("(,)")
+                    .ok_or(BridgeError::UnknownDataConName("(,)".into()))?;
                 if *id == pair_id {
                     if fields.len() == 2 {
-                        Ok((A::from_value(&fields[0], table)?, B::from_value(&fields[1], table)?))
+                        Ok((
+                            A::from_value(&fields[0], table)?,
+                            B::from_value(&fields[1], table)?,
+                        ))
                     } else {
                         Err(BridgeError::ArityMismatch {
                             con: *id,
@@ -358,8 +397,13 @@ impl<A: FromCore, B: FromCore> FromCore for (A, B) {
 
 impl<A: ToCore, B: ToCore> ToCore for (A, B) {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let pair_id = table.get_by_name("(,)").ok_or_else(|| BridgeError::UnknownDataConName("(,)".into()))?;
-        Ok(Value::Con(pair_id, vec![self.0.to_value(table)?, self.1.to_value(table)?]))
+        let pair_id = table
+            .get_by_name("(,)")
+            .ok_or_else(|| BridgeError::UnknownDataConName("(,)".into()))?;
+        Ok(Value::Con(
+            pair_id,
+            vec![self.0.to_value(table)?, self.1.to_value(table)?],
+        ))
     }
 }
 
@@ -367,7 +411,9 @@ impl<A: FromCore, B: FromCore, C: FromCore> FromCore for (A, B, C) {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Con(id, fields) => {
-                let triple_id = table.get_by_name("(,,)").ok_or(BridgeError::UnknownDataConName("(,,)".into()))?;
+                let triple_id = table
+                    .get_by_name("(,,)")
+                    .ok_or(BridgeError::UnknownDataConName("(,,)".into()))?;
                 if *id == triple_id {
                     if fields.len() == 3 {
                         Ok((
@@ -393,12 +439,17 @@ impl<A: FromCore, B: FromCore, C: FromCore> FromCore for (A, B, C) {
 
 impl<A: ToCore, B: ToCore, C: ToCore> ToCore for (A, B, C) {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let triple_id = table.get_by_name("(,,)").ok_or_else(|| BridgeError::UnknownDataConName("(,,)".into()))?;
-        Ok(Value::Con(triple_id, vec![
-            self.0.to_value(table)?,
-            self.1.to_value(table)?,
-            self.2.to_value(table)?,
-        ]))
+        let triple_id = table
+            .get_by_name("(,,)")
+            .ok_or_else(|| BridgeError::UnknownDataConName("(,,)".into()))?;
+        Ok(Value::Con(
+            triple_id,
+            vec![
+                self.0.to_value(table)?,
+                self.1.to_value(table)?,
+                self.2.to_value(table)?,
+            ],
+        ))
     }
 }
 
@@ -410,16 +461,76 @@ mod tests {
     fn test_table() -> DataConTable {
         let mut t = DataConTable::new();
         // Nothing=0, Just=1, False=2, True=3, ()=4, Nil=5, Cons=6, (,,)=7, Right=8, Left=9
-        t.insert(DataCon { id: DataConId(0), name: "Nothing".into(), tag: 1, rep_arity: 0, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(1), name: "Just".into(), tag: 2, rep_arity: 1, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(2), name: "False".into(), tag: 1, rep_arity: 0, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(3), name: "True".into(), tag: 2, rep_arity: 0, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(4), name: "(,)".into(), tag: 1, rep_arity: 2, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(5), name: "[]".into(), tag: 1, rep_arity: 0, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(6), name: ":".into(), tag: 2, rep_arity: 2, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(7), name: "(,,)".into(), tag: 1, rep_arity: 3, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(8), name: "Right".into(), tag: 2, rep_arity: 1, field_bangs: vec![] });
-        t.insert(DataCon { id: DataConId(9), name: "Left".into(), tag: 1, rep_arity: 1, field_bangs: vec![] });
+        t.insert(DataCon {
+            id: DataConId(0),
+            name: "Nothing".into(),
+            tag: 1,
+            rep_arity: 0,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(1),
+            name: "Just".into(),
+            tag: 2,
+            rep_arity: 1,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(2),
+            name: "False".into(),
+            tag: 1,
+            rep_arity: 0,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(3),
+            name: "True".into(),
+            tag: 2,
+            rep_arity: 0,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(4),
+            name: "(,)".into(),
+            tag: 1,
+            rep_arity: 2,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(5),
+            name: "[]".into(),
+            tag: 1,
+            rep_arity: 0,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(6),
+            name: ":".into(),
+            tag: 2,
+            rep_arity: 2,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(7),
+            name: "(,,)".into(),
+            tag: 1,
+            rep_arity: 3,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(8),
+            name: "Right".into(),
+            tag: 2,
+            rep_arity: 1,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(9),
+            name: "Left".into(),
+            tag: 1,
+            rep_arity: 1,
+            field_bangs: vec![],
+        });
         t
     }
 
@@ -531,7 +642,10 @@ mod tests {
         let table = test_table();
         let value = Value::Con(DataConId(100), vec![]);
         let res = bool::from_value(&value, &table);
-        assert!(matches!(res, Err(BridgeError::UnknownDataCon(DataConId(100)))));
+        assert!(matches!(
+            res,
+            Err(BridgeError::UnknownDataCon(DataConId(100)))
+        ));
     }
 
     #[test]

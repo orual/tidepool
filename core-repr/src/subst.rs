@@ -308,7 +308,9 @@ fn subst_at(tree: &CoreExpr, idx: usize, ctx: &mut SubstCtx, env: &HashMap<VarId
         }
         other => {
             // App, Con, Jump, PrimOp
-            let mapped = other.clone().map_layer(|child_idx| subst_at(tree, child_idx, ctx, env));
+            let mapped = other
+                .clone()
+                .map_layer(|child_idx| subst_at(tree, child_idx, ctx, env));
             let new_idx = ctx.new_nodes.len();
             ctx.new_nodes.push(mapped);
             new_idx
@@ -490,7 +492,7 @@ mod tests {
         // Lam(y, x)
         let tree = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(x),                // 0
+                CoreFrame::Var(x),                     // 0
                 CoreFrame::Lam { binder: y, body: 0 }, // 1
             ],
         };

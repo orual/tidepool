@@ -1,5 +1,5 @@
-use core_repr::{DataCon, DataConId, DataConTable};
 use core_repr::datacon::SrcBang;
+use core_repr::{DataCon, DataConId, DataConTable};
 
 /// Returns a standard DataConTable with common types like Maybe, Bool, and Pair.
 pub fn standard_datacon_table() -> DataConTable {

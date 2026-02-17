@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::types::DataConId;
 use crate::datacon::DataCon;
+use crate::types::DataConId;
+use std::collections::HashMap;
 
 /// Lookup table for data constructor metadata.
 /// Populated during deserialization from the CBOR metadata section.
@@ -111,7 +111,12 @@ mod tests {
         table.insert(make_datacon(3, "C", 3, 0));
 
         assert_eq!(table.len(), 3);
-        let ids: Vec<u64> = table.iter().map(|dc| match dc.id { DataConId(id) => id }).collect();
+        let ids: Vec<u64> = table
+            .iter()
+            .map(|dc| match dc.id {
+                DataConId(id) => id,
+            })
+            .collect();
         assert!(ids.contains(&1));
         assert!(ids.contains(&2));
         assert!(ids.contains(&3));

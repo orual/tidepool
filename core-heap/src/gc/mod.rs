@@ -1,5 +1,5 @@
-pub mod trace;
 pub mod compact;
+pub mod trace;
 
 use core_eval::heap::{Heap, VecHeap};
 use core_eval::value::ThunkId;

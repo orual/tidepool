@@ -228,7 +228,16 @@ fn alpha_eq_at(
             }
             ok
         }
-        (CoreFrame::Con { tag: lt, fields: lf }, CoreFrame::Con { tag: rt, fields: rf }) => {
+        (
+            CoreFrame::Con {
+                tag: lt,
+                fields: lf,
+            },
+            CoreFrame::Con {
+                tag: rt,
+                fields: rf,
+            },
+        ) => {
             if lt != rt || lf.len() != rf.len() {
                 return false;
             }
@@ -291,7 +300,16 @@ fn alpha_eq_at(
 
             alpha_eq_at(lhs, rhs, *lbody, *rbody, env_l, env_r, next_canon)
         }
-        (CoreFrame::Jump { label: ll, args: la }, CoreFrame::Jump { label: rl, args: ra }) => {
+        (
+            CoreFrame::Jump {
+                label: ll,
+                args: la,
+            },
+            CoreFrame::Jump {
+                label: rl,
+                args: ra,
+            },
+        ) => {
             if ll != rl || la.len() != ra.len() {
                 return false;
             }
@@ -320,7 +338,7 @@ fn alpha_eq_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RecursiveTree, JoinId};
+    use crate::{JoinId, RecursiveTree};
 
     #[test]
     fn test_alpha_eq_lam() {
@@ -328,13 +346,13 @@ mod tests {
         let y = VarId(2);
         let lhs = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(x),                // 0
+                CoreFrame::Var(x),                     // 0
                 CoreFrame::Lam { binder: x, body: 0 }, // 1
             ],
         };
         let rhs = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(y),                // 0
+                CoreFrame::Var(y),                     // 0
                 CoreFrame::Lam { binder: y, body: 0 }, // 1
             ],
         };
@@ -347,13 +365,13 @@ mod tests {
         let y = VarId(2);
         let lhs = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(x),                // 0
+                CoreFrame::Var(x),                     // 0
                 CoreFrame::Lam { binder: x, body: 0 }, // 1
             ],
         };
         let rhs = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(y),                // 0
+                CoreFrame::Var(y),                     // 0
                 CoreFrame::Lam { binder: x, body: 0 }, // 1 (binder x, body uses y)
             ],
         };
@@ -378,7 +396,7 @@ mod tests {
         let x = VarId(1);
         let lhs = RecursiveTree {
             nodes: vec![
-                CoreFrame::Var(x),                // 0
+                CoreFrame::Var(x),                     // 0
                 CoreFrame::Lam { binder: x, body: 0 }, // 1
             ],
         };

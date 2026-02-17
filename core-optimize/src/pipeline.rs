@@ -1,10 +1,10 @@
-use core_eval::pass::{Pass, Changed};
-use core_repr::CoreExpr;
 use crate::beta::BetaReduce;
-use crate::inline::Inline;
 use crate::case_reduce::CaseReduce;
 use crate::dce::Dce;
+use crate::inline::Inline;
 use crate::partial::PartialEval;
+use core_eval::pass::{Changed, Pass};
+use core_repr::CoreExpr;
 
 /// Maximum number of iterations for the pipeline to avoid infinite loops.
 pub const MAX_PIPELINE_ITERATIONS: usize = 1000;
@@ -213,8 +213,12 @@ mod tests {
     fn test_infinite_loop_panic() {
         struct InfinitePass;
         impl Pass for InfinitePass {
-            fn run(&self, _expr: &mut CoreExpr) -> Changed { true }
-            fn name(&self) -> &str { "Infinite" }
+            fn run(&self, _expr: &mut CoreExpr) -> Changed {
+                true
+            }
+            fn name(&self) -> &str {
+                "Infinite"
+            }
         }
         let mut expr = dummy_expr();
         run_pipeline(&[Box::new(InfinitePass)], &mut expr);

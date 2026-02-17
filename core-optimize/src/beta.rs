@@ -147,9 +147,9 @@ fn replace_subtree(expr: &CoreExpr, target_idx: usize, replacement: &CoreExpr) -
             return root;
         }
 
-        let mapped = expr.nodes[idx].clone().map_layer(|child| {
-            rebuild(expr, child, target, replacement, new_nodes, old_to_new)
-        });
+        let mapped = expr.nodes[idx]
+            .clone()
+            .map_layer(|child| rebuild(expr, child, target, replacement, new_nodes, old_to_new));
         let new_idx = new_nodes.len();
         new_nodes.push(mapped);
         old_to_new.insert(idx, new_idx);
@@ -272,11 +272,14 @@ mod tests {
         // (λx. x + x) 21
         let x = VarId(1);
         let nodes = vec![
-            CoreFrame::Var(x),                                              // 0: x
-            CoreFrame::PrimOp { op: core_repr::PrimOpKind::IntAdd, args: vec![0, 0] }, // 1: x + x
-            CoreFrame::Lam { binder: x, body: 1 },                          // 2: λx. x + x
-            CoreFrame::Lit(Literal::LitInt(21)),                            // 3: 21
-            CoreFrame::App { fun: 2, arg: 3 },                              // 4: (λx. x + x) 21
+            CoreFrame::Var(x), // 0: x
+            CoreFrame::PrimOp {
+                op: core_repr::PrimOpKind::IntAdd,
+                args: vec![0, 0],
+            }, // 1: x + x
+            CoreFrame::Lam { binder: x, body: 1 }, // 2: λx. x + x
+            CoreFrame::Lit(Literal::LitInt(21)), // 3: 21
+            CoreFrame::App { fun: 2, arg: 3 }, // 4: (λx. x + x) 21
         ];
         let expr_orig = CoreExpr { nodes };
         let mut expr_reduced = expr_orig.clone();
@@ -285,16 +288,19 @@ mod tests {
 
         let mut heap = VecHeap::new();
         let env = Env::new();
-        
+
         let val_orig = eval(&expr_orig, &env, &mut heap).expect("Original eval failed");
         let val_reduced = eval(&expr_reduced, &env, &mut heap).expect("Reduced eval failed");
 
         if let (core_eval::Value::Lit(l1), core_eval::Value::Lit(l2)) = (&val_orig, &val_reduced) {
             assert_eq!(l1, l2);
         } else {
-            panic!("Expected literal results, got {:?} and {:?}", val_orig, val_reduced);
+            panic!(
+                "Expected literal results, got {:?} and {:?}",
+                val_orig, val_reduced
+            );
         }
-        
+
         if let core_eval::Value::Lit(Literal::LitInt(n)) = val_orig {
             assert_eq!(n, 42);
         } else {
@@ -318,7 +324,7 @@ mod tests {
         ];
         let mut expr = CoreExpr { nodes };
         let pass = BetaReduce;
-        
+
         // Run until fixpoint
         while pass.run(&mut expr) {}
 

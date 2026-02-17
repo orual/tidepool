@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use crate::{CoreExpr, CoreFrame, VarId};
+use std::collections::HashSet;
 
 /// Collect all free variables in the expression rooted at the given node.
 pub fn free_vars(tree: &CoreExpr) -> HashSet<VarId> {
@@ -131,7 +131,7 @@ mod tests {
     fn test_free_vars_lam_bound() {
         let x = VarId(1);
         let expr = tree(vec![
-            CoreFrame::Var(x),                // 0
+            CoreFrame::Var(x),                     // 0
             CoreFrame::Lam { binder: x, body: 0 }, // 1
         ]);
         assert_eq!(free_vars(&expr), HashSet::new());
@@ -142,7 +142,7 @@ mod tests {
         let x = VarId(1);
         let y = VarId(2);
         let expr = tree(vec![
-            CoreFrame::Var(y),                // 0
+            CoreFrame::Var(y),                     // 0
             CoreFrame::Lam { binder: x, body: 0 }, // 1
         ]);
         let mut expected = HashSet::new();

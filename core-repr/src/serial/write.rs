@@ -1,13 +1,15 @@
-use ciborium::value::Value;
+use super::WriteError;
 use crate::frame::CoreFrame;
 use crate::tree::RecursiveTree;
-use crate::types::{Literal, AltCon, Alt, PrimOpKind};
-use super::WriteError;
+use crate::types::{Alt, AltCon, Literal, PrimOpKind};
+use ciborium::value::Value;
 
 /// Writes a CoreExpr to a CBOR-encoded byte vector.
 pub fn write_cbor(expr: &RecursiveTree<CoreFrame<usize>>) -> Result<Vec<u8>, WriteError> {
     if expr.nodes.is_empty() {
-        return Err(WriteError::Cbor("attempted to write an empty RecursiveTree as a CoreExpr".to_string()));
+        return Err(WriteError::Cbor(
+            "attempted to write an empty RecursiveTree as a CoreExpr".to_string(),
+        ));
     }
 
     let mut nodes_val = Vec::with_capacity(expr.nodes.len());
@@ -23,7 +25,8 @@ pub fn write_cbor(expr: &RecursiveTree<CoreFrame<usize>>) -> Result<Vec<u8>, Wri
     ]);
 
     let mut bytes = Vec::new();
-    ciborium::ser::into_writer(&tree_val, &mut bytes).map_err(|e| WriteError::Cbor(e.to_string()))?;
+    ciborium::ser::into_writer(&tree_val, &mut bytes)
+        .map_err(|e| WriteError::Cbor(e.to_string()))?;
     Ok(bytes)
 }
 
@@ -33,10 +36,9 @@ fn encode_frame(frame: &CoreFrame<usize>) -> Value {
             Value::Text("Var".to_string()),
             Value::Integer(id.0.into()),
         ]),
-        CoreFrame::Lit(lit) => Value::Array(vec![
-            Value::Text("Lit".to_string()),
-            encode_literal(lit),
-        ]),
+        CoreFrame::Lit(lit) => {
+            Value::Array(vec![Value::Text("Lit".to_string()), encode_literal(lit)])
+        }
         CoreFrame::App { fun, arg } => Value::Array(vec![
             Value::Text("App".to_string()),
             Value::Integer((*fun as u64).into()),
@@ -103,12 +105,8 @@ fn encode_frame(frame: &CoreFrame<usize>) -> Value {
             rhs,
             body,
         } => {
-            let params_val = Value::Array(
-                params
-                    .iter()
-                    .map(|p| Value::Integer(p.0.into()))
-                    .collect(),
-            );
+            let params_val =
+                Value::Array(params.iter().map(|p| Value::Integer(p.0.into())).collect());
             Value::Array(vec![
                 Value::Text("Join".to_string()),
                 Value::Integer(label.0.into()),
@@ -119,8 +117,7 @@ fn encode_frame(frame: &CoreFrame<usize>) -> Value {
         }
         CoreFrame::Jump { label, args } => {
             let args_val = Value::Array(
-                args
-                    .iter()
+                args.iter()
                     .map(|a| Value::Integer((*a as u64).into()))
                     .collect(),
             );
@@ -132,8 +129,7 @@ fn encode_frame(frame: &CoreFrame<usize>) -> Value {
         }
         CoreFrame::PrimOp { op, args } => {
             let args_val = Value::Array(
-                args
-                    .iter()
+                args.iter()
                     .map(|a| Value::Integer((*a as u64).into()))
                     .collect(),
             );
@@ -149,15 +145,45 @@ fn encode_frame(frame: &CoreFrame<usize>) -> Value {
 fn encode_primop(op: &PrimOpKind) -> &'static str {
     use PrimOpKind::*;
     match op {
-        IntAdd => "IntAdd", IntSub => "IntSub", IntMul => "IntMul",
+        IntAdd => "IntAdd",
+        IntSub => "IntSub",
+        IntMul => "IntMul",
         IntNegate => "IntNegate",
-        IntEq => "IntEq", IntNe => "IntNe", IntLt => "IntLt", IntLe => "IntLe", IntGt => "IntGt", IntGe => "IntGe",
-        WordAdd => "WordAdd", WordSub => "WordSub", WordMul => "WordMul",
-        WordEq => "WordEq", WordNe => "WordNe", WordLt => "WordLt", WordLe => "WordLe", WordGt => "WordGt", WordGe => "WordGe",
-        DoubleAdd => "DoubleAdd", DoubleSub => "DoubleSub", DoubleMul => "DoubleMul", DoubleDiv => "DoubleDiv",
-        DoubleEq => "DoubleEq", DoubleNe => "DoubleNe", DoubleLt => "DoubleLt", DoubleLe => "DoubleLe", DoubleGt => "DoubleGt", DoubleGe => "DoubleGe",
-        CharEq => "CharEq", CharNe => "CharNe", CharLt => "CharLt", CharLe => "CharLe", CharGt => "CharGt", CharGe => "CharGe",
-        IndexArray => "IndexArray", SeqOp => "SeqOp", TagToEnum => "TagToEnum", DataToTag => "DataToTag",
+        IntEq => "IntEq",
+        IntNe => "IntNe",
+        IntLt => "IntLt",
+        IntLe => "IntLe",
+        IntGt => "IntGt",
+        IntGe => "IntGe",
+        WordAdd => "WordAdd",
+        WordSub => "WordSub",
+        WordMul => "WordMul",
+        WordEq => "WordEq",
+        WordNe => "WordNe",
+        WordLt => "WordLt",
+        WordLe => "WordLe",
+        WordGt => "WordGt",
+        WordGe => "WordGe",
+        DoubleAdd => "DoubleAdd",
+        DoubleSub => "DoubleSub",
+        DoubleMul => "DoubleMul",
+        DoubleDiv => "DoubleDiv",
+        DoubleEq => "DoubleEq",
+        DoubleNe => "DoubleNe",
+        DoubleLt => "DoubleLt",
+        DoubleLe => "DoubleLe",
+        DoubleGt => "DoubleGt",
+        DoubleGe => "DoubleGe",
+        CharEq => "CharEq",
+        CharNe => "CharNe",
+        CharLt => "CharLt",
+        CharLe => "CharLe",
+        CharGt => "CharGt",
+        CharGe => "CharGe",
+        IndexArray => "IndexArray",
+        SeqOp => "SeqOp",
+        TagToEnum => "TagToEnum",
+        DataToTag => "DataToTag",
     }
 }
 
@@ -210,10 +236,9 @@ fn encode_alt_con(con: &AltCon) -> Value {
             Value::Text("DataAlt".to_string()),
             Value::Integer(id.0.into()),
         ]),
-        AltCon::LitAlt(lit) => Value::Array(vec![
-            Value::Text("LitAlt".to_string()),
-            encode_literal(lit),
-        ]),
+        AltCon::LitAlt(lit) => {
+            Value::Array(vec![Value::Text("LitAlt".to_string()), encode_literal(lit)])
+        }
         AltCon::Default => Value::Array(vec![Value::Text("Default".to_string())]),
     }
 }

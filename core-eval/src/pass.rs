@@ -15,7 +15,7 @@ pub trait Pass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_repr::{VarId, CoreFrame, RecursiveTree};
+    use core_repr::{CoreFrame, RecursiveTree, VarId};
 
     struct NoOpPass;
 
@@ -32,7 +32,9 @@ mod tests {
     #[test]
     fn test_noop_pass() {
         let pass = NoOpPass;
-        let mut expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+        let mut expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
         let changed = pass.run(&mut expr);
         assert!(!changed);
         assert_eq!(pass.name(), "NoOpPass");

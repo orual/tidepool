@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use core_repr::{VarId, Literal, DataConId, CoreExpr, CoreFrame, AltCon, Alt, PrimOpKind};
 use core_eval::{Changed, Pass};
+use core_repr::{Alt, AltCon, CoreExpr, CoreFrame, DataConId, Literal, PrimOpKind, VarId};
+use std::collections::HashMap;
 
 /// A value that might be known during partial evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,9 +28,16 @@ pub struct PartialEval;
 
 impl Pass for PartialEval {
     fn run(&self, expr: &mut CoreExpr) -> Changed {
-        if expr.nodes.is_empty() { return false; }
+        if expr.nodes.is_empty() {
+            return false;
+        }
         let mut new_nodes = Vec::new();
-        let (root_idx, _) = partial_eval_at(expr, expr.nodes.len() - 1, &PartialEnv::new(), &mut new_nodes);
+        let (root_idx, _) = partial_eval_at(
+            expr,
+            expr.nodes.len() - 1,
+            &PartialEnv::new(),
+            &mut new_nodes,
+        );
         let new_expr = CoreExpr { nodes: new_nodes }.extract_subtree(root_idx);
         if new_expr != *expr {
             *expr = new_expr;
@@ -39,12 +46,16 @@ impl Pass for PartialEval {
             false
         }
     }
-    fn name(&self) -> &str { "PartialEval" }
+    fn name(&self) -> &str {
+        "PartialEval"
+    }
 }
 
 /// Recursively partially evaluate an expression at a given index.
 fn partial_eval_at(
-    expr: &CoreExpr, idx: usize, env: &PartialEnv,
+    expr: &CoreExpr,
+    idx: usize,
+    env: &PartialEnv,
     new_nodes: &mut Vec<CoreFrame<usize>>,
 ) -> (usize, PartialValue) {
     match &expr.nodes[idx] {
@@ -63,16 +74,20 @@ fn partial_eval_at(
             let ni = new_nodes.len();
             new_nodes.push(CoreFrame::Lit(lit.clone()));
             (ni, PartialValue::Known(KnownValue::Lit(lit.clone())))
-        },
+        }
         CoreFrame::Con { tag, fields } => {
             let mut fi = Vec::new();
             let mut fv = Vec::new();
             for &f in fields {
                 let (i, v) = partial_eval_at(expr, f, env, new_nodes);
-                fi.push(i); fv.push(v);
+                fi.push(i);
+                fv.push(v);
             }
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::Con { tag: *tag, fields: fi });
+            new_nodes.push(CoreFrame::Con {
+                tag: *tag,
+                fields: fi,
+            });
             let mut known_fields = Vec::new();
             for v in fv {
                 if let PartialValue::Known(k) = v {
@@ -82,7 +97,7 @@ fn partial_eval_at(
                 }
             }
             (ni, PartialValue::Known(KnownValue::Con(*tag, known_fields)))
-        },
+        }
         CoreFrame::LetNonRec { binder, rhs, body } => {
             let (rhs_i, rhs_v) = partial_eval_at(expr, *rhs, env, new_nodes);
             let mut new_env = env.clone();
@@ -93,13 +108,19 @@ fn partial_eval_at(
             } else {
                 let (body_i, body_v) = partial_eval_at(expr, *body, &new_env, new_nodes);
                 let ni = new_nodes.len();
-                new_nodes.push(CoreFrame::LetNonRec { binder: *binder, rhs: rhs_i, body: body_i });
+                new_nodes.push(CoreFrame::LetNonRec {
+                    binder: *binder,
+                    rhs: rhs_i,
+                    body: body_i,
+                });
                 (ni, body_v)
             }
-        },
+        }
         CoreFrame::LetRec { bindings, body } => {
             let mut new_env = env.clone();
-            for (b, _) in bindings { new_env.insert(*b, PartialValue::Unknown); }
+            for (b, _) in bindings {
+                new_env.insert(*b, PartialValue::Unknown);
+            }
             let mut nb = Vec::new();
             for (b, r) in bindings {
                 let (ri, _) = partial_eval_at(expr, *r, &new_env, new_nodes);
@@ -107,14 +128,22 @@ fn partial_eval_at(
             }
             let (bi, bv) = partial_eval_at(expr, *body, &new_env, new_nodes);
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::LetRec { bindings: nb, body: bi });
+            new_nodes.push(CoreFrame::LetRec {
+                bindings: nb,
+                body: bi,
+            });
             (ni, bv)
-        },
-        CoreFrame::Case { scrutinee, binder, alts } => {
+        }
+        CoreFrame::Case {
+            scrutinee,
+            binder,
+            alts,
+        } => {
             let (si, sv) = partial_eval_at(expr, *scrutinee, env, new_nodes);
             match &sv {
                 PartialValue::Known(KnownValue::Con(tag, field_vals)) => {
-                    let matched = alts.iter()
+                    let matched = alts
+                        .iter()
                         .find(|a| matches!(&a.con, AltCon::DataAlt(t) if t == tag))
                         .or_else(|| alts.iter().find(|a| matches!(&a.con, AltCon::Default)));
                     if let Some(alt) = matched {
@@ -131,7 +160,8 @@ fn partial_eval_at(
                     }
                 }
                 PartialValue::Known(KnownValue::Lit(lit)) => {
-                    let matched = alts.iter()
+                    let matched = alts
+                        .iter()
                         .find(|a| matches!(&a.con, AltCon::LitAlt(l) if l == lit))
                         .or_else(|| alts.iter().find(|a| matches!(&a.con, AltCon::Default)));
                     if let Some(alt) = matched {
@@ -144,13 +174,14 @@ fn partial_eval_at(
                 }
                 PartialValue::Unknown => emit_residual_case(expr, si, binder, alts, env, new_nodes),
             }
-        },
+        }
         CoreFrame::PrimOp { op, args } => {
             let mut ai = Vec::new();
             let mut av = Vec::new();
             for &a in args {
                 let (i, v) = partial_eval_at(expr, a, env, new_nodes);
-                ai.push(i); av.push(v);
+                ai.push(i);
+                av.push(v);
             }
             if let Some(result) = try_eval_primop(*op, &av) {
                 let ni = new_nodes.len();
@@ -161,27 +192,40 @@ fn partial_eval_at(
                 new_nodes.push(CoreFrame::PrimOp { op: *op, args: ai });
                 (ni, PartialValue::Unknown)
             }
-        },
+        }
         CoreFrame::App { fun, arg } => {
             let (fi, _) = partial_eval_at(expr, *fun, env, new_nodes);
             let (ai, _) = partial_eval_at(expr, *arg, env, new_nodes);
             let ni = new_nodes.len();
             new_nodes.push(CoreFrame::App { fun: fi, arg: ai });
             (ni, PartialValue::Unknown)
-        },
+        }
         CoreFrame::Lam { binder, body } => {
             let (bi, _) = partial_eval_at(expr, *body, env, new_nodes);
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::Lam { binder: *binder, body: bi });
+            new_nodes.push(CoreFrame::Lam {
+                binder: *binder,
+                body: bi,
+            });
             (ni, PartialValue::Unknown)
-        },
-        CoreFrame::Join { label, params, rhs, body } => {
+        }
+        CoreFrame::Join {
+            label,
+            params,
+            rhs,
+            body,
+        } => {
             let (ri, _) = partial_eval_at(expr, *rhs, env, new_nodes);
             let (bi, bv) = partial_eval_at(expr, *body, env, new_nodes);
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::Join { label: *label, params: params.clone(), rhs: ri, body: bi });
+            new_nodes.push(CoreFrame::Join {
+                label: *label,
+                params: params.clone(),
+                rhs: ri,
+                body: bi,
+            });
             (ni, bv)
-        },
+        }
         CoreFrame::Jump { label, args } => {
             let mut ai = Vec::new();
             for &a in args {
@@ -189,9 +233,12 @@ fn partial_eval_at(
                 ai.push(i);
             }
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::Jump { label: *label, args: ai });
+            new_nodes.push(CoreFrame::Jump {
+                label: *label,
+                args: ai,
+            });
             (ni, PartialValue::Unknown)
-        },
+        }
     }
 }
 
@@ -206,7 +253,10 @@ fn emit_known(kv: &KnownValue, new_nodes: &mut Vec<CoreFrame<usize>>) -> usize {
         KnownValue::Con(tag, fields) => {
             let fi: Vec<usize> = fields.iter().map(|k| emit_known(k, new_nodes)).collect();
             let ni = new_nodes.len();
-            new_nodes.push(CoreFrame::Con { tag: *tag, fields: fi });
+            new_nodes.push(CoreFrame::Con {
+                tag: *tag,
+                fields: fi,
+            });
             ni
         }
     }
@@ -214,35 +264,78 @@ fn emit_known(kv: &KnownValue, new_nodes: &mut Vec<CoreFrame<usize>>) -> usize {
 
 /// Emit a residual case expression when the scrutinee is unknown.
 fn emit_residual_case(
-    expr: &CoreExpr, scrut_idx: usize, binder: &VarId, alts: &[Alt<usize>],
-    env: &PartialEnv, new_nodes: &mut Vec<CoreFrame<usize>>,
+    expr: &CoreExpr,
+    scrut_idx: usize,
+    binder: &VarId,
+    alts: &[Alt<usize>],
+    env: &PartialEnv,
+    new_nodes: &mut Vec<CoreFrame<usize>>,
 ) -> (usize, PartialValue) {
     let mut new_env = env.clone();
     new_env.insert(*binder, PartialValue::Unknown);
     let mut new_alts = Vec::new();
     for alt in alts {
         let mut alt_env = new_env.clone();
-        for b in &alt.binders { alt_env.insert(*b, PartialValue::Unknown); }
+        for b in &alt.binders {
+            alt_env.insert(*b, PartialValue::Unknown);
+        }
         let (bi, _) = partial_eval_at(expr, alt.body, &alt_env, new_nodes);
-        new_alts.push(Alt { con: alt.con.clone(), binders: alt.binders.clone(), body: bi });
+        new_alts.push(Alt {
+            con: alt.con.clone(),
+            binders: alt.binders.clone(),
+            body: bi,
+        });
     }
     let ni = new_nodes.len();
-    new_nodes.push(CoreFrame::Case { scrutinee: scrut_idx, binder: *binder, alts: new_alts });
+    new_nodes.push(CoreFrame::Case {
+        scrutinee: scrut_idx,
+        binder: *binder,
+        alts: new_alts,
+    });
     (ni, PartialValue::Unknown)
 }
 
 /// Try to evaluate a primitive operation on partially known arguments.
 fn try_eval_primop(op: PrimOpKind, args: &[PartialValue]) -> Option<Literal> {
-    let lits: Vec<&Literal> = args.iter().filter_map(|a| match a {
-        PartialValue::Known(KnownValue::Lit(l)) => Some(l),
-        _ => None,
-    }).collect();
-    if lits.len() != args.len() { return None; }
+    let lits: Vec<&Literal> = args
+        .iter()
+        .filter_map(|a| match a {
+            PartialValue::Known(KnownValue::Lit(l)) => Some(l),
+            _ => None,
+        })
+        .collect();
+    if lits.len() != args.len() {
+        return None;
+    }
     match op {
-        PrimOpKind::IntAdd => if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] { Some(Literal::LitInt(a.wrapping_add(*b))) } else { None },
-        PrimOpKind::IntSub => if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] { Some(Literal::LitInt(a.wrapping_sub(*b))) } else { None },
-        PrimOpKind::IntMul => if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] { Some(Literal::LitInt(a.wrapping_mul(*b))) } else { None },
-        PrimOpKind::IntNegate => if let [Literal::LitInt(a)] = &lits[..] { Some(Literal::LitInt(a.wrapping_neg())) } else { None },
+        PrimOpKind::IntAdd => {
+            if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] {
+                Some(Literal::LitInt(a.wrapping_add(*b)))
+            } else {
+                None
+            }
+        }
+        PrimOpKind::IntSub => {
+            if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] {
+                Some(Literal::LitInt(a.wrapping_sub(*b)))
+            } else {
+                None
+            }
+        }
+        PrimOpKind::IntMul => {
+            if let [Literal::LitInt(a), Literal::LitInt(b)] = &lits[..] {
+                Some(Literal::LitInt(a.wrapping_mul(*b)))
+            } else {
+                None
+            }
+        }
+        PrimOpKind::IntNegate => {
+            if let [Literal::LitInt(a)] = &lits[..] {
+                Some(Literal::LitInt(a.wrapping_neg()))
+            } else {
+                None
+            }
+        }
         PrimOpKind::IntEq => int_cmp(&lits, |a, b| a == b),
         PrimOpKind::IntNe => int_cmp(&lits, |a, b| a != b),
         PrimOpKind::IntLt => int_cmp(&lits, |a, b| a < b),
@@ -257,17 +350,19 @@ fn try_eval_primop(op: PrimOpKind, args: &[PartialValue]) -> Option<Literal> {
 fn int_cmp(lits: &[&Literal], f: impl Fn(i64, i64) -> bool) -> Option<Literal> {
     if let [Literal::LitInt(a), Literal::LitInt(b)] = lits {
         Some(Literal::LitInt(if f(*a, *b) { 1 } else { 0 }))
-    } else { None }
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_repr::{VarId, Literal, DataConId, CoreFrame, Alt, AltCon, PrimOpKind};
-    use core_eval::eval;
     use core_eval::env::Env;
+    use core_eval::eval;
     use core_eval::heap::VecHeap;
     use core_eval::value::Value;
+    use core_repr::{Alt, AltCon, CoreFrame, DataConId, Literal, PrimOpKind, VarId};
 
     #[test]
     fn test_partial_all_known() {
@@ -275,16 +370,27 @@ mod tests {
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
             CoreFrame::Lit(Literal::LitInt(2)), // 1
-            CoreFrame::Var(VarId(1)), // 2: x
-            CoreFrame::Var(VarId(2)), // 3: y
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![2, 3] }, // 4
-            CoreFrame::LetNonRec { binder: VarId(2), rhs: 1, body: 4 }, // 5
-            CoreFrame::LetNonRec { binder: VarId(1), rhs: 0, body: 5 }, // 6
+            CoreFrame::Var(VarId(1)),           // 2: x
+            CoreFrame::Var(VarId(2)),           // 3: y
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![2, 3],
+            }, // 4
+            CoreFrame::LetNonRec {
+                binder: VarId(2),
+                rhs: 1,
+                body: 4,
+            }, // 5
+            CoreFrame::LetNonRec {
+                binder: VarId(1),
+                rhs: 0,
+                body: 5,
+            }, // 6
         ];
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         pass.run(&mut expr);
-        
+
         assert_eq!(expr.nodes.len(), 1);
         assert_eq!(expr.nodes[0], CoreFrame::Lit(Literal::LitInt(3)));
     }
@@ -296,7 +402,7 @@ mod tests {
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         let changed = pass.run(&mut expr);
-        
+
         assert!(!changed);
         assert_eq!(expr.nodes.len(), 1);
         assert_eq!(expr.nodes[0], CoreFrame::Var(VarId(1)));
@@ -307,8 +413,11 @@ mod tests {
         // let x = Con(1, [Lit(42)]) in case x of w { DataAlt(1) [y] -> y }
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(42)), // 0
-            CoreFrame::Con { tag: DataConId(1), fields: vec![0] }, // 1
-            CoreFrame::Var(VarId(2)), // 2: y
+            CoreFrame::Con {
+                tag: DataConId(1),
+                fields: vec![0],
+            }, // 1
+            CoreFrame::Var(VarId(2)),            // 2: y
             CoreFrame::Case {
                 scrutinee: 1,
                 binder: VarId(3),
@@ -318,12 +427,16 @@ mod tests {
                     body: 2,
                 }],
             }, // 3
-            CoreFrame::LetNonRec { binder: VarId(1), rhs: 1, body: 3 }, // 4
+            CoreFrame::LetNonRec {
+                binder: VarId(1),
+                rhs: 1,
+                body: 3,
+            }, // 4
         ];
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         pass.run(&mut expr);
-        
+
         assert_eq!(expr.nodes.len(), 1);
         assert_eq!(expr.nodes[0], CoreFrame::Lit(Literal::LitInt(42)));
     }
@@ -332,7 +445,7 @@ mod tests {
     fn test_partial_unknown_scrutinee() {
         // case Var(x) of w { Default -> Lit(42) }
         let nodes = vec![
-            CoreFrame::Var(VarId(1)), // 0
+            CoreFrame::Var(VarId(1)),            // 0
             CoreFrame::Lit(Literal::LitInt(42)), // 1
             CoreFrame::Case {
                 scrutinee: 0,
@@ -347,7 +460,7 @@ mod tests {
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         let changed = pass.run(&mut expr);
-        
+
         // It might "change" by rebuilding the nodes but semantically it's residual
         // Actually our run implementation returns true if new_expr != *expr.
         // Let's check the structure.
@@ -362,12 +475,15 @@ mod tests {
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
             CoreFrame::Lit(Literal::LitInt(2)), // 1
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![0, 1] }, // 2
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![0, 1],
+            }, // 2
         ];
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         pass.run(&mut expr);
-        
+
         assert_eq!(expr.nodes.len(), 1);
         assert_eq!(expr.nodes[0], CoreFrame::Lit(Literal::LitInt(3)));
     }
@@ -377,14 +493,23 @@ mod tests {
         // PrimOp(IntAdd, [Lit(1), Var(x)])
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
-            CoreFrame::Var(VarId(1)), // 1
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![0, 1] }, // 2
+            CoreFrame::Var(VarId(1)),           // 1
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![0, 1],
+            }, // 2
         ];
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         pass.run(&mut expr);
-        
-        assert!(matches!(expr.nodes.last().unwrap(), CoreFrame::PrimOp { op: PrimOpKind::IntAdd, .. }));
+
+        assert!(matches!(
+            expr.nodes.last().unwrap(),
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -393,24 +518,37 @@ mod tests {
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(10)), // 0
             CoreFrame::Lit(Literal::LitInt(20)), // 1
-            CoreFrame::Var(VarId(1)), // 2
-            CoreFrame::Var(VarId(2)), // 3
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![2, 3] }, // 4
-            CoreFrame::LetNonRec { binder: VarId(2), rhs: 1, body: 4 }, // 5
-            CoreFrame::LetNonRec { binder: VarId(1), rhs: 0, body: 5 }, // 6
+            CoreFrame::Var(VarId(1)),            // 2
+            CoreFrame::Var(VarId(2)),            // 3
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![2, 3],
+            }, // 4
+            CoreFrame::LetNonRec {
+                binder: VarId(2),
+                rhs: 1,
+                body: 4,
+            }, // 5
+            CoreFrame::LetNonRec {
+                binder: VarId(1),
+                rhs: 0,
+                body: 5,
+            }, // 6
         ];
         let mut expr = CoreExpr { nodes };
-        
+
         let mut heap_before = VecHeap::new();
         let val_before = eval(&expr, &Env::new(), &mut heap_before).unwrap();
-        
+
         let pass = PartialEval;
         pass.run(&mut expr);
-        
+
         let mut heap_after = VecHeap::new();
         let val_after = eval(&expr, &Env::new(), &mut heap_after).unwrap();
-        
-        if let (Value::Lit(Literal::LitInt(n1)), Value::Lit(Literal::LitInt(n2))) = (val_before, val_after) {
+
+        if let (Value::Lit(Literal::LitInt(n1)), Value::Lit(Literal::LitInt(n2))) =
+            (val_before, val_after)
+        {
             assert_eq!(n1, 30);
             assert_eq!(n2, 30);
         } else {
@@ -423,19 +561,33 @@ mod tests {
         // let x = 1 in let y = PrimOp(IntAdd, [x, Lit(2)]) in PrimOp(IntAdd, [y, Lit(3)])
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
-            CoreFrame::Var(VarId(1)), // 1: x
+            CoreFrame::Var(VarId(1)),           // 1: x
             CoreFrame::Lit(Literal::LitInt(2)), // 2
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![1, 2] }, // 3: x + 2
-            CoreFrame::Var(VarId(2)), // 4: y
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 2],
+            }, // 3: x + 2
+            CoreFrame::Var(VarId(2)),           // 4: y
             CoreFrame::Lit(Literal::LitInt(3)), // 5
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![4, 5] }, // 6: y + 3
-            CoreFrame::LetNonRec { binder: VarId(2), rhs: 3, body: 6 }, // 7
-            CoreFrame::LetNonRec { binder: VarId(1), rhs: 0, body: 7 }, // 8
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![4, 5],
+            }, // 6: y + 3
+            CoreFrame::LetNonRec {
+                binder: VarId(2),
+                rhs: 3,
+                body: 6,
+            }, // 7
+            CoreFrame::LetNonRec {
+                binder: VarId(1),
+                rhs: 0,
+                body: 7,
+            }, // 8
         ];
         let mut expr = CoreExpr { nodes };
         let pass = PartialEval;
         pass.run(&mut expr);
-        
+
         assert_eq!(expr.nodes.len(), 1);
         assert_eq!(expr.nodes[0], CoreFrame::Lit(Literal::LitInt(6)));
     }

@@ -70,10 +70,7 @@ impl<A, B> MapLayer<A, B> for CoreFrame<A> {
                 body: f(body),
             },
             CoreFrame::LetRec { bindings, body } => CoreFrame::LetRec {
-                bindings: bindings
-                    .into_iter()
-                    .map(|(id, rhs)| (id, f(rhs)))
-                    .collect(),
+                bindings: bindings.into_iter().map(|(id, rhs)| (id, f(rhs))).collect(),
                 body: f(body),
             },
             CoreFrame::Case {

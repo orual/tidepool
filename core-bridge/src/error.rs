@@ -1,6 +1,6 @@
 use core_repr::DataConId;
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 
 /// Errors that can occur when bridging between Rust types and Core Values.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +35,11 @@ impl fmt::Display for BridgeError {
             BridgeError::UnknownDataCon(id) => write!(f, "Unknown DataConId: {:?}", id),
             BridgeError::UnknownDataConName(name) => write!(f, "Unknown DataCon name: {}", name),
             BridgeError::ArityMismatch { con, expected, got } => {
-                write!(f, "Arity mismatch for DataCon {:?}: expected {}, got {}", con, expected, got)
+                write!(
+                    f,
+                    "Arity mismatch for DataCon {:?}: expected {}, got {}",
+                    con, expected, got
+                )
             }
             BridgeError::TypeMismatch { expected, got } => {
                 write!(f, "Type mismatch: expected {}, got {}", expected, got)

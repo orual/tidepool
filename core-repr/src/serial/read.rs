@@ -1,25 +1,36 @@
-use ciborium::value::Value;
+use super::ReadError;
 use crate::frame::CoreFrame;
 use crate::tree::RecursiveTree;
-use crate::types::{Literal, PrimOpKind, AltCon, Alt, VarId, DataConId, JoinId};
-use super::ReadError;
+use crate::types::{Alt, AltCon, DataConId, JoinId, Literal, PrimOpKind, VarId};
+use ciborium::value::Value;
 
 /// Reads a CoreExpr from a CBOR-encoded byte slice.
 pub fn read_cbor(bytes: &[u8]) -> Result<RecursiveTree<CoreFrame<usize>>, ReadError> {
-    let tree_val: Value = ciborium::de::from_reader(bytes).map_err(|e| ReadError::Cbor(e.to_string()))?;
-    
+    let tree_val: Value =
+        ciborium::de::from_reader(bytes).map_err(|e| ReadError::Cbor(e.to_string()))?;
+
     let root_array = match tree_val {
         Value::Array(a) if a.len() == 2 => a,
-        _ => return Err(ReadError::InvalidStructure("Root must be array of 2".to_string())),
+        _ => {
+            return Err(ReadError::InvalidStructure(
+                "Root must be array of 2".to_string(),
+            ))
+        }
     };
 
     let nodes_array = match &root_array[0] {
         Value::Array(a) => a,
-        _ => return Err(ReadError::InvalidStructure("First element must be array of nodes".to_string())),
+        _ => {
+            return Err(ReadError::InvalidStructure(
+                "First element must be array of nodes".to_string(),
+            ))
+        }
     };
 
     if nodes_array.is_empty() {
-        return Err(ReadError::InvalidStructure("CoreExpr must have at least one node".to_string()));
+        return Err(ReadError::InvalidStructure(
+            "CoreExpr must have at least one node".to_string(),
+        ));
     }
 
     let root_idx = as_usize(&root_array[1])?;
@@ -46,42 +57,88 @@ fn validate_indices(nodes: &[CoreFrame<usize>]) -> Result<(), ReadError> {
     for node in nodes {
         match node {
             CoreFrame::App { fun, arg } => {
-                if *fun >= len || *arg >= len { return Err(ReadError::InvalidStructure("App index out of bounds".to_string())); }
-            }
-            CoreFrame::Lam { body, .. } => {
-                if *body >= len { return Err(ReadError::InvalidStructure("Lam index out of bounds".to_string())); }
-            }
-            CoreFrame::LetNonRec { rhs, body, .. } => {
-                if *rhs >= len || *body >= len { return Err(ReadError::InvalidStructure("LetNonRec index out of bounds".to_string())); }
-            }
-            CoreFrame::LetRec { bindings, body } => {
-                if *body >= len { return Err(ReadError::InvalidStructure("LetRec body index out of bounds".to_string())); }
-                for (_, rhs) in bindings {
-                    if *rhs >= len { return Err(ReadError::InvalidStructure("LetRec binding index out of bounds".to_string())); }
+                if *fun >= len || *arg >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "App index out of bounds".to_string(),
+                    ));
                 }
             }
-            CoreFrame::Case { scrutinee, alts, .. } => {
-                if *scrutinee >= len { return Err(ReadError::InvalidStructure("Case scrutinee index out of bounds".to_string())); }
+            CoreFrame::Lam { body, .. } => {
+                if *body >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "Lam index out of bounds".to_string(),
+                    ));
+                }
+            }
+            CoreFrame::LetNonRec { rhs, body, .. } => {
+                if *rhs >= len || *body >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "LetNonRec index out of bounds".to_string(),
+                    ));
+                }
+            }
+            CoreFrame::LetRec { bindings, body } => {
+                if *body >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "LetRec body index out of bounds".to_string(),
+                    ));
+                }
+                for (_, rhs) in bindings {
+                    if *rhs >= len {
+                        return Err(ReadError::InvalidStructure(
+                            "LetRec binding index out of bounds".to_string(),
+                        ));
+                    }
+                }
+            }
+            CoreFrame::Case {
+                scrutinee, alts, ..
+            } => {
+                if *scrutinee >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "Case scrutinee index out of bounds".to_string(),
+                    ));
+                }
                 for alt in alts {
-                    if alt.body >= len { return Err(ReadError::InvalidStructure("Case alt body index out of bounds".to_string())); }
+                    if alt.body >= len {
+                        return Err(ReadError::InvalidStructure(
+                            "Case alt body index out of bounds".to_string(),
+                        ));
+                    }
                 }
             }
             CoreFrame::Con { fields, .. } => {
                 for f in fields {
-                    if *f >= len { return Err(ReadError::InvalidStructure("Con field index out of bounds".to_string())); }
+                    if *f >= len {
+                        return Err(ReadError::InvalidStructure(
+                            "Con field index out of bounds".to_string(),
+                        ));
+                    }
                 }
             }
             CoreFrame::Join { rhs, body, .. } => {
-                if *rhs >= len || *body >= len { return Err(ReadError::InvalidStructure("Join index out of bounds".to_string())); }
+                if *rhs >= len || *body >= len {
+                    return Err(ReadError::InvalidStructure(
+                        "Join index out of bounds".to_string(),
+                    ));
+                }
             }
             CoreFrame::Jump { args, .. } => {
                 for a in args {
-                    if *a >= len { return Err(ReadError::InvalidStructure("Jump argument index out of bounds".to_string())); }
+                    if *a >= len {
+                        return Err(ReadError::InvalidStructure(
+                            "Jump argument index out of bounds".to_string(),
+                        ));
+                    }
                 }
             }
             CoreFrame::PrimOp { args, .. } => {
                 for a in args {
-                    if *a >= len { return Err(ReadError::InvalidStructure("PrimOp argument index out of bounds".to_string())); }
+                    if *a >= len {
+                        return Err(ReadError::InvalidStructure(
+                            "PrimOp argument index out of bounds".to_string(),
+                        ));
+                    }
                 }
             }
             CoreFrame::Var(_) | CoreFrame::Lit(_) => {}
@@ -93,7 +150,11 @@ fn validate_indices(nodes: &[CoreFrame<usize>]) -> Result<(), ReadError> {
 fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
     let arr = match val {
         Value::Array(a) => a,
-        _ => return Err(ReadError::InvalidStructure("Frame must be array".to_string())),
+        _ => {
+            return Err(ReadError::InvalidStructure(
+                "Frame must be array".to_string(),
+            ))
+        }
     };
 
     if arr.is_empty() {
@@ -107,29 +168,49 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
 
     match tag {
         "Var" => {
-            if arr.len() != 2 { return Err(ReadError::InvalidStructure("Var expects 1 field".to_string())); }
+            if arr.len() != 2 {
+                return Err(ReadError::InvalidStructure(
+                    "Var expects 1 field".to_string(),
+                ));
+            }
             Ok(CoreFrame::Var(VarId(as_u64(&arr[1])?)))
         }
         "Lit" => {
-            if arr.len() != 2 { return Err(ReadError::InvalidStructure("Lit expects 1 field".to_string())); }
+            if arr.len() != 2 {
+                return Err(ReadError::InvalidStructure(
+                    "Lit expects 1 field".to_string(),
+                ));
+            }
             Ok(CoreFrame::Lit(decode_literal(&arr[1])?))
         }
         "App" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("App expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "App expects 2 fields".to_string(),
+                ));
+            }
             Ok(CoreFrame::App {
                 fun: as_usize(&arr[1])?,
                 arg: as_usize(&arr[2])?,
             })
         }
         "Lam" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("Lam expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "Lam expects 2 fields".to_string(),
+                ));
+            }
             Ok(CoreFrame::Lam {
                 binder: VarId(as_u64(&arr[1])?),
                 body: as_usize(&arr[2])?,
             })
         }
         "LetNonRec" => {
-            if arr.len() != 4 { return Err(ReadError::InvalidStructure("LetNonRec expects 3 fields".to_string())); }
+            if arr.len() != 4 {
+                return Err(ReadError::InvalidStructure(
+                    "LetNonRec expects 3 fields".to_string(),
+                ));
+            }
             Ok(CoreFrame::LetNonRec {
                 binder: VarId(as_u64(&arr[1])?),
                 rhs: as_usize(&arr[2])?,
@@ -137,16 +218,28 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "LetRec" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("LetRec expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "LetRec expects 2 fields".to_string(),
+                ));
+            }
             let bindings_arr = match &arr[1] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("LetRec bindings must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "LetRec bindings must be array".to_string(),
+                    ))
+                }
             };
             let mut bindings = Vec::with_capacity(bindings_arr.len());
             for b_val in bindings_arr {
                 let b_arr = match b_val {
                     Value::Array(a) if a.len() == 2 => a,
-                    _ => return Err(ReadError::InvalidStructure("LetRec binding must be array of 2".to_string())),
+                    _ => {
+                        return Err(ReadError::InvalidStructure(
+                            "LetRec binding must be array of 2".to_string(),
+                        ))
+                    }
                 };
                 bindings.push((VarId(as_u64(&b_arr[0])?), as_usize(&b_arr[1])?));
             }
@@ -156,10 +249,18 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "Case" => {
-            if arr.len() != 4 { return Err(ReadError::InvalidStructure("Case expects 3 fields".to_string())); }
+            if arr.len() != 4 {
+                return Err(ReadError::InvalidStructure(
+                    "Case expects 3 fields".to_string(),
+                ));
+            }
             let alts_arr = match &arr[3] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("Case alts must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "Case alts must be array".to_string(),
+                    ))
+                }
             };
             let mut alts = Vec::with_capacity(alts_arr.len());
             for alt_val in alts_arr {
@@ -172,10 +273,18 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "Con" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("Con expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "Con expects 2 fields".to_string(),
+                ));
+            }
             let fields_arr = match &arr[2] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("Con fields must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "Con fields must be array".to_string(),
+                    ))
+                }
             };
             let mut fields = Vec::with_capacity(fields_arr.len());
             for f_val in fields_arr {
@@ -187,10 +296,18 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "Join" => {
-            if arr.len() != 5 { return Err(ReadError::InvalidStructure("Join expects 4 fields".to_string())); }
+            if arr.len() != 5 {
+                return Err(ReadError::InvalidStructure(
+                    "Join expects 4 fields".to_string(),
+                ));
+            }
             let params_arr = match &arr[2] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("Join params must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "Join params must be array".to_string(),
+                    ))
+                }
             };
             let mut params = Vec::with_capacity(params_arr.len());
             for p_val in params_arr {
@@ -204,10 +321,18 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "Jump" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("Jump expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "Jump expects 2 fields".to_string(),
+                ));
+            }
             let args_arr = match &arr[2] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("Jump args must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "Jump args must be array".to_string(),
+                    ))
+                }
             };
             let mut args = Vec::with_capacity(args_arr.len());
             for a_val in args_arr {
@@ -219,15 +344,27 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
             })
         }
         "PrimOp" => {
-            if arr.len() != 3 { return Err(ReadError::InvalidStructure("PrimOp expects 2 fields".to_string())); }
+            if arr.len() != 3 {
+                return Err(ReadError::InvalidStructure(
+                    "PrimOp expects 2 fields".to_string(),
+                ));
+            }
             let op_name = match &arr[1] {
                 Value::Text(t) => t,
-                _ => return Err(ReadError::InvalidPrimOp("PrimOp op must be string".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidPrimOp(
+                        "PrimOp op must be string".to_string(),
+                    ))
+                }
             };
             let op = decode_primop(op_name)?;
             let args_arr = match &arr[2] {
                 Value::Array(a) => a,
-                _ => return Err(ReadError::InvalidStructure("PrimOp args must be array".to_string())),
+                _ => {
+                    return Err(ReadError::InvalidStructure(
+                        "PrimOp args must be array".to_string(),
+                    ))
+                }
             };
             let mut args = Vec::with_capacity(args_arr.len());
             for a_val in args_arr {
@@ -242,11 +379,19 @@ fn decode_frame(val: &Value) -> Result<CoreFrame<usize>, ReadError> {
 fn decode_literal(val: &Value) -> Result<Literal, ReadError> {
     let arr = match val {
         Value::Array(a) if a.len() == 2 => a,
-        _ => return Err(ReadError::InvalidLiteral("Literal must be array of 2".to_string())),
+        _ => {
+            return Err(ReadError::InvalidLiteral(
+                "Literal must be array of 2".to_string(),
+            ))
+        }
     };
     let tag = match &arr[0] {
         Value::Text(t) => t.as_str(),
-        _ => return Err(ReadError::InvalidLiteral("Literal tag must be string".to_string())),
+        _ => {
+            return Err(ReadError::InvalidLiteral(
+                "Literal tag must be string".to_string(),
+            ))
+        }
     };
     match tag {
         "LitInt" => Ok(Literal::LitInt(as_i64(&arr[1])?)),
@@ -259,7 +404,9 @@ fn decode_literal(val: &Value) -> Result<Literal, ReadError> {
         }
         "LitString" => match &arr[1] {
             Value::Bytes(b) => Ok(Literal::LitString(b.clone())),
-            _ => Err(ReadError::InvalidLiteral("LitString expects bytes".to_string())),
+            _ => Err(ReadError::InvalidLiteral(
+                "LitString expects bytes".to_string(),
+            )),
         },
         "LitFloat" => Ok(Literal::LitFloat(as_u64(&arr[1])?)),
         "LitDouble" => Ok(Literal::LitDouble(as_u64(&arr[1])?)),
@@ -270,12 +417,20 @@ fn decode_literal(val: &Value) -> Result<Literal, ReadError> {
 fn decode_alt(val: &Value) -> Result<Alt<usize>, ReadError> {
     let arr = match val {
         Value::Array(a) if a.len() == 3 => a,
-        _ => return Err(ReadError::InvalidStructure("Alt must be array of 3".to_string())),
+        _ => {
+            return Err(ReadError::InvalidStructure(
+                "Alt must be array of 3".to_string(),
+            ))
+        }
     };
     let con = decode_alt_con(&arr[0])?;
     let binders_arr = match &arr[1] {
         Value::Array(a) => a,
-        _ => return Err(ReadError::InvalidStructure("Alt binders must be array".to_string())),
+        _ => {
+            return Err(ReadError::InvalidStructure(
+                "Alt binders must be array".to_string(),
+            ))
+        }
     };
     let mut binders = Vec::with_capacity(binders_arr.len());
     for b_val in binders_arr {
@@ -295,19 +450,35 @@ fn decode_alt_con(val: &Value) -> Result<AltCon, ReadError> {
     }
     let tag = match &arr[0] {
         Value::Text(t) => t.as_str(),
-        _ => return Err(ReadError::InvalidAltCon("AltCon tag must be string".to_string())),
+        _ => {
+            return Err(ReadError::InvalidAltCon(
+                "AltCon tag must be string".to_string(),
+            ))
+        }
     };
     match tag {
         "DataAlt" => {
-            if arr.len() != 2 { return Err(ReadError::InvalidAltCon("DataAlt expects 1 field".to_string())); }
+            if arr.len() != 2 {
+                return Err(ReadError::InvalidAltCon(
+                    "DataAlt expects 1 field".to_string(),
+                ));
+            }
             Ok(AltCon::DataAlt(DataConId(as_u64(&arr[1])?)))
         }
         "LitAlt" => {
-            if arr.len() != 2 { return Err(ReadError::InvalidAltCon("LitAlt expects 1 field".to_string())); }
+            if arr.len() != 2 {
+                return Err(ReadError::InvalidAltCon(
+                    "LitAlt expects 1 field".to_string(),
+                ));
+            }
             Ok(AltCon::LitAlt(decode_literal(&arr[1])?))
         }
         "Default" => {
-            if arr.len() != 1 { return Err(ReadError::InvalidAltCon("Default expects 0 fields".to_string())); }
+            if arr.len() != 1 {
+                return Err(ReadError::InvalidAltCon(
+                    "Default expects 0 fields".to_string(),
+                ));
+            }
             Ok(AltCon::Default)
         }
         _ => Err(ReadError::InvalidAltCon(tag.to_string())),
@@ -317,15 +488,45 @@ fn decode_alt_con(val: &Value) -> Result<AltCon, ReadError> {
 fn decode_primop(s: &str) -> Result<PrimOpKind, ReadError> {
     use PrimOpKind::*;
     match s {
-        "IntAdd" => Ok(IntAdd), "IntSub" => Ok(IntSub), "IntMul" => Ok(IntMul),
+        "IntAdd" => Ok(IntAdd),
+        "IntSub" => Ok(IntSub),
+        "IntMul" => Ok(IntMul),
         "IntNegate" => Ok(IntNegate),
-        "IntEq" => Ok(IntEq), "IntNe" => Ok(IntNe), "IntLt" => Ok(IntLt), "IntLe" => Ok(IntLe), "IntGt" => Ok(IntGt), "IntGe" => Ok(IntGe),
-        "WordAdd" => Ok(WordAdd), "WordSub" => Ok(WordSub), "WordMul" => Ok(WordMul),
-        "WordEq" => Ok(WordEq), "WordNe" => Ok(WordNe), "WordLt" => Ok(WordLt), "WordLe" => Ok(WordLe), "WordGt" => Ok(WordGt), "WordGe" => Ok(WordGe),
-        "DoubleAdd" => Ok(DoubleAdd), "DoubleSub" => Ok(DoubleSub), "DoubleMul" => Ok(DoubleMul), "DoubleDiv" => Ok(DoubleDiv),
-        "DoubleEq" => Ok(DoubleEq), "DoubleNe" => Ok(DoubleNe), "DoubleLt" => Ok(DoubleLt), "DoubleLe" => Ok(DoubleLe), "DoubleGt" => Ok(DoubleGt), "DoubleGe" => Ok(DoubleGe),
-        "CharEq" => Ok(CharEq), "CharNe" => Ok(CharNe), "CharLt" => Ok(CharLt), "CharLe" => Ok(CharLe), "CharGt" => Ok(CharGt), "CharGe" => Ok(CharGe),
-        "IndexArray" => Ok(IndexArray), "SeqOp" => Ok(SeqOp), "TagToEnum" => Ok(TagToEnum), "DataToTag" => Ok(DataToTag),
+        "IntEq" => Ok(IntEq),
+        "IntNe" => Ok(IntNe),
+        "IntLt" => Ok(IntLt),
+        "IntLe" => Ok(IntLe),
+        "IntGt" => Ok(IntGt),
+        "IntGe" => Ok(IntGe),
+        "WordAdd" => Ok(WordAdd),
+        "WordSub" => Ok(WordSub),
+        "WordMul" => Ok(WordMul),
+        "WordEq" => Ok(WordEq),
+        "WordNe" => Ok(WordNe),
+        "WordLt" => Ok(WordLt),
+        "WordLe" => Ok(WordLe),
+        "WordGt" => Ok(WordGt),
+        "WordGe" => Ok(WordGe),
+        "DoubleAdd" => Ok(DoubleAdd),
+        "DoubleSub" => Ok(DoubleSub),
+        "DoubleMul" => Ok(DoubleMul),
+        "DoubleDiv" => Ok(DoubleDiv),
+        "DoubleEq" => Ok(DoubleEq),
+        "DoubleNe" => Ok(DoubleNe),
+        "DoubleLt" => Ok(DoubleLt),
+        "DoubleLe" => Ok(DoubleLe),
+        "DoubleGt" => Ok(DoubleGt),
+        "DoubleGe" => Ok(DoubleGe),
+        "CharEq" => Ok(CharEq),
+        "CharNe" => Ok(CharNe),
+        "CharLt" => Ok(CharLt),
+        "CharLe" => Ok(CharLe),
+        "CharGt" => Ok(CharGt),
+        "CharGe" => Ok(CharGe),
+        "IndexArray" => Ok(IndexArray),
+        "SeqOp" => Ok(SeqOp),
+        "TagToEnum" => Ok(TagToEnum),
+        "DataToTag" => Ok(DataToTag),
         _ => Err(ReadError::InvalidPrimOp(s.to_string())),
     }
 }
@@ -333,7 +534,9 @@ fn decode_primop(s: &str) -> Result<PrimOpKind, ReadError> {
 fn as_u64(val: &Value) -> Result<u64, ReadError> {
     match val {
         Value::Integer(i) => {
-            let u: u64 = (*i).try_into().map_err(|_| ReadError::InvalidStructure("Expected u64".to_string()))?;
+            let u: u64 = (*i)
+                .try_into()
+                .map_err(|_| ReadError::InvalidStructure("Expected u64".to_string()))?;
             Ok(u)
         }
         _ => Err(ReadError::InvalidStructure("Expected integer".to_string())),
@@ -343,7 +546,9 @@ fn as_u64(val: &Value) -> Result<u64, ReadError> {
 fn as_i64(val: &Value) -> Result<i64, ReadError> {
     match val {
         Value::Integer(i) => {
-            let i: i64 = (*i).try_into().map_err(|_| ReadError::InvalidStructure("Expected i64".to_string()))?;
+            let i: i64 = (*i)
+                .try_into()
+                .map_err(|_| ReadError::InvalidStructure("Expected i64".to_string()))?;
             Ok(i)
         }
         _ => Err(ReadError::InvalidStructure("Expected integer".to_string())),
@@ -353,8 +558,11 @@ fn as_i64(val: &Value) -> Result<i64, ReadError> {
 fn as_usize(val: &Value) -> Result<usize, ReadError> {
     match val {
         Value::Integer(i) => {
-            let u: u64 = (*i).try_into().map_err(|_| ReadError::InvalidStructure("Expected integer (u64)".to_string()))?;
-            usize::try_from(u).map_err(|_| ReadError::InvalidStructure("Integer too large for usize".to_string()))
+            let u: u64 = (*i)
+                .try_into()
+                .map_err(|_| ReadError::InvalidStructure("Expected integer (u64)".to_string()))?;
+            usize::try_from(u)
+                .map_err(|_| ReadError::InvalidStructure("Integer too large for usize".to_string()))
         }
         _ => Err(ReadError::InvalidStructure("Expected integer".to_string())),
     }

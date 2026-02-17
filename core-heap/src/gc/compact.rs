@@ -1,14 +1,14 @@
+use crate::gc::trace::ForwardingTable;
+use core_eval::env::Env;
 use core_eval::heap::{Heap, ThunkState, VecHeap};
 use core_eval::value::{ThunkId, Value};
-use core_eval::env::Env;
 use core_repr::{CoreFrame, RecursiveTree, VarId};
-use crate::gc::trace::ForwardingTable;
 
 /// Compact the heap by moving reachable thunks to a new VecHeap.
 pub fn compact(table: &ForwardingTable, old_heap: &dyn Heap) -> VecHeap {
     let reachable_count = table.mapping.iter().flatten().count();
     let mut inverse = vec![ThunkId(0); reachable_count];
-    
+
     for (old_idx, maybe_new_id) in table.mapping.iter().enumerate() {
         if let Some(new_id) = maybe_new_id {
             inverse[new_id.0 as usize] = ThunkId(old_idx as u32);
@@ -16,11 +16,13 @@ pub fn compact(table: &ForwardingTable, old_heap: &dyn Heap) -> VecHeap {
     }
 
     let mut new_heap = VecHeap::new();
-    let dummy_expr = RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] };
+    let dummy_expr = RecursiveTree {
+        nodes: vec![CoreFrame::Var(VarId(0))],
+    };
 
     for &old_id in &inverse {
         let old_state = old_heap.read(old_id);
-        
+
         // We can't easily construct a ThunkState::Unevaluated if it's already something else
         // via alloc, so we always alloc and then potentially overwrite if needed,
         // but we can optimize if it's already Unevaluated.
@@ -44,28 +46,27 @@ fn rewrite_state(state: &ThunkState, table: &ForwardingTable) -> ThunkState {
             ThunkState::Unevaluated(rewrite_env(env, table), expr.clone())
         }
         ThunkState::BlackHole => ThunkState::BlackHole,
-        ThunkState::Evaluated(val) => {
-            ThunkState::Evaluated(rewrite_value(val, table))
-        }
+        ThunkState::Evaluated(val) => ThunkState::Evaluated(rewrite_value(val, table)),
     }
 }
 
 fn rewrite_env(env: &Env, table: &ForwardingTable) -> Env {
-    env.iter().map(|(k, v)| (*k, rewrite_value(v, table))).collect()
+    env.iter()
+        .map(|(k, v)| (*k, rewrite_value(v, table)))
+        .collect()
 }
 
 fn rewrite_value(val: &Value, table: &ForwardingTable) -> Value {
     match val {
         Value::Lit(l) => Value::Lit(l.clone()),
-        Value::Con(id, fields) => {
-            Value::Con(*id, fields.iter().map(|f| rewrite_value(f, table)).collect())
-        }
+        Value::Con(id, fields) => Value::Con(
+            *id,
+            fields.iter().map(|f| rewrite_value(f, table)).collect(),
+        ),
         Value::Closure(env, binder, expr) => {
             Value::Closure(rewrite_env(env, table), *binder, expr.clone())
         }
-        Value::ThunkRef(id) => {
-            Value::ThunkRef(table.lookup(*id))
-        }
+        Value::ThunkRef(id) => Value::ThunkRef(table.lookup(*id)),
         Value::JoinCont(binders, expr, env) => {
             Value::JoinCont(binders.clone(), expr.clone(), rewrite_env(env, table))
         }
@@ -75,12 +76,14 @@ fn rewrite_value(val: &Value, table: &ForwardingTable) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gc::trace::trace;
     use core_eval::heap::VecHeap;
     use core_repr::DataConId;
-    use crate::gc::trace::trace;
 
     fn empty_expr() -> core_repr::CoreExpr {
-        RecursiveTree { nodes: vec![CoreFrame::Var(VarId(0))] }
+        RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        }
     }
 
     #[test]
@@ -88,11 +91,11 @@ mod tests {
         let mut heap = VecHeap::new();
         let _id1 = heap.alloc(Env::new(), empty_expr());
         let id2 = heap.alloc(Env::new(), empty_expr());
-        
+
         // id2 is reachable, id1 is not
         let table = trace(&[id2], &heap);
         let new_heap = compact(&table, &heap);
-        
+
         // Only one thunk in new heap
         match new_heap.read(ThunkId(0)) {
             ThunkState::BlackHole => panic!("Expected something other than BlackHole"),
@@ -116,12 +119,10 @@ mod tests {
         let new_id_target = ThunkId(1);
 
         match new_heap.read(new_id_root) {
-            ThunkState::Unevaluated(env, _) => {
-                match env.get(&VarId(1)).unwrap() {
-                    Value::ThunkRef(id) => assert_eq!(*id, new_id_target),
-                    _ => panic!("Expected ThunkRef"),
-                }
-            }
+            ThunkState::Unevaluated(env, _) => match env.get(&VarId(1)).unwrap() {
+                Value::ThunkRef(id) => assert_eq!(*id, new_id_target),
+                _ => panic!("Expected ThunkRef"),
+            },
             _ => panic!("Expected Unevaluated"),
         }
     }
@@ -146,19 +147,20 @@ mod tests {
         let mut heap = VecHeap::new();
         let id2 = heap.alloc(Env::new(), empty_expr());
         let id1 = heap.alloc(Env::new(), empty_expr());
-        heap.write(id1, ThunkState::Evaluated(Value::Con(DataConId(1), vec![Value::ThunkRef(id2)])));
+        heap.write(
+            id1,
+            ThunkState::Evaluated(Value::Con(DataConId(1), vec![Value::ThunkRef(id2)])),
+        );
 
         let table = trace(&[id1], &heap);
         let new_heap = compact(&table, &heap);
 
         // id1 -> 0, id2 -> 1
         match new_heap.read(ThunkId(0)) {
-            ThunkState::Evaluated(Value::Con(_, fields)) => {
-                match &fields[0] {
-                    Value::ThunkRef(id) => assert_eq!(*id, ThunkId(1)),
-                    _ => panic!("Expected ThunkRef"),
-                }
-            }
+            ThunkState::Evaluated(Value::Con(_, fields)) => match &fields[0] {
+                Value::ThunkRef(id) => assert_eq!(*id, ThunkId(1)),
+                _ => panic!("Expected ThunkRef"),
+            },
             _ => panic!("Expected Evaluated"),
         }
     }

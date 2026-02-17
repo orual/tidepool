@@ -1,5 +1,5 @@
-use core_repr::{VarId, PrimOpKind, JoinId};
 use crate::value::ThunkId;
+use core_repr::{JoinId, PrimOpKind, VarId};
 
 /// Evaluation error.
 #[derive(Debug, Clone)]
@@ -26,7 +26,9 @@ impl std::fmt::Display for EvalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EvalError::UnboundVar(v) => write!(f, "unbound variable: v_{}", v.0),
-            EvalError::TypeMismatch { expected, got } => write!(f, "type mismatch: expected {}, got {}", expected, got),
+            EvalError::TypeMismatch { expected, got } => {
+                write!(f, "type mismatch: expected {}, got {}", expected, got)
+            }
             EvalError::NoMatchingAlt => write!(f, "no matching case alternative"),
             EvalError::InfiniteLoop(id) => write!(f, "infinite loop: thunk {} forced itself", id.0),
             EvalError::UnsupportedPrimOp(op) => write!(f, "unsupported primop: {:?}", op),
@@ -47,7 +49,10 @@ mod tests {
     fn test_error_display() {
         let errs = vec![
             EvalError::UnboundVar(VarId(42)),
-            EvalError::TypeMismatch { expected: "Int".to_string(), got: "Char".to_string() },
+            EvalError::TypeMismatch {
+                expected: "Int".to_string(),
+                got: "Char".to_string(),
+            },
             EvalError::NoMatchingAlt,
             EvalError::InfiniteLoop(ThunkId(0)),
             EvalError::UnsupportedPrimOp(PrimOpKind::IntAdd),

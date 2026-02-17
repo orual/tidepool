@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use core_repr::{CoreExpr, CoreFrame, VarId};
+use std::collections::HashMap;
 
 /// Occurrence count for a variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +45,7 @@ pub fn get_occ(map: &OccMap, var: VarId) -> Occ {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core_repr::{Literal, Alt, AltCon, DataConId, PrimOpKind};
+    use core_repr::{Alt, AltCon, DataConId, Literal, PrimOpKind};
 
     // Test helpers
     fn tree(nodes: Vec<CoreFrame<usize>>) -> CoreExpr {
@@ -59,7 +59,11 @@ mod tests {
         let expr = tree(vec![
             CoreFrame::Lit(Literal::LitInt(1)),
             CoreFrame::Lit(Literal::LitInt(2)),
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 1 },
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 1,
+            },
         ]);
         let map = occ_analysis(&expr);
         assert_eq!(get_occ(&map, x), Occ::Dead);
@@ -72,7 +76,11 @@ mod tests {
         let expr = tree(vec![
             CoreFrame::Lit(Literal::LitInt(1)),
             CoreFrame::Var(x),
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 1 },
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 1,
+            },
         ]);
         let map = occ_analysis(&expr);
         assert_eq!(get_occ(&map, x), Occ::Once);
@@ -90,7 +98,11 @@ mod tests {
                 op: PrimOpKind::IntAdd,
                 args: vec![1, 2],
             },
-            CoreFrame::LetNonRec { binder: x, rhs: 0, body: 3 },
+            CoreFrame::LetNonRec {
+                binder: x,
+                rhs: 0,
+                body: 3,
+            },
         ]);
         let map = occ_analysis(&expr);
         assert_eq!(get_occ(&map, x), Occ::Many);
@@ -114,8 +126,8 @@ mod tests {
         let f = VarId(1);
         let g = VarId(2);
         let expr = tree(vec![
-            CoreFrame::Var(g), // 0
-            CoreFrame::Var(f), // 1
+            CoreFrame::Var(g),                  // 0
+            CoreFrame::Var(f),                  // 1
             CoreFrame::Lit(Literal::LitInt(0)), // 2
             CoreFrame::LetRec {
                 bindings: vec![(f, 0), (g, 1)],

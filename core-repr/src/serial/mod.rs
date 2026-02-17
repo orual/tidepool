@@ -47,9 +47,9 @@ impl std::error::Error for WriteError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::*;
     use crate::frame::CoreFrame;
     use crate::tree::RecursiveTree;
+    use crate::types::*;
 
     fn roundtrip(expr: RecursiveTree<CoreFrame<usize>>) {
         let bytes = write_cbor(&expr).expect("write failed");
@@ -97,7 +97,10 @@ mod tests {
         roundtrip(RecursiveTree {
             nodes: vec![
                 CoreFrame::Var(VarId(1)),
-                CoreFrame::Lam { binder: VarId(2), body: 0 },
+                CoreFrame::Lam {
+                    binder: VarId(2),
+                    body: 0,
+                },
             ],
         });
     }
@@ -108,7 +111,11 @@ mod tests {
             nodes: vec![
                 CoreFrame::Var(VarId(1)),
                 CoreFrame::Var(VarId(2)),
-                CoreFrame::LetNonRec { binder: VarId(3), rhs: 0, body: 1 },
+                CoreFrame::LetNonRec {
+                    binder: VarId(3),
+                    rhs: 0,
+                    body: 1,
+                },
             ],
         });
     }
@@ -177,7 +184,10 @@ mod tests {
         roundtrip(RecursiveTree {
             nodes: vec![
                 CoreFrame::Var(VarId(1)), // 0
-                CoreFrame::Jump { label: JoinId(2), args: vec![0] }, // 1
+                CoreFrame::Jump {
+                    label: JoinId(2),
+                    args: vec![0],
+                }, // 1
                 CoreFrame::Join {
                     label: JoinId(2),
                     params: vec![VarId(3)],
@@ -192,11 +202,11 @@ mod tests {
     fn test_roundtrip_primop() {
         use PrimOpKind::*;
         let ops = vec![
-            IntAdd, IntSub, IntMul, IntNegate, IntEq, IntNe, IntLt, IntLe, IntGt, IntGe,
-            WordAdd, WordSub, WordMul, WordEq, WordNe, WordLt, WordLe, WordGt, WordGe,
-            DoubleAdd, DoubleSub, DoubleMul, DoubleDiv, DoubleEq, DoubleNe, DoubleLt, DoubleLe, DoubleGt, DoubleGe,
-            CharEq, CharNe, CharLt, CharLe, CharGt, CharGe,
-            IndexArray, SeqOp, TagToEnum, DataToTag,
+            IntAdd, IntSub, IntMul, IntNegate, IntEq, IntNe, IntLt, IntLe, IntGt, IntGe, WordAdd,
+            WordSub, WordMul, WordEq, WordNe, WordLt, WordLe, WordGt, WordGe, DoubleAdd, DoubleSub,
+            DoubleMul, DoubleDiv, DoubleEq, DoubleNe, DoubleLt, DoubleLe, DoubleGt, DoubleGe,
+            CharEq, CharNe, CharLt, CharLe, CharGt, CharGe, IndexArray, SeqOp, TagToEnum,
+            DataToTag,
         ];
         for op in ops {
             roundtrip(RecursiveTree {
@@ -305,7 +315,10 @@ mod tests {
         roundtrip(RecursiveTree {
             nodes: vec![
                 CoreFrame::Var(VarId(1)), // 0
-                CoreFrame::Lam { binder: VarId(1), body: 0 }, // 1
+                CoreFrame::Lam {
+                    binder: VarId(1),
+                    body: 0,
+                }, // 1
                 CoreFrame::Lit(Literal::LitInt(42)), // 2
                 CoreFrame::App { fun: 1, arg: 2 }, // 3
             ],
