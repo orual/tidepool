@@ -4,6 +4,9 @@ pub mod frame;
 pub mod tree;
 pub mod types;
 pub mod serial;
+pub mod free_vars;
+pub mod subst;
+pub mod alpha;
 
 pub use datacon::*;
 pub use datacon_table::*;
