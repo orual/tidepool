@@ -1,6 +1,7 @@
 pub mod datacon;
 pub mod datacon_table;
 pub mod frame;
+pub mod pretty;
 pub mod tree;
 pub mod types;
 pub mod serial;
