@@ -62,8 +62,9 @@ This project is built by a tree of agents managed by ExoMonad. Understanding the
 ### Roles
 
 - **Human (root):** Owns `main`. Makes architectural decisions. Approves phase gates.
-- **TL (Claude Opus):** Owns a subtree branch (e.g., `main.core-repr`). Decomposes work into leaf specs, spawns Gemini agents, merges their PRs. Never writes implementation code.
-- **Leaf (Gemini):** Owns a leaf branch (e.g., `main.core-repr.scaffold-core-repr`). Implements exactly one task spec. Files PR. Iterates against Copilot review until clean. Calls `notify_parent` when done.
+- **TL (Claude Opus):** Owns a subtree branch (e.g., `main.core-repr`). Decomposes work into leaf specs, spawns agents, merges their PRs. Never writes implementation code.
+- **Leaf (Gemini):** Spawned via `spawn_leaf_subtree`. Owns a leaf branch (e.g., `main.core-repr.scaffold`). Implements one task spec. Files PR. Iterates against Copilot review until clean. Calls `notify_parent` when done.
+- **Worker (Gemini):** Spawned via `spawn_workers`. Works in the parent's directory. Does NOT create branches, commit, or file PRs. Writes code, runs verify, calls `notify_parent`. The parent reviews and commits.
 
 ### Fire-and-Forget Execution
 
@@ -81,19 +82,32 @@ The TL's workflow is: **decompose -> spec -> spawn -> move on**. The TL does not
 
 **`notify_parent` means DONE** — not "I filed a PR." The leaf owns its quality.
 
+### Spawn Tool Selection
+
+All spawn tools take the same structured `AgentSpec` (name, task, read_first, context, steps, verify, done_criteria, boundary). Branch names auto-derived from `spec.name`.
+
+| Tool | Use when | Agent gets |
+|------|----------|------------|
+| `spawn_leaf_subtree` | Task is well-specified, needs file isolation or parallel safety | Own worktree + branch, files PR, Copilot review loop |
+| `spawn_workers` | Well-specified, you want direct control, disjoint file sets | Pane in YOUR directory, no branch/PR, you review via `git diff` |
+| `spawn_subtree` | Task needs further decomposition or architectural judgment | Own worktree + branch, full TL tools (10-30x more expensive) |
+
+**Default to `spawn_leaf_subtree`** for implementation tasks. Use `spawn_workers` only when you want the code in your directory (e.g., scaffolding you'll commit yourself). Use `spawn_subtree` only when a sub-TL is genuinely needed.
+
 ### Spec Quality (You Only Get One Shot)
 
-Since the TL doesn't iterate on specs, the v1 spec must be production-quality:
+Since the TL doesn't iterate on specs, the v1 spec must be production-quality. All `AgentSpec` fields map directly to prompt sections:
 
-```
-1. ANTI-PATTERNS      — Known Gemini failure modes as explicit DO NOT rules (FIRST)
-2. READ FIRST         — Exact files to read
-3. STEPS              — Numbered, each step = one concrete action with code snippets
-4. VERIFY             — Exact build/test commands
-5. DONE CRITERIA      — What "done" looks like
-```
+| Field | Purpose |
+|-------|---------|
+| `boundary` | DO NOT rules — known failure modes (rendered FIRST in prompt) |
+| `read_first` | Exact files to read before coding |
+| `steps` | Numbered concrete actions with code snippets |
+| `verify` | Exact shell commands to run |
+| `done_criteria` | Measurable checklist for completion |
+| `context` | Freeform: code snippets, type signatures, examples |
 
-**Anti-patterns section is mandatory and comes first.** Known Gemini failure modes:
+**Anti-patterns / boundary section is mandatory and comes first.** Known Gemini failure modes:
 
 | Failure Mode | Rule |
 |---|---|
