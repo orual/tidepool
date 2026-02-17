@@ -468,23 +468,39 @@ mod tests {
         handle.join().unwrap();
     }
 
-    proptest! {
-        #[test]
-        fn generated_exprs_are_well_formed(expr in arb_core_expr()) {
-            assert!(!expr.nodes.is_empty());
-            for node in &expr.nodes {
-                node.clone().map_layer(|idx: usize| {
-                    assert!(idx < expr.nodes.len(), "invalid index {} in tree of size {}", idx, expr.nodes.len());
-                    idx
-                });
-            }
-        }
+    #[test]
+    fn generated_exprs_are_well_formed() {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut runner = TestRunner::new(Config { cases: 100, ..Config::default() });
+                runner.run(&arb_core_expr(), |expr| {
+                    assert!(!expr.nodes.is_empty());
+                    for node in &expr.nodes {
+                        node.clone().map_layer(|idx: usize| {
+                            assert!(idx < expr.nodes.len(), "invalid index {} in tree of size {}", idx, expr.nodes.len());
+                            idx
+                        });
+                    }
+                    Ok(())
+                }).unwrap();
+            }).unwrap();
+        handle.join().unwrap();
+    }
 
-        #[test]
-        fn generated_exprs_roundtrip_cbor(expr in arb_core_expr()) {
-            let bytes = core_repr::serial::write_cbor(&expr).unwrap();
-            let recovered = core_repr::serial::read_cbor(&bytes).unwrap();
-            assert_eq!(expr, recovered);
-        }
+    #[test]
+    fn generated_exprs_roundtrip_cbor() {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut runner = TestRunner::new(Config { cases: 100, ..Config::default() });
+                runner.run(&arb_core_expr(), |expr| {
+                    let bytes = core_repr::serial::write_cbor(&expr).unwrap();
+                    let recovered = core_repr::serial::read_cbor(&bytes).unwrap();
+                    assert_eq!(expr, recovered);
+                    Ok(())
+                }).unwrap();
+            }).unwrap();
+        handle.join().unwrap();
     }
 }
