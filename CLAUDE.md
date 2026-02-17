@@ -86,13 +86,15 @@ The TL's workflow is: **decompose -> spec -> spawn -> move on**. The TL does not
 
 All spawn tools take the same structured `AgentSpec` (name, task, read_first, context, steps, verify, done_criteria, boundary). Branch names auto-derived from `spec.name`.
 
-| Tool | Use when | Agent gets |
-|------|----------|------------|
-| `spawn_leaf_subtree` | Task is well-specified, needs file isolation or parallel safety | Own worktree + branch, files PR, Copilot review loop |
-| `spawn_workers` | Well-specified, you want direct control, disjoint file sets | Pane in YOUR directory, no branch/PR, you review via `git diff` |
-| `spawn_subtree` | Task needs further decomposition or architectural judgment | Own worktree + branch, full TL tools (10-30x more expensive) |
+| Tool | Default? | Use when | Litmus test |
+|------|----------|----------|-------------|
+| `spawn_leaf_subtree` | **Yes** | Any well-specified implementation task | Will the agent add mod declarations, deps, or re-exports? Multiple agents in parallel? → leaf. |
+| `spawn_workers` | No | Single agent doing scaffolding you'll commit yourself, OR multiple agents with provably zero file overlap | Can you list every file each agent touches, and the lists don't intersect at all? Not even lib.rs or Cargo.toml? If you have to think about it → use leaf. |
+| `spawn_subtree` | No | Task needs further decomposition or architectural judgment | 10-30x more expensive. Almost never needed. |
 
-**Default to `spawn_leaf_subtree`** for implementation tasks. Use `spawn_workers` only when you want the code in your directory (e.g., scaffolding you'll commit yourself). Use `spawn_subtree` only when a sub-TL is genuinely needed.
+**`spawn_leaf_subtree` is the default.** The worktree isolation and Copilot review loop make it the safe choice. The overhead (branch + PR) is handled automatically by tooling. The quality improvement from Copilot review is significant and free.
+
+**`spawn_workers` is the exception.** Workers share your directory. Use only for single-agent scaffolding gates where you review and commit directly. If any agent needs to touch Cargo.toml, lib.rs, or mod declarations alongside other agents — use leaf subtrees.
 
 ### Spec Quality (You Only Get One Shot)
 
