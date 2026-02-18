@@ -1,0 +1,13 @@
+[package]
+name = "tidepool-tide"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+pest = "2.7"
+pest_derive = "2.7"
+core-repr = { path = "../../core-repr" }
+core-bridge = { path = "../../core-bridge" }
+core-eval = { path = "../../core-eval" }
