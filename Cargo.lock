@@ -160,6 +160,7 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 name = "codegen"
 version = "0.1.0"
 dependencies = [
+ "core-eval",
  "core-heap",
  "core-repr",
  "cranelift-codegen",
@@ -1164,6 +1165,21 @@ dependencies = [
 
 [[package]]
 name = "tidepool-guess"
+version = "0.1.0"
+dependencies = [
+ "codegen",
+ "core-bridge",
+ "core-bridge-derive",
+ "core-effect",
+ "core-eval",
+ "core-repr",
+ "frunk",
+ "rand 0.8.5",
+ "tidepool-macro",
+]
+
+[[package]]
+name = "tidepool-guess-interpreted"
 version = "0.1.0"
 dependencies = [
  "core-bridge",

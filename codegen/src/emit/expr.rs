@@ -6,7 +6,7 @@ use core_heap::layout;
 use cranelift_codegen::ir::{self, types, AbiParam, InstBuilder, MemFlags, Value, Signature, UserFuncName};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Module, Linkage, FuncId};
+use cranelift_module::{Module, Linkage, FuncId, DataDescription};
 
 /// Compile a CoreExpr into a JIT function. Returns the FuncId.
 /// The compiled function has signature: (vmctx: i64) -> i64
@@ -39,6 +39,7 @@ pub fn compile_expr(
     let gc_sig_ref = builder.import_signature(gc_sig);
 
     let mut emit_ctx = EmitContext::new(name.to_string());
+
     let result = emit_ctx.emit_node(pipeline, &mut builder, vmctx, gc_sig_ref, tree, tree.nodes.len() - 1)?;
     let ret = ensure_heap_ptr(&mut builder, vmctx, gc_sig_ref, result);
 
@@ -49,6 +50,7 @@ pub fn compile_expr(
 
     Ok(func_id)
 }
+
 
 impl EmitContext {
     pub fn emit_node(
@@ -61,9 +63,24 @@ impl EmitContext {
         idx: usize,
     ) -> Result<SsaVal, EmitError> {
         match &tree.nodes[idx] {
+            CoreFrame::Lit(Literal::LitString(bytes)) => {
+                emit_lit_string(pipeline, builder, vmctx, gc_sig, bytes, &mut self.lambda_counter)
+            }
             CoreFrame::Lit(lit) => emit_lit(builder, vmctx, gc_sig, lit),
             CoreFrame::Var(vid) => {
-                self.env.get(vid).copied().ok_or(EmitError::UnboundVariable(*vid))
+                match self.env.get(vid).copied() {
+                    Some(v) => Ok(v),
+                    None => {
+                        // Unresolved external — emit a null sentinel. In a lazy
+                        // language these are thunks that error if forced. Since the
+                        // JIT is strict, we can't trap here (it would terminate the
+                        // basic block and make subsequent code unreachable). Instead,
+                        // emit null — if the value is never used (dead binding), no
+                        // crash. If dereferenced, it produces a segfault.
+                        let null = builder.ins().iconst(types::I64, 0);
+                        Ok(SsaVal::HeapPtr(null))
+                    }
+                }
             }
             CoreFrame::Con { tag, fields } => {
                 let mut field_vals = Vec::new();
@@ -210,11 +227,21 @@ impl EmitContext {
                 Ok(SsaVal::HeapPtr(closure_ptr))
             }
             CoreFrame::LetNonRec { binder, rhs, body } => {
-                let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs)?;
-                self.env.insert(*binder, rhs_val);
-                let body_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)?;
-                self.env.remove(binder);
-                Ok(body_val)
+                // Dead code elimination: skip RHS if binder is unused in body.
+                // This is necessary because the interpreter is lazy (thunks non-lambda RHS),
+                // but the codegen is strict. Dead bindings from GHC metadata ($trModule, etc.)
+                // may reference unresolved externals that would trap if evaluated.
+                let body_fvs = core_repr::free_vars::free_vars(&tree.extract_subtree(*body));
+                if body_fvs.contains(binder) {
+                    let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs)?;
+                    self.env.insert(*binder, rhs_val);
+                    let body_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)?;
+                    self.env.remove(binder);
+                    Ok(body_val)
+                } else {
+                    // Binder unused — skip RHS entirely
+                    self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)
+                }
             }
             CoreFrame::LetRec { bindings, body } => {
                 for (_, rhs_idx) in bindings {
@@ -408,6 +435,56 @@ fn emit_lit(
         }
         Literal::LitString(_) => Err(EmitError::NotYetImplemented("LitString".into())),
     }
+}
+
+/// Emit a LitString as a heap Lit object pointing to a JIT data section.
+///
+/// Data section layout: [len: u64][bytes...]
+/// Heap object layout: TAG_LIT at [0], size at [1..3], LIT_TAG_STRING at [8], data_ptr at [16]
+fn emit_lit_string(
+    pipeline: &mut CodegenPipeline,
+    builder: &mut FunctionBuilder,
+    vmctx: Value,
+    gc_sig: ir::SigRef,
+    bytes: &[u8],
+    counter: &mut u32,
+) -> Result<SsaVal, EmitError> {
+    // Create data object: [len: u64][bytes...]
+    let data_name = format!("__litstr_{}", *counter);
+    *counter += 1;
+
+    let data_id = pipeline.module
+        .declare_data(&data_name, Linkage::Local, false, false)
+        .map_err(|e| EmitError::CraneliftError(e.to_string()))?;
+
+    let mut data_desc = DataDescription::new();
+    data_desc.set_align(8); // Ensure 8-byte alignment for u64 length prefix
+    let mut contents = Vec::with_capacity(8 + bytes.len());
+    contents.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+    contents.extend_from_slice(bytes);
+    data_desc.define(contents.into_boxed_slice());
+
+    pipeline.module
+        .define_data(data_id, &data_desc)
+        .map_err(|e| EmitError::CraneliftError(e.to_string()))?;
+
+    // Get function-local reference to the data
+    let local_data = pipeline.module.declare_data_in_func(data_id, builder.func);
+    let data_ptr = builder.ins().symbol_value(types::I64, local_data);
+
+    // Allocate 24-byte Lit heap object
+    let ptr = emit_alloc_fast_path(builder, vmctx, LIT_TOTAL_SIZE, gc_sig);
+
+    let tag = builder.ins().iconst(types::I8, layout::TAG_LIT as i64);
+    builder.ins().store(MemFlags::trusted(), tag, ptr, 0);
+    let size = builder.ins().iconst(types::I16, LIT_TOTAL_SIZE as i64);
+    builder.ins().store(MemFlags::trusted(), size, ptr, 1);
+    let lit_tag = builder.ins().iconst(types::I8, LIT_TAG_STRING);
+    builder.ins().store(MemFlags::trusted(), lit_tag, ptr, LIT_TAG_OFFSET);
+    builder.ins().store(MemFlags::trusted(), data_ptr, ptr, LIT_VALUE_OFFSET);
+
+    builder.declare_value_needs_stack_map(ptr);
+    Ok(SsaVal::HeapPtr(ptr))
 }
 
 pub(crate) fn ensure_heap_ptr(

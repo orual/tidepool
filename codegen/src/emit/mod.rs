@@ -23,6 +23,7 @@ pub const LIT_TAG_WORD: i64 = 1;
 pub const LIT_TAG_CHAR: i64 = 2;
 pub const LIT_TAG_FLOAT: i64 = 3;
 pub const LIT_TAG_DOUBLE: i64 = 4;
+pub const LIT_TAG_STRING: i64 = 5;
 
 /// SSA value with boxed/unboxed tracking.
 #[derive(Debug, Clone, Copy)]

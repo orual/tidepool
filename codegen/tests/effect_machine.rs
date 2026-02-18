@@ -15,6 +15,8 @@ const TAG_LIT: u8 = 3;
 const VAL_CON_TAG: u64 = 1;
 const E_CON_TAG: u64 = 2;
 const UNION_CON_TAG: u64 = 3;
+const LEAF_CON_TAG: u64 = 4;
+const NODE_CON_TAG: u64 = 5;
 
 /// Helper to build a JIT function for testing.
 fn build_test_fn<F>(name: &str, build_body: F) -> (CodegenPipeline, unsafe extern "C" fn(*mut VMContext) -> *mut u8)
@@ -196,6 +198,8 @@ fn test_yield_done_val() {
             val: VAL_CON_TAG,
             e: E_CON_TAG,
             union: UNION_CON_TAG,
+            leaf: LEAF_CON_TAG,
+            node: NODE_CON_TAG,
         },
     );
     let result = machine.step();
@@ -239,6 +243,8 @@ fn test_yield_request_e() {
             val: VAL_CON_TAG,
             e: E_CON_TAG,
             union: UNION_CON_TAG,
+            leaf: LEAF_CON_TAG,
+            node: NODE_CON_TAG,
         },
     );
     let result = machine.step();
@@ -287,6 +293,8 @@ fn test_unexpected_tag() {
             val: VAL_CON_TAG,
             e: E_CON_TAG,
             union: UNION_CON_TAG,
+            leaf: LEAF_CON_TAG,
+            node: NODE_CON_TAG,
         },
     );
     let result = machine.step();
@@ -315,6 +323,8 @@ fn test_unexpected_con_tag() {
             val: VAL_CON_TAG,
             e: E_CON_TAG,
             union: UNION_CON_TAG,
+            leaf: LEAF_CON_TAG,
+            node: NODE_CON_TAG,
         },
     );
     let result = machine.step();

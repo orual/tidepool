@@ -1,11 +1,13 @@
 use crate::context::VMContext;
+use crate::heap_bridge;
 use crate::yield_type::{Yield, YieldError};
+use core_heap::layout;
 
 /// Constructor tags for the freer-simple Eff type.
 ///
 /// These identify which DataCon a heap-allocated constructor represents,
 /// allowing the effect machine to distinguish Val (pure result) from
-/// E (effect request) and destructure Union wrappers.
+/// E (effect request) and destructure Union wrappers and Leaf/Node continuations.
 #[derive(Debug, Clone, Copy)]
 pub struct ConTags {
     /// Con_tag for the Val constructor (pure result).
@@ -14,34 +16,40 @@ pub struct ConTags {
     pub e: u64,
     /// Con_tag for the Union constructor (effect type wrapper).
     pub union: u64,
+    /// Con_tag for the Leaf constructor (leaf continuation).
+    pub leaf: u64,
+    /// Con_tag for the Node constructor (composed continuation).
+    pub node: u64,
+}
+
+impl ConTags {
+    /// Resolve freer-simple constructor tags from a DataConTable.
+    pub fn from_table(table: &core_repr::DataConTable) -> Option<Self> {
+        Some(ConTags {
+            val: table.get_by_name("Val")?.0,
+            e: table.get_by_name("E")?.0,
+            union: table.get_by_name("Union")?.0,
+            leaf: table.get_by_name("Leaf")?.0,
+            node: table.get_by_name("Node")?.0,
+        })
+    }
 }
 
 /// Compiled effect machine — drives JIT-compiled freer-simple effect stacks.
 ///
 /// The step/resume protocol:
-/// 1. step() calls the compiled function, reads result tag:
+/// 1. step() calls the compiled function, parses the result:
 ///    - Con with Val con_tag → Yield::Done(value)
 ///    - Con with E con_tag → Yield::Request(tag, request, continuation)
-/// 2. resume(result) constructs App(continuation, result) as a new heap object,
-///    sets it as the current expression, ready for next step()
-///
-/// GC runs only between steps (clean collection points).
+/// 2. resume(continuation, response) applies the continuation tree to the response
+///    and parses the resulting heap object.
 pub struct CompiledEffectMachine {
-    /// Compiled function pointer: fn(vmctx: *mut VMContext) -> *mut u8
     func_ptr: unsafe extern "C" fn(*mut VMContext) -> *mut u8,
-    /// VM context with nursery pointers.
     vmctx: VMContext,
-    /// Con_tag value for Val constructor.
-    val_con_tag: u64,
-    /// Con_tag value for E constructor.
-    e_con_tag: u64,
-    /// Con_tag value for Union constructor.
-    #[allow(dead_code)]
-    union_con_tag: u64,
+    tags: ConTags,
 }
 
 // SAFETY: All fields are raw pointers or function pointers, which are Send.
-// The EffectMachine does not contain Rc, RefCell, or thread-local references.
 unsafe impl Send for CompiledEffectMachine {}
 
 impl CompiledEffectMachine {
@@ -53,9 +61,7 @@ impl CompiledEffectMachine {
         Self {
             func_ptr,
             vmctx,
-            val_con_tag: tags.val,
-            e_con_tag: tags.e,
-            union_con_tag: tags.union,
+            tags,
         }
     }
 
@@ -64,68 +70,72 @@ impl CompiledEffectMachine {
         &mut self.vmctx
     }
 
-    /// Resume after handling an effect. The caller provides the response value
-    /// as a heap pointer, and a new compiled function that represents
-    /// App(continuation, response).
-    ///
-    /// For v1, the caller is responsible for constructing the application
-    /// and providing the next function to call. This will be wired up
-    /// in the integration phase.
-    pub fn set_next(&mut self, func_ptr: unsafe extern "C" fn(*mut VMContext) -> *mut u8) {
-        self.func_ptr = func_ptr;
+    /// Execute the compiled function and parse the result.
+    pub fn step(&mut self) -> Yield {
+        let result: *mut u8 = unsafe { (self.func_ptr)(&mut self.vmctx) };
+        self.parse_result(result)
     }
 
-    pub fn step(&mut self) -> Yield {
-        // Call compiled function
-        let result: *mut u8 = unsafe { (self.func_ptr)(&mut self.vmctx) };
+    /// Resume after handling an effect by applying the continuation to the response.
+    ///
+    /// # Safety
+    ///
+    /// `continuation` and `response` must be valid heap pointers from the nursery.
+    pub unsafe fn resume(&mut self, continuation: *mut u8, response: *mut u8) -> Yield {
+        let result = self.apply_cont_heap(continuation, response);
+        self.parse_result(result)
+    }
+
+    /// Parse a heap-allocated Eff result into a Yield.
+    fn parse_result(&self, result: *mut u8) -> Yield {
         if result.is_null() {
             return Yield::Error(YieldError::NullPointer);
         }
 
-        // Read tag byte at offset 0
         let tag = unsafe { *result };
-        if tag != 2 {
-            // TAG_CON
+        if tag != layout::TAG_CON {
             return Yield::Error(YieldError::UnexpectedTag(tag));
         }
 
-        // Read con_tag at offset 8
-        let con_tag = unsafe { *(result.add(8) as *const u64) };
+        let con_tag = unsafe { *(result.add(layout::CON_TAG_OFFSET) as *const u64) };
 
-        if con_tag == self.val_con_tag {
+        if con_tag == self.tags.val {
             // Val(value) — extract value from fields[0]
-            let num_fields = unsafe { *(result.add(16) as *const u16) };
+            let num_fields = unsafe { *(result.add(layout::CON_NUM_FIELDS_OFFSET) as *const u16) };
             if num_fields < 1 {
                 return Yield::Error(YieldError::BadValFields(num_fields));
             }
-            let value = unsafe { *(result.add(24) as *const *mut u8) };
+            let value = unsafe { *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
             Yield::Done(value)
-        } else if con_tag == self.e_con_tag {
+        } else if con_tag == self.tags.e {
             // E(union, continuation) — extract Union and k
-            let num_fields = unsafe { *(result.add(16) as *const u16) };
+            let num_fields = unsafe { *(result.add(layout::CON_NUM_FIELDS_OFFSET) as *const u16) };
             if num_fields != 2 {
                 return Yield::Error(YieldError::BadEFields(num_fields));
             }
-            let union_ptr = unsafe { *(result.add(24) as *const *mut u8) };
-            let continuation = unsafe { *(result.add(32) as *const *mut u8) };
+            let union_ptr = unsafe { *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
+            let continuation =
+                unsafe { *(result.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8) };
 
-            // Destructure Union(tag#, request)
             if union_ptr.is_null() {
                 return Yield::Error(YieldError::NullPointer);
             }
-            // First field of Union: tag (Word#) — stored as a Lit HeapObject or raw value
-            let union_num_fields = unsafe { *(union_ptr.add(16) as *const u16) };
+
+            let union_num_fields =
+                unsafe { *(union_ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *const u16) };
             if union_num_fields != 2 {
                 return Yield::Error(YieldError::BadUnionFields(union_num_fields));
             }
 
-            let tag_ptr = unsafe { *(union_ptr.add(24) as *const *mut u8) };
+            let tag_ptr =
+                unsafe { *(union_ptr.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
             if tag_ptr.is_null() {
                 return Yield::Error(YieldError::NullPointer);
             }
-            // Read the actual tag value from the Lit HeapObject (offset 16)
-            let effect_tag = unsafe { *(tag_ptr.add(16) as *const u64) };
-            let request = unsafe { *(union_ptr.add(32) as *const *mut u8) };
+            // Read the actual tag value from the Lit HeapObject (offset 16 = LIT_VALUE_OFFSET)
+            let effect_tag = unsafe { *(tag_ptr.add(layout::LIT_VALUE_OFFSET) as *const u64) };
+            let request =
+                unsafe { *(union_ptr.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8) };
 
             Yield::Request {
                 tag: effect_tag,
@@ -135,5 +145,104 @@ impl CompiledEffectMachine {
         } else {
             Yield::Error(YieldError::UnexpectedConTag(con_tag))
         }
+    }
+
+    /// Apply a Leaf/Node continuation tree to a value, yielding a new Eff result.
+    ///
+    /// Mirrors the interpreter's `apply_cont` on raw heap pointers:
+    /// - Leaf(f): call f(arg) via call_closure
+    /// - Node(k1, k2): apply k1(arg), if Val(y) → k2(y), if E(union, k') → E(union, Node(k', k2))
+    /// - Closure: direct call_closure (degenerate continuation fallback)
+    ///
+    /// # Safety
+    ///
+    /// `k` and `arg` must be valid heap pointers.
+    unsafe fn apply_cont_heap(&mut self, k: *mut u8, arg: *mut u8) -> *mut u8 {
+        if k.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        let tag = *k;
+        match tag {
+            t if t == layout::TAG_CON => {
+                let con_tag = *(k.add(layout::CON_TAG_OFFSET) as *const u64);
+
+                if con_tag == self.tags.leaf {
+                    // Leaf(f) — extract closure f at field[0], call f(arg)
+                    let f = *(k.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
+                    self.call_closure(f, arg)
+                } else if con_tag == self.tags.node {
+                    // Node(k1, k2) — apply k1 to arg, then compose with k2
+                    let k1 = *(k.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
+                    let k2 = *(k.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8);
+
+                    let result = self.apply_cont_heap(k1, arg);
+                    if result.is_null() {
+                        return std::ptr::null_mut();
+                    }
+
+                    // Check if result is Val or E
+                    let result_tag = *result;
+                    if result_tag != layout::TAG_CON {
+                        return std::ptr::null_mut();
+                    }
+
+                    let result_con_tag =
+                        *(result.add(layout::CON_TAG_OFFSET) as *const u64);
+
+                    if result_con_tag == self.tags.val {
+                        // Val(y) — extract y, apply k2(y)
+                        let y = *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
+                        self.apply_cont_heap(k2, y)
+                    } else if result_con_tag == self.tags.e {
+                        // E(union, k') — compose: E(union, Node(k', k2))
+                        let union_val =
+                            *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
+                        let k_prime =
+                            *(result.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8);
+
+                        // Allocate Node(k', k2)
+                        let new_node = self.alloc_con(self.tags.node, &[k_prime, k2]);
+                        // Allocate E(union, new_node)
+                        self.alloc_con(self.tags.e, &[union_val, new_node])
+                    } else {
+                        std::ptr::null_mut()
+                    }
+                } else {
+                    // Unknown Con tag in continuation position — error
+                    std::ptr::null_mut()
+                }
+            }
+            t if t == layout::TAG_CLOSURE => {
+                // Raw closure (degenerate continuation fallback)
+                self.call_closure(k, arg)
+            }
+            _ => std::ptr::null_mut(),
+        }
+    }
+
+    /// Call a compiled closure: read code_ptr from closure[8], invoke it.
+    ///
+    /// # Safety
+    ///
+    /// `closure` must point to a valid Closure HeapObject.
+    unsafe fn call_closure(&mut self, closure: *mut u8, arg: *mut u8) -> *mut u8 {
+        let code_ptr = *(closure.add(layout::CLOSURE_CODE_PTR_OFFSET) as *const usize);
+        let func: unsafe extern "C" fn(*mut VMContext, *mut u8, *mut u8) -> *mut u8 =
+            std::mem::transmute(code_ptr);
+        func(&mut self.vmctx, closure, arg)
+    }
+
+    /// Allocate a Con HeapObject on the nursery with the given tag and fields.
+    unsafe fn alloc_con(&mut self, con_tag: u64, fields: &[*mut u8]) -> *mut u8 {
+        let size = 24 + 8 * fields.len();
+        let ptr = heap_bridge::bump_alloc_from_vmctx(&mut self.vmctx, size);
+        layout::write_header(ptr, layout::TAG_CON, size as u16);
+        *(ptr.add(layout::CON_TAG_OFFSET) as *mut u64) = con_tag;
+        *(ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *mut u16) = fields.len() as u16;
+        for (i, &fp) in fields.iter().enumerate() {
+            *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *mut *mut u8) = fp;
+        }
+        ptr
     }
 }

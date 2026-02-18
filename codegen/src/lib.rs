@@ -1,9 +1,12 @@
 pub mod alloc;
 pub mod context;
+pub mod datacon_env;
 pub mod effect_machine;
 pub mod emit;
 pub mod gc;
+pub mod heap_bridge;
 pub mod host_fns;
+pub mod nursery;
 pub mod pipeline;
 pub mod stack_map;
 pub mod yield_type;
