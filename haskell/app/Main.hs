@@ -18,7 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Tidepool.GhcPipeline (runPipeline, PipelineResult(..), dumpCore)
-import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons)
+import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons, UnresolvedVar(..))
 import Tidepool.CborEncode (encodeTree, encodeMetadata)
 
 main :: IO ()
@@ -68,7 +68,11 @@ processFile args path = do
     case mTarget of
       Just targetName -> do
         -- Whole-module mode: serialize all bindings as nested lets around the target
-        let (nodes, usedDCs) = translateModuleClosed binds targetName
+        let (nodes, usedDCs, unresolved) = translateModuleClosed binds targetName
+        if not (null unresolved) then do
+          putStrLn $ "  WARNING: " ++ show (length unresolved) ++ " unresolved external(s):"
+          mapM_ (\uv -> putStrLn $ "    " ++ uvModule uv ++ "." ++ uvName uv ++ " (v_" ++ show (uvKey uv) ++ ")") unresolved
+        else return ()
         let cbor = encodeTree nodes
         let outFile = outDir </> targetName ++ ".cbor"
         BS.writeFile outFile cbor

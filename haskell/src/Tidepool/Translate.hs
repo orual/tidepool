@@ -8,6 +8,7 @@ module Tidepool.Translate
   , FlatAlt(..)
   , FlatAltCon(..)
   , LitEnc(..)
+  , UnresolvedVar(..)
   ) where
 
 import GHC
@@ -35,7 +36,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Map.Strict as Map
 import Control.Monad.State
 import Control.Monad (foldM, forM)
-import Tidepool.Resolve (resolveExternals)
+import Tidepool.Resolve (resolveExternals, UnresolvedVar(..))
 
 data FlatNode
   = NVar !Word64
@@ -148,13 +149,14 @@ translateModule allBinds targetName =
           emitNode (NLetRec pairIdxs bodyIdx)
 
 -- | Like translateModule, but first resolves cross-module references
--- by inlining unfoldings from the GHC environment. This produces a
--- closed expression tree with no free variables referencing external
--- bindings.
-translateModuleClosed :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon)
+-- by inlining unfoldings from the GHC environment. Returns the
+-- translated tree, used DataCons, and any variables that could not
+-- be resolved (no unfolding available).
+translateModuleClosed :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon, [UnresolvedVar])
 translateModuleClosed allBinds targetName =
-  let closedBinds = resolveExternals allBinds
-  in translateModule closedBinds targetName
+  let (closedBinds, unresolved) = resolveExternals allBinds
+      (nodes, usedDCs) = translateModule closedBinds targetName
+  in (nodes, usedDCs, unresolved)
 
 -- | Collect all DataCons encountered during translation of Core bindings.
 -- This includes constructors from imported packages (e.g. freer-simple's
