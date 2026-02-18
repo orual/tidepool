@@ -1,7 +1,14 @@
 use crate::error::BridgeError;
 use crate::traits::{FromCore, ToCore};
 use core_eval::Value;
-use core_repr::{DataConTable, Literal};
+use core_repr::{DataConId, DataConTable, Literal};
+
+/// Check if a DataConId matches a known boxing constructor name (I#, W#, D#, C#).
+fn is_boxing_con(name: &str, id: DataConId, table: &DataConTable) -> bool {
+    table
+        .get_by_name(name)
+        .map_or(false, |expected| expected == id)
+}
 
 // Helper for type mismatch errors
 fn type_mismatch(expected: &str, got: &Value) -> BridgeError {
@@ -51,11 +58,19 @@ impl<T> ToCore for std::marker::PhantomData<T> {
 // Primitives
 
 /// Bridges Rust `i64` to Haskell `Int#` literal.
+/// Also transparently unwraps `I#(n)` (boxed Int).
 impl FromCore for i64 {
-    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+    fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Lit(Literal::LitInt(n)) => Ok(*n),
-            _ => Err(type_mismatch("LitInt", value)),
+            Value::Con(id, fields) if fields.len() == 1 => {
+                if is_boxing_con("I#", *id, table) {
+                    i64::from_value(&fields[0], table)
+                } else {
+                    Err(type_mismatch("LitInt or I#", value))
+                }
+            }
+            _ => Err(type_mismatch("LitInt or I#", value)),
         }
     }
 }
@@ -67,11 +82,19 @@ impl ToCore for i64 {
 }
 
 /// Bridges Rust `u64` to Haskell `Word#` literal.
+/// Also transparently unwraps `W#(n)` (boxed Word).
 impl FromCore for u64 {
-    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+    fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Lit(Literal::LitWord(n)) => Ok(*n),
-            _ => Err(type_mismatch("LitWord", value)),
+            Value::Con(id, fields) if fields.len() == 1 => {
+                if is_boxing_con("W#", *id, table) {
+                    u64::from_value(&fields[0], table)
+                } else {
+                    Err(type_mismatch("LitWord or W#", value))
+                }
+            }
+            _ => Err(type_mismatch("LitWord or W#", value)),
         }
     }
 }
@@ -83,11 +106,19 @@ impl ToCore for u64 {
 }
 
 /// Bridges Rust `f64` to Haskell `Double#` literal.
+/// Also transparently unwraps `D#(n)` (boxed Double).
 impl FromCore for f64 {
-    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+    fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Lit(Literal::LitDouble(bits)) => Ok(f64::from_bits(*bits)),
-            _ => Err(type_mismatch("LitDouble", value)),
+            Value::Con(id, fields) if fields.len() == 1 => {
+                if is_boxing_con("D#", *id, table) {
+                    f64::from_value(&fields[0], table)
+                } else {
+                    Err(type_mismatch("LitDouble or D#", value))
+                }
+            }
+            _ => Err(type_mismatch("LitDouble or D#", value)),
         }
     }
 }
@@ -170,11 +201,19 @@ impl ToCore for bool {
     }
 }
 
+/// Also transparently unwraps `C#(c)` (boxed Char).
 impl FromCore for char {
-    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+    fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Lit(Literal::LitChar(c)) => Ok(*c),
-            _ => Err(type_mismatch("LitChar", value)),
+            Value::Con(id, fields) if fields.len() == 1 => {
+                if is_boxing_con("C#", *id, table) {
+                    char::from_value(&fields[0], table)
+                } else {
+                    Err(type_mismatch("LitChar or C#", value))
+                }
+            }
+            _ => Err(type_mismatch("LitChar or C#", value)),
         }
     }
 }
