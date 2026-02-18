@@ -112,6 +112,44 @@ fn main() {
         }
     }
 
+    // Search for the unbound variable — show context (parent nodes)
+    let unbound_var = 3458764513820540949u64;
+    eprintln!("\n=== Searching for v_{} in all nodes ===", unbound_var);
+    for (i, node) in expr.nodes.iter().enumerate() {
+        let found = match node {
+            CoreFrame::Var(v) if v.0 == unbound_var => true,
+            CoreFrame::Lam { binder, .. } if binder.0 == unbound_var => true,
+            CoreFrame::LetNonRec { binder, .. } if binder.0 == unbound_var => true,
+            CoreFrame::Case { binder, .. } if binder.0 == unbound_var => true,
+            CoreFrame::Join { label, .. } if label.0 == unbound_var => true,
+            _ => false,
+        };
+        if found {
+            eprintln!("  [{}] {:?}", i, node);
+            // Show parent App and its arg/grandparent context
+            for (j, parent) in expr.nodes.iter().enumerate() {
+                if let CoreFrame::App { fun, arg } = parent {
+                    if *fun == i {
+                        eprintln!("    parent [{}]: App {{ fun: {}, arg: {} }}", j, fun, arg);
+                        eprintln!("      arg node [{}]: {:?}", arg, &expr.nodes[*arg]);
+                        // grandparent
+                        for (k, gp) in expr.nodes.iter().enumerate() {
+                            let refs_j = match gp {
+                                CoreFrame::App { fun, arg } => *fun == j || *arg == j,
+                                CoreFrame::LetNonRec { rhs, body, .. } => *rhs == j || *body == j,
+                                CoreFrame::Case { alts, .. } => alts.iter().any(|a| a.body == j),
+                                _ => false,
+                            };
+                            if refs_j {
+                                eprintln!("      grandparent [{}]: {:?}", k, gp);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Find which binder matches the target VarId
     let target_var = 8286623314361716746u64;
     eprintln!("\n=== Looking for binder v_{} ===", target_var);

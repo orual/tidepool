@@ -188,12 +188,19 @@ translate expr =
   let (hd, allArgs) = collectArgs expr
       args = filter isValueArg allArgs
   in case hd of
+    -- Erase unpackCString#/unpackCStringUtf8# applications:
+    -- GHC represents string literals as (unpackCString# "addr"#) in Core.
+    -- Since our LitString already carries the bytes, just emit the literal.
+    Var v | isUnpackCStringVar v
+          , [arg] <- args
+          , Lit l <- arg -> emitNode $ NLit (mapLit l)
+
     Var v | Just dc <- isDataConWorkId_maybe v
           , length args == dataConSourceArity dc -> do
         recordDC dc
         childIdxs <- mapM translate args
         emitNode $ NCon (varId v) childIdxs
-    
+
     Var v | Just pop <- isPrimOpId_maybe v
           , length args == primOpArity pop -> do
         childIdxs <- mapM translate args
@@ -358,6 +365,15 @@ mapBang (HsSrcBang _ (HsBang srcUnpack srcBang)) =
     (_, SrcStrict) -> "SrcBang"
     (SrcUnpack, _) -> "SrcUnpack"
     _              -> "NoSrcBang"
+
+-- | Recognize GHC's unpackCString# and unpackCStringUtf8# builtins.
+-- These convert Addr# (C string pointers) to [Char]. Since our
+-- serializer already has the string bytes as LitString, we erase
+-- the conversion and keep just the literal.
+isUnpackCStringVar :: Id -> Bool
+isUnpackCStringVar v =
+  let name = occNameString (nameOccName (idName v))
+  in name == "unpackCString#" || name == "unpackCStringUtf8#"
 
 primOpArity :: PrimOp -> Int
 primOpArity op = let (_, _, _, a, _) = primOpSig op in a
