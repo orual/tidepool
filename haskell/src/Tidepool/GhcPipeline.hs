@@ -14,6 +14,7 @@ import Control.Monad.IO.Class (liftIO)
 data PipelineResult = PipelineResult
   { prBinds  :: [CoreBind]
   , prTyCons :: [TyCon]
+  , prHscEnv :: HscEnv
   }
 
 runPipeline :: FilePath -> IO PipelineResult
@@ -42,6 +43,7 @@ runPipeline path = do
     return PipelineResult
       { prBinds  = mg_binds simplified
       , prTyCons = mg_tcs simplified
+      , prHscEnv = hscEnv
       }
 
 dumpCore :: [CoreBind] -> String

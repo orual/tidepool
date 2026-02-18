@@ -59,11 +59,12 @@ impl<'a> EffectMachine<'a> {
             let forced = core_eval::eval::force(current, self.heap)?;
             match forced {
                 Value::Con(id, ref fields) if id == self.val_id => {
-                    // Val x — pure result, done
-                    return Ok(fields
+                    // Val x — pure result, done. Deep force to eliminate any ThunkRefs.
+                    let result = fields
                         .first()
                         .cloned()
-                        .unwrap_or(Value::Lit(core_repr::Literal::LitInt(0))));
+                        .unwrap_or(Value::Lit(core_repr::Literal::LitInt(0)));
+                    return Ok(core_eval::eval::deep_force(result, self.heap)?);
                 }
                 Value::Con(id, ref fields) if id == self.e_id => {
                     // E (Union tag# req) k
@@ -73,7 +74,7 @@ impl<'a> EffectMachine<'a> {
                             fields.len()
                         )));
                     }
-                    let union_val = core_eval::eval::force(fields[0].clone(), self.heap)?;
+                    let union_val = core_eval::eval::deep_force(fields[0].clone(), self.heap)?;
                     let k = core_eval::eval::force(fields[1].clone(), self.heap)?;
 
                     // Destructure Union(tag, req)
@@ -85,19 +86,18 @@ impl<'a> EffectMachine<'a> {
                                     ufields.len()
                                 )));
                             }
-                            let tag =
-                                match core_eval::eval::force(ufields[0].clone(), self.heap)? {
-                                    Value::Lit(core_repr::Literal::LitWord(w)) => w,
-                                    Value::Lit(core_repr::Literal::LitInt(i)) => i as u64,
-                                    other => {
-                                        return Err(EffectError::BadUnion(format!(
-                                            "Union tag must be Word#/Int#, got {:?}",
-                                            other
-                                        )))
-                                    }
-                                };
-                            let req =
-                                core_eval::eval::force(ufields[1].clone(), self.heap)?;
+                            let tag = match &ufields[0] {
+                                Value::Lit(core_repr::Literal::LitWord(w)) => *w,
+                                Value::Lit(core_repr::Literal::LitInt(i)) => *i as u64,
+                                other => {
+                                    return Err(EffectError::BadUnion(format!(
+                                        "Union tag must be Word#/Int#, got {:?}",
+                                        other
+                                    )))
+                                }
+                            };
+                            // deep_force the request so FromCore never sees ThunkRef
+                            let req = ufields[1].clone();
                             (tag, req)
                         }
                         other => {

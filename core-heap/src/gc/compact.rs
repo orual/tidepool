@@ -63,6 +63,11 @@ fn rewrite_value(val: &Value, table: &ForwardingTable) -> Value {
             *id,
             fields.iter().map(|f| rewrite_value(f, table)).collect(),
         ),
+        Value::ConFun(id, arity, args) => Value::ConFun(
+            *id,
+            *arity,
+            args.iter().map(|a| rewrite_value(a, table)).collect(),
+        ),
         Value::Closure(env, binder, expr) => {
             Value::Closure(rewrite_env(env, table), *binder, expr.clone())
         }

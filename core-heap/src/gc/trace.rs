@@ -75,6 +75,11 @@ fn scan_value(val: &Value, queue: &mut VecDeque<ThunkId>) {
                 scan_value(field, queue);
             }
         }
+        Value::ConFun(_, _, args) => {
+            for arg in args {
+                scan_value(arg, queue);
+            }
+        }
         Value::Closure(env, _, _) => {
             scan_env(env, queue);
         }

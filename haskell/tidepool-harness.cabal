@@ -9,6 +9,7 @@ executable tidepool-harness
   other-modules:
     Tidepool.GhcPipeline
     Tidepool.Translate
+    Tidepool.Resolve
     Tidepool.CborEncode
   build-depends:
     base         >= 4.20 && < 5,

@@ -62,6 +62,32 @@ pub fn force(val: Value, heap: &mut dyn Heap) -> Result<Value, EvalError> {
     }
 }
 
+/// Recursively force a value — forces all thunks inside constructors,
+/// producing a fully-evaluated tree with no `ThunkRef` values.
+pub fn deep_force(val: Value, heap: &mut dyn Heap) -> Result<Value, EvalError> {
+    match val {
+        Value::ThunkRef(id) => {
+            let forced = force(Value::ThunkRef(id), heap)?;
+            deep_force(forced, heap)
+        }
+        Value::Con(tag, fields) => {
+            let mut forced_fields = Vec::with_capacity(fields.len());
+            for f in fields {
+                forced_fields.push(deep_force(f, heap)?);
+            }
+            Ok(Value::Con(tag, forced_fields))
+        }
+        Value::ConFun(tag, arity, args) => {
+            let mut forced_args = Vec::with_capacity(args.len());
+            for a in args {
+                forced_args.push(deep_force(a, heap)?);
+            }
+            Ok(Value::ConFun(tag, arity, forced_args))
+        }
+        other => Ok(other), // Lit, Closure, JoinCont — already values
+    }
+}
+
 /// Evaluate the node at `idx` in the expression tree.
 fn eval_at(
     expr: &CoreExpr,

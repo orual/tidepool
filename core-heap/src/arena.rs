@@ -147,6 +147,7 @@ impl ArenaHeap {
         match val {
             Value::ThunkRef(id) => vec![*id],
             Value::Con(_, fields) => fields.iter().flat_map(Self::collect_thunk_refs).collect(),
+            Value::ConFun(_, _, args) => args.iter().flat_map(Self::collect_thunk_refs).collect(),
             Value::Closure(env, _, _) => env.values().flat_map(Self::collect_thunk_refs).collect(),
             Value::JoinCont(_, _, env) => env.values().flat_map(Self::collect_thunk_refs).collect(),
             Value::Lit(_) => vec![],
