@@ -2,7 +2,7 @@ module Tidepool.Resolve (resolveExternals, UnresolvedVar(..)) where
 
 import GHC.Core (CoreBind, CoreExpr, Bind(..), maybeUnfoldingTemplate)
 import GHC.Core.FVs (exprFreeVars)
-import GHC.Types.Id (Id, idUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe)
+import GHC.Types.Id (Id, idUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe)
 import GHC.Types.Var (Var, varName, varUnique)
 import GHC.Types.Var.Set (VarSet, emptyVarSet, unitVarSet, unionVarSet, elemVarSet, extendVarSet)
 import GHC.Types.Unique (getKey)
@@ -92,5 +92,7 @@ resolveExternals binds =
     isDataCon :: Id -> Bool
     isDataCon v = case isDataConWorkId_maybe v of
       Just _  -> True
-      Nothing -> False
+      Nothing -> case isDataConWrapId_maybe v of
+        Just _  -> True
+        Nothing -> False
 

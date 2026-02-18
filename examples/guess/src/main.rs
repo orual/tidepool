@@ -40,7 +40,13 @@ impl EffectHandler for ConsoleHandler {
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
                 let n: i64 = input.trim().parse().unwrap_or(0);
-                Ok(Value::Lit(Literal::LitInt(n)))
+                // Return boxed Int: I#(n) — the continuation expects Haskell's Int type
+                let result = match table.get_by_name("I#") {
+                    Some(id) => Value::Con(id, vec![Value::Lit(Literal::LitInt(n))]),
+                    None => Value::Lit(Literal::LitInt(n)),
+                };
+                eprintln!("[AwaitInt] input={:?} parsed={} returning={:?}", input.trim(), n, result);
+                Ok(result)
             }
         }
     }
@@ -57,11 +63,17 @@ struct RngHandler(rand::rngs::ThreadRng);
 impl EffectHandler for RngHandler {
     type Request = RngReq;
 
-    fn handle(&mut self, req: RngReq, _table: &DataConTable) -> Result<Value, EffectError> {
+    fn handle(&mut self, req: RngReq, table: &DataConTable) -> Result<Value, EffectError> {
         match req {
             RngReq::RandInt(lo, hi) => {
                 let n: i64 = self.0.gen_range(lo..=hi);
-                Ok(Value::Lit(Literal::LitInt(n)))
+                // Return boxed Int: I#(n) — the continuation expects Haskell's Int type
+                let result = match table.get_by_name("I#") {
+                    Some(id) => Value::Con(id, vec![Value::Lit(Literal::LitInt(n))]),
+                    None => Value::Lit(Literal::LitInt(n)),
+                };
+                eprintln!("[RandInt] lo={} hi={} generated={} returning={:?}", lo, hi, n, result);
+                Ok(result)
             }
         }
     }

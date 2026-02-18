@@ -201,6 +201,15 @@ translate expr =
         childIdxs <- mapM translate args
         emitNode $ NCon (varId v) childIdxs
 
+    -- GADT constructors have separate wrapper Ids that handle type coercions.
+    -- isDataConWorkId_maybe returns Nothing for wrappers, so we check separately.
+    -- We emit NCon using the *worker* Id since that's what DataConTable indexes.
+    Var v | Just dc <- isDataConWrapId_maybe v
+          , length args == dataConSourceArity dc -> do
+        recordDC dc
+        childIdxs <- mapM translate args
+        emitNode $ NCon (varId (dataConWorkId dc)) childIdxs
+
     Var v | Just pop <- isPrimOpId_maybe v
           , length args == primOpArity pop -> do
         childIdxs <- mapM translate args

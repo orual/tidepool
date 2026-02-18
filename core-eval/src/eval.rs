@@ -178,6 +178,9 @@ fn eval_at(
             let scrut_val = force(eval_at(expr, *scrutinee, env, heap)?, heap)?;
             let case_env = env.update(*binder, scrut_val.clone());
 
+            // Try specific alternatives first; Default is a fallback, not positional.
+            // GHC Core can place DEFAULT first in the alt list.
+            let mut default_alt = None;
             for alt in alts {
                 match &alt.con {
                     AltCon::DataAlt(tag) => {
@@ -205,9 +208,12 @@ fn eval_at(
                         }
                     }
                     AltCon::Default => {
-                        return eval_at(expr, alt.body, &case_env, heap);
+                        default_alt = Some(alt);
                     }
                 }
+            }
+            if let Some(alt) = default_alt {
+                return eval_at(expr, alt.body, &case_env, heap);
             }
             Err(EvalError::NoMatchingAlt)
         }
