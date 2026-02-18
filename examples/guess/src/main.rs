@@ -1,7 +1,6 @@
 use core_bridge_derive::FromCore;
-use core_effect::{EffectError, EffectHandler, EffectMachine};
+use core_effect::{EffectContext, EffectError, EffectHandler, EffectMachine};
 use core_eval::value::Value;
-use core_repr::{DataConTable, Literal};
 use rand::Rng;
 use tidepool_macro::haskell_inline;
 
@@ -15,33 +14,20 @@ enum ConsoleReq {
 
 struct ConsoleHandler;
 
-impl ConsoleHandler {
-    fn make_unit(table: &DataConTable) -> Value {
-        match table.get_by_name("()") {
-            Some(id) => Value::Con(id, vec![]),
-            None => Value::Lit(Literal::LitInt(0)),
-        }
-    }
-}
-
 impl EffectHandler for ConsoleHandler {
     type Request = ConsoleReq;
 
-    fn handle(&mut self, req: ConsoleReq, table: &DataConTable) -> Result<Value, EffectError> {
+    fn handle(&mut self, req: ConsoleReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             ConsoleReq::Emit(s) => {
                 println!("{}", s);
-                Ok(Self::make_unit(table))
+                cx.respond(())
             }
             ConsoleReq::AwaitInt => {
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
                 let n: i64 = input.trim().parse().unwrap_or(0);
-                let result = match table.get_by_name("I#") {
-                    Some(id) => Value::Con(id, vec![Value::Lit(Literal::LitInt(n))]),
-                    None => Value::Lit(Literal::LitInt(n)),
-                };
-                Ok(result)
+                cx.respond(n)
             }
         }
     }
@@ -58,15 +44,11 @@ struct RngHandler(rand::rngs::ThreadRng);
 impl EffectHandler for RngHandler {
     type Request = RngReq;
 
-    fn handle(&mut self, req: RngReq, table: &DataConTable) -> Result<Value, EffectError> {
+    fn handle(&mut self, req: RngReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             RngReq::RandInt(lo, hi) => {
                 let n: i64 = self.0.gen_range(lo..=hi);
-                let result = match table.get_by_name("I#") {
-                    Some(id) => Value::Con(id, vec![Value::Lit(Literal::LitInt(n))]),
-                    None => Value::Lit(Literal::LitInt(n)),
-                };
-                Ok(result)
+                cx.respond(n)
             }
         }
     }

@@ -336,7 +336,7 @@ mod tests {
         };
 
         // Simple handler: receives any value, returns Lit(100)
-        use crate::dispatch::{DispatchEffect, EffectHandler};
+        use crate::dispatch::{EffectContext, EffectHandler};
         use core_bridge::FromCore;
 
         struct TestReq(i64);
@@ -361,7 +361,7 @@ mod tests {
             fn handle(
                 &mut self,
                 req: TestReq,
-                _table: &DataConTable,
+                _cx: &EffectContext,
             ) -> Result<Value, EffectError> {
                 // Echo back the request + 1
                 Ok(Value::Lit(Literal::LitInt(req.0 + 1)))

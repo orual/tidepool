@@ -55,6 +55,27 @@ impl<T> ToCore for std::marker::PhantomData<T> {
     }
 }
 
+// Unit
+
+impl ToCore for () {
+    fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
+        match table.get_by_name("()") {
+            Some(id) => Ok(Value::Con(id, vec![])),
+            None => Ok(Value::Lit(Literal::LitInt(0))),
+        }
+    }
+}
+
+impl FromCore for () {
+    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+        match value {
+            Value::Con(_, fields) if fields.is_empty() => Ok(()),
+            Value::Lit(Literal::LitInt(0)) => Ok(()),
+            _ => Err(type_mismatch("()", value)),
+        }
+    }
+}
+
 // Primitives
 
 /// Bridges Rust `i64` to Haskell `Int#` literal.
@@ -76,8 +97,11 @@ impl FromCore for i64 {
 }
 
 impl ToCore for i64 {
-    fn to_value(&self, _table: &DataConTable) -> Result<Value, BridgeError> {
-        Ok(Value::Lit(Literal::LitInt(*self)))
+    fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
+        match table.get_by_name("I#") {
+            Some(id) => Ok(Value::Con(id, vec![Value::Lit(Literal::LitInt(*self))])),
+            None => Ok(Value::Lit(Literal::LitInt(*self))),
+        }
     }
 }
 
@@ -100,8 +124,11 @@ impl FromCore for u64 {
 }
 
 impl ToCore for u64 {
-    fn to_value(&self, _table: &DataConTable) -> Result<Value, BridgeError> {
-        Ok(Value::Lit(Literal::LitWord(*self)))
+    fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
+        match table.get_by_name("W#") {
+            Some(id) => Ok(Value::Con(id, vec![Value::Lit(Literal::LitWord(*self))])),
+            None => Ok(Value::Lit(Literal::LitWord(*self))),
+        }
     }
 }
 
@@ -124,8 +151,11 @@ impl FromCore for f64 {
 }
 
 impl ToCore for f64 {
-    fn to_value(&self, _table: &DataConTable) -> Result<Value, BridgeError> {
-        Ok(Value::Lit(Literal::LitDouble(self.to_bits())))
+    fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
+        match table.get_by_name("D#") {
+            Some(id) => Ok(Value::Con(id, vec![Value::Lit(Literal::LitDouble(self.to_bits()))])),
+            None => Ok(Value::Lit(Literal::LitDouble(self.to_bits()))),
+        }
     }
 }
 
@@ -219,8 +249,11 @@ impl FromCore for char {
 }
 
 impl ToCore for char {
-    fn to_value(&self, _table: &DataConTable) -> Result<Value, BridgeError> {
-        Ok(Value::Lit(Literal::LitChar(*self)))
+    fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
+        match table.get_by_name("C#") {
+            Some(id) => Ok(Value::Con(id, vec![Value::Lit(Literal::LitChar(*self))])),
+            None => Ok(Value::Lit(Literal::LitChar(*self))),
+        }
     }
 }
 
