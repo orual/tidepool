@@ -47,9 +47,7 @@ fn main() {
         FsHandler,
     ];
 
-    eprintln!("[tide] compiled OK, stepping...");
     let mut yield_result = machine.step();
-    eprintln!("[tide] first step returned");
     loop {
         match yield_result {
             Yield::Done(_) => {
@@ -60,16 +58,11 @@ fn main() {
                 request,
                 continuation,
             } => {
-                eprintln!("[tide] effect request: tag={}", tag);
                 let req_val = unsafe { heap_to_value(request) }.unwrap();
-                eprintln!("[tide] decoded request: {:?}", req_val);
                 let resp_val = handlers.dispatch(tag, &req_val, &table).unwrap();
-                eprintln!("[tide] handler responded: {:?}", resp_val);
                 let resp_ptr =
                     unsafe { value_to_heap(&resp_val, machine.vmctx_mut()) }.unwrap();
-                eprintln!("[tide] resuming...");
                 yield_result = unsafe { machine.resume(continuation, resp_ptr) };
-                eprintln!("[tide] resumed OK");
             }
             Yield::Error(e) => {
                 eprintln!("Error: {:?}", e);
