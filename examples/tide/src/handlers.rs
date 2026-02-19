@@ -22,14 +22,12 @@ enum InputSource {
 
 pub struct ReplHandler {
     source: InputSource,
-    first: bool,
 }
 
 impl ReplHandler {
     pub fn new() -> Self {
         ReplHandler {
             source: InputSource::Interactive(rustyline::DefaultEditor::new().unwrap()),
-            first: true,
         }
     }
 
@@ -43,7 +41,6 @@ impl ReplHandler {
             .collect();
         ReplHandler {
             source: InputSource::File { lines, pos: 0 },
-            first: false,
         }
     }
 }
@@ -58,8 +55,7 @@ impl EffectHandler for ReplHandler {
                     InputSource::Interactive(editor) => {
                         // Loop on parse errors so the user can retry
                         loop {
-                            let prompt = if self.first { self.first = false; "" } else { "tide> " };
-                            match editor.readline(prompt) {
+                            match editor.readline("tide> ") {
                                 Ok(line) => {
                                     let t = line.trim().to_string();
                                     if t.is_empty() {
