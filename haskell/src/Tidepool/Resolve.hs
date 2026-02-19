@@ -3,6 +3,8 @@ module Tidepool.Resolve (resolveExternals, UnresolvedVar(..)) where
 import GHC.Core (CoreBind, CoreExpr, Bind(..), maybeUnfoldingTemplate)
 import GHC.Core.FVs (exprSomeFreeVars)
 import GHC.Types.Id (Id, idUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe)
+import GHC.Utils.Outputable (showPprUnsafe)
+import Debug.Trace (trace)
 import GHC.Types.Var (Var, varName, varUnique)
 import GHC.Types.Var.Set (VarSet, emptyVarSet, unitVarSet, unionVarSet, elemVarSet, extendVarSet)
 import GHC.Types.Unique (getKey)
@@ -45,8 +47,10 @@ resolveExternals binds =
       | elemVarSet v visited = go rest visited localSet acc unres
       | otherwise =
           let visited' = extendVarSet visited v
+              vName = occNameString (nameOccName (varName v))
           in case maybeUnfoldingTemplate (idUnfolding v) of
                Nothing ->
+                 trace ("  [resolve] FAIL " ++ vName ++ ": " ++ showPprUnsafe (idUnfolding v)) $
                  let uv = UnresolvedVar
                        { uvKey    = fromIntegral (getKey (varUnique v))
                        , uvName   = occNameString (nameOccName (varName v))

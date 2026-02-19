@@ -285,7 +285,7 @@ impl ToCore for char {
 }
 
 impl FromCore for String {
-    fn from_value(value: &Value, _table: &DataConTable) -> Result<Self, BridgeError> {
+    fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
             Value::Lit(Literal::LitString(bytes)) => {
                 String::from_utf8(bytes.clone()).map_err(|e| BridgeError::TypeMismatch {
@@ -293,7 +293,35 @@ impl FromCore for String {
                     got: format!("Invalid UTF-8: {}", e),
                 })
             }
-            _ => Err(type_mismatch("LitString", value)),
+            // Also accept cons-cell list of Char (from ++ desugaring)
+            Value::Con(_, _) => {
+                let mut chars = Vec::new();
+                let mut cur = value;
+                loop {
+                    match cur {
+                        Value::Con(tag, fields) if table.get_by_name("[]").map_or(false, |nil| nil == *tag) && fields.is_empty() => {
+                            break;
+                        }
+                        Value::Con(tag, fields) if table.get_by_name(":").map_or(false, |cons| cons == *tag) && fields.len() == 2 => {
+                            match &fields[0] {
+                                Value::Lit(Literal::LitChar(c)) => chars.push(*c),
+                                // Boxing: C# wraps a Char
+                                Value::Con(box_tag, box_fields) if table.get_by_name("C#").map_or(false, |c_id| c_id == *box_tag) && box_fields.len() == 1 => {
+                                    match &box_fields[0] {
+                                        Value::Lit(Literal::LitChar(c)) => chars.push(*c),
+                                        other => return Err(type_mismatch("Char in C#", other)),
+                                    }
+                                }
+                                other => return Err(type_mismatch("Char or C#", other)),
+                            }
+                            cur = &fields[1];
+                        }
+                        _ => return Err(type_mismatch("[] or (:)", cur)),
+                    }
+                }
+                Ok(chars.into_iter().collect())
+            }
+            _ => Err(type_mismatch("LitString or [Char]", value)),
         }
     }
 }

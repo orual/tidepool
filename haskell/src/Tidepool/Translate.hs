@@ -17,7 +17,7 @@ import GHC.Types.Id
 import GHC.Types.Var
 import GHC.Types.Unique (getKey)
 import GHC.Core.DataCon (DataCon, dataConSourceArity, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
-import GHC.Builtin.Types (consDataCon)
+import GHC.Builtin.Types (consDataCon, nilDataCon)
 import GHC.Builtin.PrimOps
 import GHC.Types.Literal
 import GHC.Types.Name (nameOccName, isExternalName, isSystemName)
@@ -28,6 +28,7 @@ import GHC.Types.Basic (JoinPointHood(..))
 import GHC.Utils.Outputable (showPprUnsafe)
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
 import Data.Char (ord)
+import Data.Bits ((.&.), (.|.), shiftL)
 import Data.Word
 import Data.Int
 import Data.Text (Text)
@@ -76,6 +77,7 @@ data TransState = TransState
   { tsNodes :: !(Seq FlatNode)
   , tsUsedDCs :: !(Map.Map Word64 DataCon)
   , tsRecJoinIds :: !(Set.Set Word64)  -- join IDs from Rec groups (translated as LetRec lambdas)
+  , tsSynthCounter :: !Word64          -- counter for synthetic VarIds (tag 'T')
   }
 
 type TransM = State TransState
@@ -87,6 +89,15 @@ emitNode n = do
   put s { tsNodes = tsNodes s |> n }
   return idx
 
+-- | Generate a fresh synthetic VarId with tag 'T' (Tidepool-generated).
+freshSynthVarId :: TransM Word64
+freshSynthVarId = do
+  s <- get
+  let c = tsSynthCounter s
+  put s { tsSynthCounter = c + 1 }
+  -- Tag 'T' = 0x54, shifted left 56 bits
+  return (0x5400000000000000 .|. c)
+
 recordDC :: DataCon -> TransM ()
 recordDC dc = modify' $ \s ->
   s { tsUsedDCs = Map.insert (varId (dataConWorkId dc)) dc (tsUsedDCs s) }
@@ -95,7 +106,7 @@ translateBinds :: [CoreBind] -> [(String, Seq FlatNode)]
 translateBinds binds = concatMap translateBind binds
   where
     translateBind (NonRec b rhs) =
-      let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty)
+      let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
           finalNodes = tsNodes s
           rootIdx = Seq.length finalNodes - 1
       in if idx == rootIdx
@@ -103,7 +114,7 @@ translateBinds binds = concatMap translateBind binds
          else error "Root index mismatch in NonRec"
     translateBind (Rec pairs) =
       map (\(b, rhs) ->
-        let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty)
+        let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
             finalNodes = tsNodes s
             rootIdx = Seq.length finalNodes - 1
         in if idx == rootIdx
@@ -118,7 +129,7 @@ translateBinds binds = concatMap translateBind binds
 translateModule :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon)
 translateModule allBinds targetName =
   let targetId = findTargetId targetName allBinds
-      (_, finalState) = runState (wrapAllBinds allBinds targetId) (TransState Seq.empty Map.empty Set.empty)
+      (_, finalState) = runState (wrapAllBinds allBinds targetId) (TransState Seq.empty Map.empty Set.empty 0)
   in (tsNodes finalState, tsUsedDCs finalState)
   where
     findTargetId name binds =
@@ -186,11 +197,11 @@ collectUsedDataCons binds =
   in map dcToMeta (Map.elems allDCs)
   where
     collectFromBind (NonRec _ rhs) =
-      let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty)
+      let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
       in tsUsedDCs s
     collectFromBind (Rec pairs) =
       foldMap (\(_, rhs) ->
-        let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty)
+        let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
         in tsUsedDCs s
       ) pairs
 
@@ -227,6 +238,38 @@ translate expr =
             charIdx <- emitNode $ NLit (LEChar (fromIntegral byte))
             emitNode $ NCon consId [charIdx, acc]
           ) suffixIdx (reverse bytes)
+
+    -- Desugar (++) xs ys → letrec go = \a -> case a of { [] -> ys; (:) x rest -> (:) x (go rest) } in go xs
+    -- GHC.Internal.Base.++ has no unfolding available from the .hi file.
+    Var v | isAppendVar v, [xsArg, ysArg] <- args -> do
+        ysIdx <- translate ysArg
+        xsIdx <- translate xsArg
+        goId <- freshSynthVarId
+        aId <- freshSynthVarId
+        xId <- freshSynthVarId
+        restId <- freshSynthVarId
+        let consId = varId (dataConWorkId consDataCon)
+            nilId  = varId (dataConWorkId nilDataCon)
+        recordDC consDataCon
+        recordDC nilDataCon
+        -- Build the cons alt RHS: (:) x (go rest)
+        goRef <- emitNode $ NVar goId
+        restRef <- emitNode $ NVar restId
+        goRestIdx <- emitNode $ NApp goRef restRef
+        xRef <- emitNode $ NVar xId
+        consResultIdx <- emitNode $ NCon consId [xRef, goRestIdx]
+        -- Build: case a of { [] -> ys; (:) x rest -> (:) x (go rest) }
+        aRef <- emitNode $ NVar aId
+        let nilAlt  = FlatAlt (FDataAlt nilId) [] ysIdx
+            consAlt = FlatAlt (FDataAlt consId) [xId, restId] consResultIdx
+        caseIdx <- emitNode $ NCase aRef aId [nilAlt, consAlt]
+        -- Build: \a -> case ...
+        lamIdx <- emitNode $ NLam aId caseIdx
+        -- Build: go xs
+        goRef2 <- emitNode $ NVar goId
+        appIdx <- emitNode $ NApp goRef2 xsIdx
+        -- Build: letrec go = \a -> ... in go xs
+        emitNode $ NLetRec [(goId, lamIdx)] appIdx
 
     Var v | Just dc <- isDataConWorkId_maybe v
           , length args == dataConSourceArity dc -> do
@@ -450,6 +493,10 @@ mapBang (HsSrcBang _ (HsBang srcUnpack srcBang)) =
 -- These convert Addr# (C string pointers) to [Char]. Since our
 -- serializer already has the string bytes as LitString, we erase
 -- the conversion and keep just the literal.
+-- | Recognize GHC.Internal.Base.++ (list append).
+isAppendVar :: Id -> Bool
+isAppendVar v = occNameString (nameOccName (idName v)) == "++"
+
 isUnpackCStringVar :: Id -> Bool
 isUnpackCStringVar v =
   let name = occNameString (nameOccName (idName v))
