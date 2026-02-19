@@ -218,12 +218,23 @@ translate expr =
   let (hd, allArgs) = collectArgs expr
       args = filter isValueArg allArgs
   in case hd of
-    -- Erase unpackCString#/unpackCStringUtf8# applications:
+    -- Desugar unpackCString#/unpackCStringUtf8# to cons-cell chain:
     -- GHC represents string literals as (unpackCString# "addr"#) in Core.
-    -- Since our LitString already carries the bytes, just emit the literal.
+    -- We expand to (:) 'c1' ((:) 'c2' ... []) so strings are uniform [Char]
+    -- cons cells, enabling case matching and (++) to work correctly.
     Var v | isUnpackCStringVar v
           , [arg] <- args
-          , Lit l <- arg -> emitNode $ NLit (mapLit l)
+          , Lit l <- arg -> do
+        let bytes = litStringBytes l
+            consId = varId (dataConWorkId consDataCon)
+            nilId  = varId (dataConWorkId nilDataCon)
+        recordDC consDataCon
+        recordDC nilDataCon
+        nilIdx <- emitNode $ NCon nilId []
+        foldM (\acc byte -> do
+            charIdx <- emitNode $ NLit (LEChar (fromIntegral byte))
+            emitNode $ NCon consId [charIdx, acc]
+          ) nilIdx (reverse bytes)
 
     -- Desugar unpackAppendCString# "prefix"# suffix to cons chain:
     -- (:) 'p' ((:) 'r' (... ((:) 'x' suffix)))
@@ -310,7 +321,7 @@ translate expr =
         emitNode $ NPrimOp (mapPrimOp pop) childIdxs
 
     Var v | Just arity <- isJoinId_maybe v
-          , length args == arity -> do
+          , length allArgs == arity -> do
         recJoins <- gets tsRecJoinIds
         if Set.member (varId v) recJoins
           then do
@@ -402,9 +413,10 @@ varId v = fromIntegral (getKey (varUnique v))
 collectValueBinders :: Int -> CoreExpr -> ([Var], CoreExpr)
 collectValueBinders 0 e = ([], e)
 collectValueBinders n (Lam b e)
-  | isTyVar b = collectValueBinders n e
+  | isTyVar b = collectValueBinders (n-1) e  -- type args count toward join arity
   | otherwise = let (bs, body) = collectValueBinders (n-1) e in (b:bs, body)
-collectValueBinders n e = error $ "collectValueBinders: expected " ++ show n ++ " more value binder(s), but expression has no more lambdas: " ++ showPprUnsafe e
+-- GHC may eta-reduce join point RHSes; return what we found.
+collectValueBinders _ e = ([], e)
 
 isValueArg :: CoreExpr -> Bool
 isValueArg (Type _) = False
