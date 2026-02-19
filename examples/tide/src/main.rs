@@ -1,9 +1,12 @@
+use std::io::{IsTerminal, Write};
+
 use codegen::jit_machine::JitEffectMachine;
 use tidepool_macro::haskell_inline;
 use tidepool_tide::handlers::{ConsoleHandler, EnvHandler, FsHandler, NetHandler, ReplHandler};
 
 fn main() {
     // Choose input source: file of expressions, or interactive REPL.
+    let is_interactive = std::env::args().len() == 1 && std::io::stdin().is_terminal();
     let repl_handler = match std::env::args().nth(1) {
         Some(path) => ReplHandler::from_file(&path),
         None => ReplHandler::new(),
@@ -14,6 +17,12 @@ fn main() {
         target = "repl",
         include = "haskell",
     };
+
+    // Show prompt eagerly (before JIT execution starts).
+    if is_interactive {
+        print!("tide> ");
+        std::io::stdout().flush().ok();
+    }
 
     // JIT-compile the CoreExpr to native code.
     let mut vm =
