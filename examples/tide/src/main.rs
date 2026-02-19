@@ -53,9 +53,7 @@ fn main() {
     let mut yield_result = machine.step();
     loop {
         match yield_result {
-            Yield::Done(_) => {
-                break;
-            }
+            Yield::Done(_) => break,
             Yield::Request {
                 tag,
                 request,
@@ -71,7 +69,7 @@ fn main() {
             Yield::Error(e) => {
                 eprintln!("Error: {:?}", e);
                 break;
-            }
+            },
         }
     }
 

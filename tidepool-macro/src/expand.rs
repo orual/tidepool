@@ -75,50 +75,13 @@ fn expand_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
         .join("tidepool-cbor")
         .join(basename);
 
-    // Find flake root (where flake.nix lives)
-    let flake_root = match find_flake_root(Path::new(&manifest_dir)) {
-        Some(r) => r,
-        None => {
-            return syn::Error::new(
-                path_lit.span(),
-                "Could not find flake.nix in any parent directory",
-            )
-            .to_compile_error();
-        }
-    };
-
-    // Compile via nix
-    let result = Command::new("nix")
-        .args([
-            "run",
-            &format!("{}#tidepool-extract", flake_root.display()),
-            "--",
-        ])
-        .arg(abs_hs_path.to_str().unwrap())
-        .arg("--output-dir")
-        .arg(output_dir.to_str().unwrap())
-        .output();
-
-    match result {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return syn::Error::new(
-                path_lit.span(),
-                format!(
-                    "nix run tidepool-extract failed (exit {}):\n{}",
-                    output.status, stderr
-                ),
-            )
-            .to_compile_error();
-        }
-        Err(e) => {
-            return syn::Error::new(
-                path_lit.span(),
-                format!("Failed to run nix: {}. Is nix installed?", e),
-            )
-            .to_compile_error();
-        }
+    if let Err(msg) = run_tidepool_extract(
+        &abs_hs_path,
+        &output_dir,
+        binding_name.as_deref(),
+        Path::new(&manifest_dir),
+    ) {
+        return syn::Error::new(path_lit.span(), msg).to_compile_error();
     }
 
     // Find the target .cbor file
@@ -241,54 +204,13 @@ fn expand_expr_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
         .join("tidepool-cbor")
         .join(basename);
 
-    // Find flake root
-    let flake_root = match find_flake_root(Path::new(&manifest_dir)) {
-        Some(r) => r,
-        None => {
-            return syn::Error::new(
-                path_lit.span(),
-                "Could not find flake.nix in any parent directory",
-            )
-            .to_compile_error();
-        }
-    };
-
-    // Compile via nix — use --target for whole-module mode when binding specified
-    let mut cmd = Command::new("nix");
-    cmd.args([
-        "run",
-        &format!("{}#tidepool-extract", flake_root.display()),
-        "--",
-    ]);
-    cmd.arg(abs_hs_path.to_str().unwrap());
-    cmd.arg("--output-dir");
-    cmd.arg(output_dir.to_str().unwrap());
-    if let Some(ref name) = binding_name {
-        cmd.arg("--target");
-        cmd.arg(name);
-    }
-    let result = cmd.output();
-
-    match result {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return syn::Error::new(
-                path_lit.span(),
-                format!(
-                    "nix run tidepool-extract failed (exit {}):\n{}",
-                    output.status, stderr
-                ),
-            )
-            .to_compile_error();
-        }
-        Err(e) => {
-            return syn::Error::new(
-                path_lit.span(),
-                format!("Failed to run nix: {}. Is nix installed?", e),
-            )
-            .to_compile_error();
-        }
+    if let Err(msg) = run_tidepool_extract(
+        &abs_hs_path,
+        &output_dir,
+        binding_name.as_deref(),
+        Path::new(&manifest_dir),
+    ) {
+        return syn::Error::new(path_lit.span(), msg).to_compile_error();
     }
 
     // Find the target .cbor file
@@ -469,52 +391,13 @@ pub fn expand_inline(input: TokenStream) -> TokenStream {
         .join("tidepool-cbor")
         .join(&module_name);
 
-    // Find flake root
-    let flake_root = match find_flake_root(Path::new(&manifest_dir)) {
-        Some(r) => r,
-        None => {
-            return syn::Error::new(
-                parsed.source.span(),
-                "Could not find flake.nix in any parent directory",
-            )
-            .to_compile_error();
-        }
-    };
-
-    // Build command — no --include needed since we concatenated everything
-    let mut cmd = Command::new("nix");
-    cmd.args([
-        "run",
-        &format!("{}#tidepool-extract", flake_root.display()),
-        "--",
-    ]);
-    cmd.arg(hs_file.to_str().unwrap());
-    cmd.arg("--output-dir");
-    cmd.arg(output_dir.to_str().unwrap());
-    cmd.arg("--target");
-    cmd.arg(&parsed.target);
-    let result = cmd.output();
-
-    match result {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return syn::Error::new(
-                parsed.source.span(),
-                format!(
-                    "nix run tidepool-extract failed (exit {}):\n{}",
-                    output.status, stderr
-                ),
-            )
-            .to_compile_error();
-        }
-        Err(e) => {
-            return syn::Error::new(
-                parsed.source.span(),
-                format!("Failed to run nix: {}. Is nix installed?", e),
-            )
-            .to_compile_error();
-        }
+    if let Err(msg) = run_tidepool_extract(
+        &hs_file,
+        &output_dir,
+        Some(&parsed.target),
+        Path::new(&manifest_dir),
+    ) {
+        return syn::Error::new(parsed.source.span(), msg).to_compile_error();
     }
 
     // Find CBOR output
@@ -598,6 +481,68 @@ fn capitalize(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+/// Run `tidepool-extract` to compile a Haskell source file.
+///
+/// Tries the tool from PATH first (normal workflow inside `nix develop`),
+/// falls back to `nix run {flake}#tidepool-extract` if not found.
+fn run_tidepool_extract(
+    hs_path: &Path,
+    output_dir: &Path,
+    target: Option<&str>,
+    manifest_dir: &Path,
+) -> Result<(), String> {
+    // Try tidepool-extract directly from PATH first
+    let mut cmd = Command::new("tidepool-extract");
+    cmd.arg(hs_path);
+    cmd.arg("--output-dir");
+    cmd.arg(output_dir);
+    if let Some(name) = target {
+        cmd.arg("--target");
+        cmd.arg(name);
+    }
+
+    match cmd.output() {
+        Ok(output) if output.status.success() => return Ok(()),
+        Ok(_) | Err(_) => {
+            // tidepool-extract not on PATH or failed — fall back to nix run
+        }
+    }
+
+    // Fall back: find flake root and use nix run
+    let flake_root = find_flake_root(manifest_dir).ok_or_else(|| {
+        "tidepool-extract not found on PATH and no flake.nix in any parent directory".to_string()
+    })?;
+
+    let mut cmd = Command::new("nix");
+    cmd.args([
+        "run",
+        &format!("{}#tidepool-extract", flake_root.display()),
+        "--",
+    ]);
+    cmd.arg(hs_path);
+    cmd.arg("--output-dir");
+    cmd.arg(output_dir);
+    if let Some(name) = target {
+        cmd.arg("--target");
+        cmd.arg(name);
+    }
+
+    match cmd.output() {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!(
+                "nix run tidepool-extract failed (exit {}):\n{}",
+                output.status, stderr
+            ))
+        }
+        Err(e) => Err(format!(
+            "Failed to run nix: {}. Is nix installed?",
+            e
+        )),
     }
 }
 

@@ -13,6 +13,12 @@ data TExpr
   | TIf TExpr TExpr TExpr
   | TBinOp Int TExpr TExpr
 
+data EvalError
+  = TypeError String
+  | UndefinedVar String
+  | NotAFunction
+  | ArityError String
+
 data TVal
   = VInt Int
   | VStr String
@@ -20,3 +26,4 @@ data TVal
   | VList [TVal]
   | VUnit
   | VFun [String] TExpr
+  | VError EvalError

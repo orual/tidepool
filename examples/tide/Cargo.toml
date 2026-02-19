@@ -15,6 +15,7 @@ tidepool-macro = { path = "../../tidepool-macro" }
 codegen = { path = "../../codegen" }
 frunk = "0.4"
 ureq = "2"
+rustyline = "15"
 
 [package.metadata.tidepool]
 haskell-deps = ["freer-simple"]

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 
 use core_bridge::ToCore;
 use core_bridge_derive::FromCore;
@@ -16,14 +15,20 @@ pub enum ReplReq {
     Display(String),
 }
 
+enum InputSource {
+    Interactive(rustyline::DefaultEditor),
+    File { lines: Vec<String>, pos: usize },
+}
+
 pub struct ReplHandler {
-    lines: Vec<String>,
-    pos: usize,
+    source: InputSource,
 }
 
 impl ReplHandler {
     pub fn new() -> Self {
-        ReplHandler { lines: Vec::new(), pos: 0 }
+        ReplHandler {
+            source: InputSource::Interactive(rustyline::DefaultEditor::new().unwrap()),
+        }
     }
 
     pub fn from_file(path: &str) -> Self {
@@ -34,7 +39,9 @@ impl ReplHandler {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .collect();
-        ReplHandler { lines, pos: 0 }
+        ReplHandler {
+            source: InputSource::File { lines, pos: 0 },
+        }
     }
 }
 
@@ -44,41 +51,54 @@ impl EffectHandler for ReplHandler {
     fn handle(&mut self, req: ReplReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             ReplReq::ReadLine => {
-                let line = if self.lines.is_empty() {
-                    // Interactive mode: read from stdin
-                    print!("tide> ");
-                    std::io::stdout().flush().ok();
-                    let mut input = String::new();
-                    let n = std::io::stdin().read_line(&mut input).unwrap_or(0);
-                    if n == 0 { None } else {
-                        let t = input.trim().to_string();
-                        if t.is_empty() { None } else { Some(t) }
-                    }
-                } else {
-                    // File mode: consume next line
-                    if self.pos < self.lines.len() {
-                        let l = self.lines[self.pos].clone();
-                        self.pos += 1;
-                        Some(l)
-                    } else {
-                        None
-                    }
-                };
-
-                match line {
-                    None => cx.respond(None::<Value>),
-                    Some(text) => match crate::parser::parse(&text) {
-                        Ok(expr) => {
-                            let val = expr.to_value(cx.table()).map_err(|e| {
-                                EffectError::Handler(format!("ToCore failed: {:?}", e))
-                            })?;
-                            cx.respond(Some(val))
+                match &mut self.source {
+                    InputSource::Interactive(editor) => {
+                        // Loop on parse errors so the user can retry
+                        loop {
+                            match editor.readline("tide> ") {
+                                Ok(line) => {
+                                    let t = line.trim().to_string();
+                                    if t.is_empty() {
+                                        continue;
+                                    }
+                                    editor.add_history_entry(&t).ok();
+                                    match crate::parser::parse(&t) {
+                                        Ok(expr) => {
+                                            let val = expr.to_value(cx.table()).map_err(|e| {
+                                                EffectError::Handler(format!("ToCore failed: {:?}", e))
+                                            })?;
+                                            break cx.respond(Some(val));
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Parse error: {}", e);
+                                            // loop: re-prompt
+                                        }
+                                    }
+                                }
+                                Err(_) => break cx.respond(None::<Value>),
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("Parse error: {}", e);
+                    }
+                    InputSource::File { lines, pos } => {
+                        if *pos < lines.len() {
+                            let text = lines[*pos].clone();
+                            *pos += 1;
+                            match crate::parser::parse(&text) {
+                                Ok(expr) => {
+                                    let val = expr.to_value(cx.table()).map_err(|e| {
+                                        EffectError::Handler(format!("ToCore failed: {:?}", e))
+                                    })?;
+                                    cx.respond(Some(val))
+                                }
+                                Err(e) => {
+                                    eprintln!("Parse error: {}", e);
+                                    cx.respond(None::<Value>)
+                                }
+                            }
+                        } else {
                             cx.respond(None::<Value>)
                         }
-                    },
+                    }
                 }
             }
             ReplReq::Display(s) => {

@@ -1,5 +1,5 @@
 {-# LANGUAGE DataKinds, TypeOperators #-}
-module Eval (eval, repl, showVal, showInt) where
+module Eval (eval, repl, showVal, showInt, showError) where
 
 import Types
 import Effects
@@ -33,15 +33,24 @@ digitToChar d = case d of
   9 -> '9'
   _ -> '?'
 
+-- | Show an evaluation error.
+showError :: EvalError -> String
+showError e = case e of
+  TypeError s    -> "Type error: " ++ s
+  UndefinedVar x -> "Undefined: " ++ x
+  NotAFunction   -> "not a function"
+  ArityError s   -> s
+
 -- | Convert TVal to display string.
 showVal :: TVal -> String
 showVal v = case v of
-  VInt n    -> showInt n
-  VStr s    -> s
-  VBool b   -> if b then "true" else "false"
-  VUnit     -> "()"
-  VFun _ _  -> "<function>"
-  VList vs  -> "[" ++ showListVals vs ++ "]"
+  VInt n     -> showInt n
+  VStr s     -> s
+  VBool b    -> if b then "true" else "false"
+  VUnit      -> "()"
+  VFun _ _   -> "<function>"
+  VList vs   -> "[" ++ showListVals vs ++ "]"
+  VError e   -> "<error: " ++ showError e ++ ">"
 
 showListVals :: [TVal] -> String
 showListVals xs = case xs of
@@ -65,7 +74,7 @@ eval expr = case expr of
     mval <- envLookup x
     case mval of
       Just v  -> pure v
-      Nothing -> pure (VStr ("Undefined: " ++ x))
+      Nothing -> pure (VError (UndefinedVar x))
   TList es -> do
     vs <- evalList es
     pure (VList vs)
@@ -91,7 +100,7 @@ eval expr = case expr of
     case cv of
       VBool True  -> eval t
       VBool False -> eval e
-      _           -> pure (VStr "Error: non-boolean condition")
+      _           -> pure (VError (TypeError "non-boolean condition"))
 
 -- | Evaluate a list of expressions (explicit recursion, no map/traverse).
 evalList :: [TExpr] -> Eff TideEffs [TVal]
@@ -118,14 +127,14 @@ evalBinOp opId lv rv = case opId of
   10 -> case lv of
     VStr a -> case rv of
       VStr b -> pure (VStr (a ++ b))
-      _      -> pure (VStr "Type error: ++ expects strings")
-    _      -> pure (VStr "Type error: ++ expects strings")
-  _ -> pure (VStr "Unknown operator")
+      _      -> pure (VError (TypeError "++ expects strings"))
+    _      -> pure (VError (TypeError "++ expects strings"))
+  _ -> pure (VError (TypeError ("unknown operator: " ++ showInt opId)))
 
 -- | Apply integer binary operation.
 intOp :: TVal -> TVal -> (Int -> Int -> TVal) -> Eff TideEffs TVal
 intOp (VInt a) (VInt b) f = pure (f a b)
-intOp _ _ _ = pure (VStr "Type error: expected integers")
+intOp _ _ _ = pure (VError (TypeError "expected integers"))
 
 -- | Value equality (structural).
 valEq :: TVal -> TVal -> Bool
@@ -151,7 +160,7 @@ applyFun fv args = case fv of
   VFun params body -> do
     bindParams params args
     eval body
-  _ -> pure (VStr "Error: not a function")
+  _ -> pure (VError NotAFunction)
 
 -- | Bind parameters in environment.
 bindParams :: [String] -> [TVal] -> Eff TideEffs ()
@@ -170,36 +179,36 @@ evalBuiltin bId args = case bId of
     (v:[]) -> do
       printLine (showVal v)
       pure VUnit
-    _ -> pure (VStr "print: 1 arg expected")
+    _ -> pure (VError (ArityError "print: 1 arg expected"))
   1 -> case args of
     (VStr url : []) -> do
       s <- httpGet url
       pure (VStr s)
-    _ -> pure (VStr "fetch: string arg expected")
+    _ -> pure (VError (ArityError "fetch: string arg expected"))
   2 -> case args of
     (VStr path : []) -> do
       s <- fsRead path
       pure (VStr s)
-    _ -> pure (VStr "read_file: string arg expected")
+    _ -> pure (VError (ArityError "read_file: string arg expected"))
   3 -> case args of
     (VStr path : VStr contents : []) -> do
       fsWrite path contents
       pure VUnit
-    _ -> pure (VStr "write_file: 2 string args expected")
+    _ -> pure (VError (ArityError "write_file: 2 string args expected"))
   4 -> case args of
     (VList vs : []) -> pure (VInt (listLength vs))
     (VStr s : [])   -> pure (VInt (listLength s))
-    _ -> pure (VStr "len: list or string expected")
+    _ -> pure (VError (ArityError "len: list or string expected"))
   5 -> case args of
     (v:[]) -> pure (VStr (showVal v))
-    _ -> pure (VStr "str: 1 arg expected")
+    _ -> pure (VError (ArityError "str: 1 arg expected"))
   6 -> case args of
     (VInt n : []) -> pure (VInt n)
-    _ -> pure (VStr "int: numeric arg expected")
+    _ -> pure (VError (ArityError "int: numeric arg expected"))
   7 -> case args of
     (VStr a : VStr b : []) -> pure (VStr (a ++ b))
-    _ -> pure (VStr "concat: 2 string args expected")
-  _ -> pure (VStr ("Unknown builtin: " ++ showInt bId))
+    _ -> pure (VError (ArityError "concat: 2 string args expected"))
+  _ -> pure (VError (TypeError ("unknown builtin: " ++ showInt bId)))
 
 -- | Main REPL loop.
 repl :: Eff TideEffs ()
@@ -210,6 +219,7 @@ repl = do
     Just expr -> do
       val <- eval expr
       case val of
-        VUnit -> pure ()
-        _     -> display (showVal val)
+        VUnit    -> pure ()
+        VError e -> display ("Error: " ++ showError e)
+        _        -> display (showVal val)
       repl
