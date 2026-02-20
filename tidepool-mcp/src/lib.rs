@@ -176,6 +176,27 @@ fn template_haskell(
 }
 
 // ---------------------------------------------------------------------------
+// Error formatting
+// ---------------------------------------------------------------------------
+
+fn format_panic_payload(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else {
+        "unknown panic".to_string()
+    }
+}
+
+fn format_error_with_source(title: &str, error: &str, source: &str) -> String {
+    format!(
+        "## {}\n{}\n\n## Compiled Source\n```haskell\n{}\n```",
+        title, error, source
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Server internals
 // ---------------------------------------------------------------------------
 
@@ -217,39 +238,60 @@ impl<'a> DispatchEffect<()> for HandlerWrapper<'a> {
 
 impl TidepoolMcpServerImpl {
     async fn eval(&self, req: EvalRequest) -> Result<CallToolResult, McpError> {
-        let source = template_haskell(
+        tracing::info!(lines = req.source.len(), "eval request");
+        let source: Arc<str> = template_haskell(
             &self.haskell_preamble,
             &self.effect_stack_type,
             &req.source,
             &req.imports,
             &req.helpers,
-        );
+        )
+        .into();
 
         let mut handlers = dyn_clone::clone_box(&*self.handler_factory);
         let include_refs: Vec<PathBuf> = self.include.clone();
+        let source_for_blocking = Arc::clone(&source);
 
         let result = tokio::task::spawn_blocking(move || {
             let include_paths: Vec<&Path> = include_refs.iter().map(|p| p.as_path()).collect();
             let mut wrapper = HandlerWrapper(handlers.as_mut());
-            tidepool_runtime::compile_and_run(
-                &source,
-                "result",
-                &include_paths,
-                &mut wrapper,
-                &(),
-            )
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tidepool_runtime::compile_and_run(
+                    &source_for_blocking,
+                    "result",
+                    &include_paths,
+                    &mut wrapper,
+                    &(),
+                )
+            }))
         })
         .await
         .map_err(|e| McpError::internal_error(format!("task join error: {}", e), None))?;
 
         match result {
-            Ok(eval_result) => Ok(CallToolResult::success(vec![Content::text(
-                eval_result.to_string_pretty(),
-            )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("{}", e))])),
+            Ok(Ok(eval_result)) => {
+                tracing::info!("eval succeeded");
+                Ok(CallToolResult::success(vec![Content::text(
+                    eval_result.to_string_pretty(),
+                )]))
+            }
+            Ok(Err(e)) => {
+                let error_msg = format_error_with_source("Error", &e.to_string(), &source);
+                tracing::error!("eval failed: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(error_msg)]))
+            }
+            Err(panic_payload) => {
+                let panic_msg = format_panic_payload(panic_payload);
+                let error_msg = format_error_with_source(
+                    "Error",
+                    &format!("Internal panic: {}", panic_msg),
+                    &source,
+                );
+                tracing::error!("eval panicked: {}", panic_msg);
+                Ok(CallToolResult::error(vec![Content::text(error_msg)]))
+            }
         }
     }
-
 }
 
 impl ServerHandler for TidepoolMcpServerImpl {
@@ -448,5 +490,34 @@ mod tests {
         let desc = build_eval_tool_description(&effects);
         assert!(desc.contains("Console: Print to console"));
         assert!(desc.contains("Print :: String -> Console ()"));
+    }
+
+    #[test]
+    fn test_format_panic_payload() {
+        use std::any::Any;
+
+        let s = "string panic".to_string();
+        let payload: Box<dyn Any + Send> = Box::new(s);
+        assert_eq!(format_panic_payload(payload), "string panic");
+
+        let s = "str panic";
+        let payload: Box<dyn Any + Send> = Box::new(s);
+        assert_eq!(format_panic_payload(payload), "str panic");
+
+        let payload: Box<dyn Any + Send> = Box::new(42);
+        assert_eq!(format_panic_payload(payload), "unknown panic");
+    }
+
+    #[test]
+    fn test_format_error_with_source() {
+        let title = "Error";
+        let error = "Type mismatch";
+        let source = "main = pure ()";
+        let formatted = format_error_with_source(title, error, source);
+
+        assert!(formatted.contains("## Error"));
+        assert!(formatted.contains("Type mismatch"));
+        assert!(formatted.contains("## Compiled Source"));
+        assert!(formatted.contains("```haskell\nmain = pure ()\n```"));
     }
 }
