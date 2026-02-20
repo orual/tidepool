@@ -138,7 +138,8 @@ translateBinds binds = concatMap translateBind binds
 translateModule :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon)
 translateModule allBinds targetName =
   let targetId = findTargetId targetName allBinds
-      (_, finalState) = runState (wrapAllBinds allBinds targetId) (TransState Seq.empty Map.empty Set.empty 0)
+      neededBinds = reachableBinds allBinds targetId
+      (_, finalState) = runState (wrapAllBinds neededBinds targetId) (TransState Seq.empty Map.empty Set.empty 0)
   in (tsNodes finalState, tsUsedDCs finalState)
   where
     findTargetId name binds =
@@ -163,6 +164,49 @@ translateModule allBinds targetName =
     isMetadataBinder b =
       let name = occNameString (nameOccName (idName b))
       in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "$cShow"]
+
+    -- | Filter bindings to only those transitively reachable from the target.
+    -- BFS/DFS from the target binding's free variables, collecting all binding
+    -- groups that are transitively referenced. Preserves original ordering.
+    reachableBinds :: [CoreBind] -> Id -> [CoreBind]
+    reachableBinds binds target =
+      let -- For each binding group, collect binder keys and free variable keys
+          bindInfo :: [(CoreBind, Set.Set Word64, Set.Set Word64)]
+          bindInfo = map (\bind ->
+            let pairs = case bind of
+                  NonRec b rhs -> [(b, rhs)]
+                  Rec ps       -> ps
+                bkeys = Set.fromList [varId b | (b, _) <- pairs]
+                fvs = Set.unions [exprFreeVarKeys rhs | (_, rhs) <- pairs]
+            in (bind, bkeys, fvs)) binds
+
+          -- Map from binder key -> index into bindInfo
+          keyToIdx :: Map.Map Word64 Int
+          keyToIdx = Map.fromList
+            [(k, i) | (i, (_, bkeys, _)) <- zip [0..] bindInfo, k <- Set.toList bkeys]
+
+          -- DFS collecting reachable bind-group indices
+          go :: Set.Set Int -> [Word64] -> Set.Set Int
+          go visited [] = visited
+          go visited (v:vs) = case Map.lookup v keyToIdx of
+            Just idx | not (Set.member idx visited) ->
+              let (_, _, fvs) = bindInfo !! idx
+              in go (Set.insert idx visited) (Set.toList fvs ++ vs)
+            _ -> go visited vs
+
+          targetKey = varId target
+          reachable = case Map.lookup targetKey keyToIdx of
+            Just idx ->
+              let (_, _, fvs) = bindInfo !! idx
+              in go (Set.singleton idx) (Set.toList fvs)
+            Nothing -> Set.empty
+      in [bind | (i, (bind, _, _)) <- zip [0..] bindInfo, Set.member i reachable]
+
+    -- | Extract free variable keys (as Word64) from a Core expression.
+    exprFreeVarKeys :: CoreExpr -> Set.Set Word64
+    exprFreeVarKeys expr =
+      let fvs = exprSomeFreeVars (const True) expr
+      in Set.fromList [varId v | v <- nonDetEltsUniqSet fvs]
 
     wrapAllBinds :: [CoreBind] -> Id -> TransM Int
     wrapAllBinds [] target = emitNode (NVar (varId target))
