@@ -60,15 +60,19 @@ impl EmitContext {
         vmctx: Value,
         gc_sig: ir::SigRef,
         tree: &CoreExpr,
-        idx: usize,
+        mut idx: usize,
     ) -> Result<SsaVal, EmitError> {
+        // Iterative tail-position loop: LetNonRec/LetRec body is in tail position,
+        // so we iterate instead of recursing to avoid stack overflow on deep let-chains.
+        let mut let_cleanup: Vec<LetCleanup> = Vec::new();
+        let result = loop {
         match &tree.nodes[idx] {
             CoreFrame::Lit(Literal::LitString(bytes)) => {
-                emit_lit_string(pipeline, builder, vmctx, gc_sig, bytes, &mut self.lambda_counter)
+                break emit_lit_string(pipeline, builder, vmctx, gc_sig, bytes, &mut self.lambda_counter);
             }
-            CoreFrame::Lit(lit) => emit_lit(builder, vmctx, gc_sig, lit),
+            CoreFrame::Lit(lit) => break emit_lit(builder, vmctx, gc_sig, lit),
             CoreFrame::Var(vid) => {
-                match self.env.get(vid).copied() {
+                break match self.env.get(vid).copied() {
                     Some(v) => Ok(v),
                     None => {
                         // Check for well-known runtime error VarIds (tag 'E' = 0x45)
@@ -111,7 +115,7 @@ impl EmitContext {
                         let result = builder.inst_results(inst)[0];
                         Ok(SsaVal::HeapPtr(result))
                     }
-                }
+                };
             }
             CoreFrame::Con { tag, fields } => {
                 let mut field_vals = Vec::new();
@@ -139,14 +143,14 @@ impl EmitContext {
                 }
 
                 builder.declare_value_needs_stack_map(ptr);
-                Ok(SsaVal::HeapPtr(ptr))
+                break Ok(SsaVal::HeapPtr(ptr));
             }
             CoreFrame::PrimOp { op, args } => {
                 let mut arg_vals = Vec::new();
                 for &a_idx in args {
                     arg_vals.push(self.emit_node(pipeline, builder, vmctx, gc_sig, tree, a_idx)?);
                 }
-                primop::emit_primop(builder, op, &arg_vals)
+                break primop::emit_primop(builder, op, &arg_vals);
             }
             CoreFrame::App { fun, arg } => {
                 let fun_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *fun)?;
@@ -166,7 +170,7 @@ impl EmitContext {
                 let inst = builder.ins().call_indirect(call_sig, code_ptr, &[vmctx, fun_ptr, arg_ptr]);
                 let ret_val = builder.inst_results(inst)[0];
                 builder.declare_value_needs_stack_map(ret_val);
-                Ok(SsaVal::HeapPtr(ret_val))
+                break Ok(SsaVal::HeapPtr(ret_val));
             }
             CoreFrame::Lam { binder, body } => {
                 let body_tree = tree.extract_subtree(*body);
@@ -256,7 +260,7 @@ impl EmitContext {
                 }
 
                 builder.declare_value_needs_stack_map(closure_ptr);
-                Ok(SsaVal::HeapPtr(closure_ptr))
+                break Ok(SsaVal::HeapPtr(closure_ptr));
             }
             CoreFrame::LetNonRec { binder, rhs, body } => {
                 // Dead code elimination: skip RHS if binder is unused in body.
@@ -269,13 +273,12 @@ impl EmitContext {
                 if body_fvs.contains(binder) {
                     let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs)?;
                     self.env.insert(*binder, rhs_val);
-                    let body_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)?;
-                    self.env.remove(binder);
-                    Ok(body_val)
+                    let_cleanup.push(LetCleanup::Single(*binder));
                 } else {
                     // Binder unused — skip RHS entirely
-                    self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)
                 }
+                idx = *body;
+                continue;
             }
             CoreFrame::LetRec { bindings, body } => {
                 // Split bindings: Lam/Con need 3-phase pre-allocation (recursive),
@@ -292,11 +295,9 @@ impl EmitContext {
 
                 // If no recursive bindings remain, just emit body
                 if rec_bindings.is_empty() {
-                    let body_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)?;
-                    for (binder, _) in bindings {
-                        self.env.remove(binder);
-                    }
-                    return Ok(body_val);
+                    let_cleanup.push(LetCleanup::Rec(bindings.iter().map(|(b, _)| *b).collect()));
+                    idx = *body;
+                    continue;
                 }
 
                 // Phase 1: Pre-allocate all recursive bindings (Lam and Con)
@@ -450,23 +451,35 @@ impl EmitContext {
                     }
                 }
 
-                let body_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *body)?;
-                for (binder, _) in bindings {
-                    self.env.remove(binder);
-                }
-                Ok(body_val)
+                let_cleanup.push(LetCleanup::Rec(bindings.iter().map(|(b, _)| *b).collect()));
+                idx = *body;
+                continue;
             }
             CoreFrame::Case { scrutinee, binder, alts } => {
-                crate::emit::case::emit_case(self, pipeline, builder, vmctx, gc_sig, tree, *scrutinee, binder, alts)
+                break crate::emit::case::emit_case(self, pipeline, builder, vmctx, gc_sig, tree, *scrutinee, binder, alts);
             }
             CoreFrame::Join { label, params, rhs, body } => {
-                crate::emit::join::emit_join(self, pipeline, builder, vmctx, gc_sig, tree, label, params, *rhs, *body)
+                break crate::emit::join::emit_join(self, pipeline, builder, vmctx, gc_sig, tree, label, params, *rhs, *body);
             }
             CoreFrame::Jump { label, args } => {
-                crate::emit::join::emit_jump(self, pipeline, builder, vmctx, gc_sig, tree, label, args)
+                break crate::emit::join::emit_jump(self, pipeline, builder, vmctx, gc_sig, tree, label, args);
             }
         }
+        }; // end loop
+        // Clean up let-bindings in reverse order
+        for cleanup in let_cleanup.into_iter().rev() {
+            match cleanup {
+                LetCleanup::Single(var) => { self.env.remove(&var); }
+                LetCleanup::Rec(vars) => { for var in vars { self.env.remove(&var); } }
+            }
+        }
+        result
     }
+}
+
+enum LetCleanup {
+    Single(VarId),
+    Rec(Vec<VarId>),
 }
 
 fn emit_lit(
