@@ -32,6 +32,7 @@ import GHC.Types.Basic (JoinPointHood(..))
 import GHC.Utils.Outputable (showPprUnsafe)
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
 import Data.Char (ord)
+import Data.List (isPrefixOf)
 import Data.Bits ((.&.), (.|.), shiftL)
 import Data.Word
 import Data.Int
@@ -150,16 +151,26 @@ translateModule allBinds targetName =
     bindersOf (NonRec b _) = [b]
     bindersOf (Rec pairs)  = map fst pairs
 
+    -- | Skip GHC-generated metadata bindings ($trModule, $krep, $tc*).
+    -- These are Typeable / module-info bindings that reference unpackCString#
+    -- and are never needed at runtime. Worker-wrappers ($w*) and
+    -- specializations ($s*) must be kept.
+    isMetadataBinder :: Id -> Bool
+    isMetadataBinder b =
+      let name = occNameString (nameOccName (idName b))
+      in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "$cShow"]
+
     wrapAllBinds :: [CoreBind] -> Id -> TransM Int
     wrapAllBinds [] target = emitNode (NVar (varId target))
     wrapAllBinds (NonRec b rhs : rest) target
       | isTyVar b = wrapAllBinds rest target  -- skip type bindings
+      | isMetadataBinder b = wrapAllBinds rest target  -- skip $trModule etc.
       | otherwise = do
           rhsIdx <- translate rhs
           bodyIdx <- wrapAllBinds rest target
           emitNode (NLetNonRec (varId b) rhsIdx bodyIdx)
     wrapAllBinds (Rec pairs : rest) target = do
-      let valPairs = filter (not . isTyVar . fst) pairs
+      let valPairs = filter (\(b, _) -> not (isTyVar b) && not (isMetadataBinder b)) pairs
       if null valPairs
         then wrapAllBinds rest target
         else do
@@ -268,9 +279,8 @@ translate expr =
     -- cons cells, enabling case matching and (++) to work correctly.
     Var v | isUnpackCStringVar v
           , [arg] <- args
-          , Lit l <- arg -> do
-        let bytes = litStringBytes l
-            consId = varId (dataConWorkId consDataCon)
+          , Just bytes <- extractAddrLitBytes arg -> do
+        let consId = varId (dataConWorkId consDataCon)
             nilId  = varId (dataConWorkId nilDataCon)
             charId = varId (dataConWorkId charDataCon)
         recordDC consDataCon
@@ -287,10 +297,9 @@ translate expr =
     -- (:) 'p' ((:) 'r' (... ((:) 'x' suffix)))
     Var v | isUnpackAppendCStringVar v
           , [litArg, suffixArg] <- args
-          , Lit l <- litArg -> do
+          , Just bytes <- extractAddrLitBytes litArg -> do
         suffixIdx <- translate suffixArg
-        let bytes = litStringBytes l
-            consId = varId (dataConWorkId consDataCon)
+        let consId = varId (dataConWorkId consDataCon)
             charId = varId (dataConWorkId charDataCon)
         recordDC consDataCon
         recordDC charDataCon
@@ -759,10 +768,18 @@ isUnpackAppendCStringVar v =
   let name = occNameString (nameOccName (idName v))
   in name == "unpackAppendCString#"
 
--- | Extract raw bytes from a GHC string literal.
-litStringBytes :: Literal -> [Word8]
-litStringBytes (LitString bs) = BS.unpack bs
-litStringBytes _ = []
+-- | Extract Addr# literal bytes from an expression.
+-- Handles both direct Lit and Var with an unfolding to Lit
+-- (GHC -O2 let-floats Addr# literals into separate bindings).
+extractAddrLitBytes :: CoreExpr -> Maybe [Word8]
+extractAddrLitBytes (Lit (LitString bs)) = Just (BS.unpack bs)
+extractAddrLitBytes (Var v) =
+  case maybeUnfoldingTemplate (idUnfolding v) of
+    Just (Lit (LitString bs)) -> Just (BS.unpack bs)
+    _ -> case maybeUnfoldingTemplate (realIdUnfolding v) of
+      Just (Lit (LitString bs)) -> Just (BS.unpack bs)
+      _ -> Nothing
+extractAddrLitBytes _ = Nothing
 
 primOpArity :: PrimOp -> Int
 primOpArity op = let (_, _, _, a, _) = primOpSig op in a
