@@ -49,6 +49,7 @@ fn run(args: Args) -> Result<()> {
     };
 
     // JIT-compile the CoreExpr to native code.
+    println!("Compiling with Cranelift...");
     let mut vm = JitEffectMachine::compile(&expr, &table, 4 << 20)
         .context("JIT compilation failed")?;
 

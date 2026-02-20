@@ -14,6 +14,8 @@ data Console a where
 data Env a where
   EnvLookup :: String -> Env (Maybe TVal)
   EnvExtend :: String -> TVal -> Env ()
+  EnvRemove :: String -> Env ()
+  EnvSnapshot :: Env [(String, TVal)]
 
 data Net a where
   HttpGet :: String -> Net String
@@ -36,6 +38,12 @@ envLookup s = send (EnvLookup s)
 
 envExtend :: Member Env effs => String -> TVal -> Eff effs ()
 envExtend k v = send (EnvExtend k v)
+
+envRemove :: Member Env effs => String -> Eff effs ()
+envRemove k = send (EnvRemove k)
+
+envSnapshot :: Member Env effs => Eff effs [(String, TVal)]
+envSnapshot = send EnvSnapshot
 
 httpGet :: Member Net effs => String -> Eff effs String
 httpGet url = send (HttpGet url)

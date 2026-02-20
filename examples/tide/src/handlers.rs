@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
+use url::Url;
 
 use core_bridge::ToCore;
 use core_bridge_derive::FromCore;
@@ -24,6 +26,12 @@ impl From<TideError> for EffectError {
     fn from(e: TideError) -> Self {
         EffectError::Handler(e.to_string())
     }
+}
+
+/// Parse a user-provided string into a URL, prepending `https://` if no scheme is given.
+fn parse_url(raw: &str) -> Result<Url, TideError> {
+    Url::parse(raw).or_else(|_| Url::parse(&format!("https://{}", raw)))
+        .map_err(|e| TideError::Http(format!("invalid URL '{}': {}", raw, e)))
 }
 
 // === Tag 0: Repl ===
@@ -214,6 +222,10 @@ pub enum EnvReq {
     EnvLookup(String),
     #[core(name = "EnvExtend")]
     EnvExtend(String, Value),
+    #[core(name = "EnvRemove")]
+    EnvRemove(String),
+    #[core(name = "EnvSnapshot")]
+    EnvSnapshot,
 }
 
 pub struct EnvHandler {
@@ -243,6 +255,18 @@ impl EffectHandler for EnvHandler {
                 self.env.insert(key, val);
                 cx.respond(())
             }
+            EnvReq::EnvRemove(key) => {
+                debug!("Remove: {}", key);
+                self.env.remove(&key);
+                cx.respond(())
+            }
+            EnvReq::EnvSnapshot => {
+                debug!("Snapshot: {} bindings", self.env.len());
+                let pairs: Vec<(String, Value)> = self.env.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                cx.respond(pairs)
+            }
         }
     }
 }
@@ -262,13 +286,14 @@ impl EffectHandler for NetHandler {
 
     fn handle(&mut self, req: NetReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
-            NetReq::HttpGet(url) => {
+            NetReq::HttpGet(raw) => {
+                let url = parse_url(&raw)?;
                 info!("GET {}", url);
-                let body = ureq::get(&url)
+                let body = ureq::get(url.as_str())
                     .call()
-                    .map_err(|e| TideError::Http(format!("HTTP error: {}", e)))?
+                    .map_err(|e| TideError::Http(e.to_string()))?
                     .into_string()
-                    .map_err(|e| TideError::Http(format!("Read error: {}", e)))?;
+                    .map_err(|e| TideError::Http(e.to_string()))?;
                 cx.respond(body)
             }
         }
@@ -293,12 +318,14 @@ impl EffectHandler for FsHandler {
     fn handle(&mut self, req: FsReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             FsReq::FsRead(path) => {
-                info!("Reading file: {}", path);
+                let path = PathBuf::from(path);
+                info!("Reading file: {}", path.display());
                 let contents = std::fs::read_to_string(&path).map_err(TideError::from)?;
                 cx.respond(contents)
             }
             FsReq::FsWrite(path, contents) => {
-                info!("Writing file: {}", path);
+                let path = PathBuf::from(path);
+                info!("Writing file: {}", path.display());
                 std::fs::write(&path, &contents).map_err(TideError::from)?;
                 cx.respond(())
             }

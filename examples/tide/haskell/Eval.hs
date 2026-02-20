@@ -48,7 +48,7 @@ showVal v = case v of
   VStr s     -> s
   VBool b    -> if b then "true" else "false"
   VUnit      -> "()"
-  VFun _ _   -> "<function>"
+  VFun _ _ _ -> "<function>"
   VList vs   -> "[" ++ showListVals vs ++ "]"
   VError e   -> "<error: " ++ showError e ++ ">"
 
@@ -92,14 +92,15 @@ eval expr = case expr of
     result <- eval body
     case old of
       Just prev -> envExtend name prev
-      Nothing   -> pure ()
+      Nothing   -> envRemove name
     pure result
   TBind name e -> do
     v <- eval e
     envExtend name v
     pure v
-  TLam params body ->
-    pure (VFun params body)
+  TLam params body -> do
+    caps <- envSnapshot
+    pure (VFun params body caps)
   TApp f args -> do
     fv <- eval f
     vs <- evalList args
@@ -165,12 +166,16 @@ strEq xs ys = case xs of
 -- | Apply function value to arguments.
 applyFun :: TVal -> [TVal] -> Eff TideEffs TVal
 applyFun fv args = case fv of
-  VFun params body -> do
-    -- Save old bindings for params, bind new values, eval, restore
-    olds <- saveParams params
+  VFun params body caps -> do
+    -- Collect all names we'll modify (params + captured vars)
+    let capNames = mapFst caps
+    let allNames = params ++ capNames
+    olds <- saveParams allNames
+    -- Restore captured environment, then bind params on top
+    restoreCaps caps
     bindParams params args
     result <- eval body
-    restoreParams params olds
+    restoreParams allNames olds
     pure result
   _ -> pure (VError NotAFunction)
 
@@ -191,7 +196,7 @@ restoreParams ps olds = case (ps, olds) of
   (p:prest, o:orest) -> do
     case o of
       Just prev -> envExtend p prev
-      Nothing   -> pure ()
+      Nothing   -> envRemove p
     restoreParams prest orest
 
 -- | Bind parameters in environment.
@@ -240,6 +245,20 @@ evalBuiltin bid args = case bid of
   BConcat -> case args of
     (VStr a : VStr b : []) -> pure (VStr (a ++ b))
     _ -> pure (VError (ArityError "concat: 2 string args expected"))
+
+-- | Extract first elements from a list of pairs.
+mapFst :: [(a, b)] -> [a]
+mapFst xs = case xs of
+  []          -> []
+  ((a, _):rest) -> a : mapFst rest
+
+-- | Restore captured variable bindings into the environment.
+restoreCaps :: Member Env effs => [(String, TVal)] -> Eff effs ()
+restoreCaps caps = case caps of
+  []            -> pure ()
+  ((k, v):rest) -> do
+    envExtend k v
+    restoreCaps rest
 
 -- | Main REPL loop.
 repl :: Eff TideEffs ()

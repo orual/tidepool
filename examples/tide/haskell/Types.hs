@@ -33,5 +33,5 @@ data TVal
   | VBool Bool
   | VList [TVal]
   | VUnit
-  | VFun [String] TExpr
+  | VFun [String] TExpr [(String, TVal)]
   | VError EvalError
