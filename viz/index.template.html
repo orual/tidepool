@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tidepool Build Story</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e2e2e8;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    overflow: hidden; height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  #header {
+    display: flex; align-items: center; gap: 16px; padding: 8px 20px;
+    background: #161b22; border-bottom: 1px solid #21262d;
+    font-size: 12px; flex-shrink: 0;
+  }
+  #header .title { font-size: 15px; font-weight: 600; color: #a78bfa; }
+  #header .stat { display: flex; align-items: center; gap: 4px; }
+  #header .stat-val { font-weight: 600; }
+  #breadcrumb {
+    padding: 6px 20px; background: #0d1117;
+    border-bottom: 1px solid #161b22;
+    font-size: 11px; color: #484f58; flex-shrink: 0;
+  }
+  #breadcrumb span { cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+  #breadcrumb span:hover { background: #21262d; color: #8b949e; }
+  #breadcrumb .sep { color: #30363d; cursor: default; padding: 0 2px; }
+  #breadcrumb .sep:hover { background: none; }
+  #main-wrap { display: flex; flex: 1; overflow: hidden; }
+  #chart { flex: 1; display: block; min-width: 0; }
+  #detail {
+    width: 420px; background: #161b22; border-left: 1px solid #21262d;
+    padding: 16px; overflow-y: auto; flex-shrink: 0;
+  }
+  #detail h2 { font-size: 14px; margin-bottom: 4px; }
+  #detail .meta { font-size: 11px; color: #484f58; margin-bottom: 10px; word-break: break-all; }
+  #detail .wave-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-bottom: 10px;
+  }
+  #detail .pr-card {
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; padding: 10px; margin-bottom: 6px;
+  }
+  #detail .pr-card a { color: #a78bfa; text-decoration: none; font-weight: 600; }
+  #detail .pr-card a:hover { text-decoration: underline; }
+  #detail .pr-body { font-size: 11px; color: #8b949e; margin-top: 6px; line-height: 1.5; word-break: break-word; }
+  #detail .pr-body code { background: #21262d; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+  #detail .pr-body h2, #detail .pr-body h3 { font-size: 12px; color: #e2e2e8; margin: 8px 0 4px; }
+  #detail .pr-body ul { margin: 4px 0; padding-left: 16px; }
+  #detail .pr-body li { margin: 2px 0; }
+  #detail .pr-meta { font-size: 11px; color: #484f58; display: flex; gap: 10px; margin-top: 4px; }
+  #detail .pr-meta .add { color: #3fb950; }
+  #detail .pr-meta .del { color: #f85149; }
+  #detail .child-list { font-size: 11px; color: #8b949e; margin-top: 8px; }
+  #detail .child-list span { display: inline-block; background: #21262d; padding: 1px 6px; border-radius: 3px; margin: 2px; }
+  .cell rect { stroke: #0d1117; stroke-width: 1.5px; cursor: pointer; }
+  .cell rect:hover { filter: brightness(1.15); }
+  .cell rect.selected { stroke: #e2e2e8; stroke-width: 2.5px; }
+  .cell text { pointer-events: none; fill: #e2e2e8; }
+  .cell .sub { fill: #ffffff70; }
+</style>
+<script>window.__GRAPH_DATA__ = %%GRAPH_DATA%%;</script>
+</head>
+<body>
+<div id="header">
+  <span class="title">Tidepool Build Story</span>
+  <span class="stat"><span class="stat-val" id="s-n">0</span> branches</span>
+  <span class="stat"><span class="stat-val" id="s-p">0</span> PRs</span>
+  <span class="stat"><span style="color:#3fb950" class="stat-val" id="s-a">+0</span> / <span style="color:#f85149" class="stat-val" id="s-d">-0</span></span>
+  <span class="stat" style="color:#484f58"><span id="s-w">0</span> waves &middot; <span id="s-days">0</span> days</span>
+</div>
+<div id="breadcrumb"><span>main</span></div>
+<div id="main-wrap">
+  <svg id="chart" width="100%" height="100%"></svg>
+  <div id="detail">
+    <div id="detail-content">
+      <h2 style="color:#484f58">Build Story</h2>
+      <p class="meta">Click a block to see its PR. Double-click to zoom in. Use breadcrumb to zoom out.</p>
+      <p style="font-size:11px;color:#30363d;line-height:1.6;margin-top:12px">
+        Depth flows left &rarr; right. Siblings stack top &rarr; bottom.<br>
+        Color = merge wave (cyan &rarr; purple &rarr; gold).
+      </p>
+    </div>
+  </div>
+</div>
+<script>
+const data = window.__GRAPH_DATA__;
+
+const nodeById = {};
+data.nodes.forEach(n => { nodeById[n.id] = n; });
+
+d3.select('#s-n').text(data.nodes.length);
+d3.select('#s-p').text(data.meta.pr_count);
+d3.select('#s-a').text('+' + data.stats.total_additions.toLocaleString());
+d3.select('#s-d').text('-' + data.stats.total_deletions.toLocaleString());
+
+// === Compute wave numbers from merge timestamps (30-min gap clustering) ===
+const allMerges = data.nodes.flatMap(n => n.prs.filter(p => p.mergedAt).map(p => +new Date(p.mergedAt)));
+allMerges.sort((a, b) => a - b);
+const waveGap = 30 * 60 * 1000; // 30 minutes
+const waveBounds = []; // start times per wave
+allMerges.forEach(t => {
+  if (!waveBounds.length || t - waveBounds[waveBounds.length - 1].last > waveGap) {
+    waveBounds.push({ start: t, last: t });
+  } else {
+    waveBounds[waveBounds.length - 1].last = t;
+  }
+});
+function waveOf(node) {
+  const pr = node.prs && node.prs.find(p => p.mergedAt);
+  if (!pr) return null;
+  const t = +new Date(pr.mergedAt);
+  for (let i = 0; i < waveBounds.length; i++) {
+    if (t <= waveBounds[i].last + waveGap) return i + 1;
+  }
+  return waveBounds.length;
+}
+data.nodes.forEach(n => { n.wave = waveOf(n); });
+const totalWaves = waveBounds.length;
+d3.select('#s-w').text(totalWaves);
+if (allMerges.length >= 2) {
+  const daySpan = Math.max(1, Math.ceil((allMerges[allMerges.length - 1] - allMerges[0]) / (24 * 60 * 60 * 1000)));
+  d3.select('#s-days').text(daySpan);
+} else {
+  d3.select('#s-days').text(allMerges.length ? '1' : '0');
+}
+
+// === Build tree from flat node list ===
+function buildTree() {
+  const treeNodes = {};
+  const parentIds = new Set(data.nodes.map(n => n.parent).filter(Boolean));
+  data.nodes.forEach(n => {
+    treeNodes[n.id] = { name: n.label, id: n.id, value: n.depth > 0 && !parentIds.has(n.id) ? 1 : 0, wave: n.wave, nodeData: n, children: [] };
+  });
+  data.nodes.forEach(n => {
+    if (n.parent && treeNodes[n.parent]) {
+      treeNodes[n.parent].children.push(treeNodes[n.id]);
+    }
+  });
+  // Sort children by wave then name
+  Object.values(treeNodes).forEach(t => {
+    t.children.sort((a, b) => (a.wave || 0) - (b.wave || 0) || a.name.localeCompare(b.name));
+    if (!t.children.length) delete t.children;
+  });
+  return treeNodes['main'];
+}
+
+// === Layout: rotated partition (depth = left→right, siblings = top→bottom) ===
+const root = d3.hierarchy(buildTree())
+  .sum(d => d.value || 0)
+  .each(d => { d._wave = d.data.wave || (d.parent ? d.parent._wave : null); });
+
+const svg = d3.select('#chart');
+const detailW = 420;
+const headerH = document.getElementById('header').offsetHeight + document.getElementById('breadcrumb').offsetHeight;
+const W = Math.max(400, window.innerWidth - detailW);
+const H = Math.max(300, window.innerHeight - headerH);
+
+// partition: x0/x1 = sibling split (we map to screen Y), y0/y1 = depth (we map to screen X)
+d3.partition().size([H, W]).padding(1.5).round(true)(root);
+
+// Compress root band: main gets a thin strip, rest expands to fill
+const rootW = 30; // main only gets 30px
+const origDepth = root.y1 - root.y0;
+const scale = (W - rootW) / (W - origDepth);
+root.each(d => {
+  if (d.depth === 0) {
+    d.y1 = rootW;
+  } else {
+    d.y0 = rootW + (d.y0 - origDepth) * scale;
+    d.y1 = rootW + (d.y1 - origDepth) * scale;
+  }
+});
+
+// === Color ===
+const waveColor = d3.scaleLinear()
+  .domain([1, Math.ceil(totalWaves * 0.35), Math.ceil(totalWaves * 0.65), totalWaves])
+  .range(['#06b6d4', '#818cf8', '#a855f7', '#f59e0b'])
+  .clamp(true);
+
+function getWave(d) { return d._wave || 1; }
+
+function cellFill(d) {
+  if (d.depth === 0) return '#21262d';
+  const base = d3.color(waveColor(getWave(d)));
+  let c = d.children ? base.darker(0.7) : base;
+  // Alternate brightness between sequential wave groups
+  if (d._wgIdx !== undefined && d._wgIdx % 2 === 1) {
+    c = d3.color(c).brighter(0.4);
+  }
+  return c.toString();
+}
+
+// === Hierarchical wave IDs (e.g., "6.2.1") ===
+function assignWaveIds(parent, prefix) {
+  if (!parent.children) return;
+  // Count distinct wave groups
+  let numGroups = 1;
+  for (let i = 1; i < parent.children.length; i++) {
+    if (parent.children[i]._wave !== parent.children[i-1]._wave) numGroups++;
+  }
+  let groupIdx = 0, prevWave = null;
+  parent.children.forEach(child => {
+    if (child._wave !== prevWave) { groupIdx++; prevWave = child._wave; }
+    child._wgIdx = groupIdx - 1;
+    // Only add sub-number when there are multiple wave groups
+    child._hWave = numGroups > 1
+      ? (prefix ? `${prefix}.${groupIdx}` : `${groupIdx}`)
+      : (prefix || `${groupIdx}`);
+    assignWaveIds(child, child._hWave);
+  });
+}
+assignWaveIds(root, '');
+
+// Collect wave boundary positions (between sequential groups)
+const waveSeps = [];
+root.descendants().filter(d => d.children && d.children.length > 1).forEach(parent => {
+  for (let i = 1; i < parent.children.length; i++) {
+    if (parent.children[i]._wave !== parent.children[i-1]._wave) {
+      waveSeps.push({ child: parent.children[i] });
+    }
+  }
+});
+
+// === Render (rotated: y0→screenX, x0→screenY) ===
+const g = svg.append('g');
+const sepG = g.append('g');
+
+// Draw separator lines at wave boundaries
+const seps = sepG.selectAll('.wave-sep')
+  .data(waveSeps)
+  .join('line')
+  .attr('class', 'wave-sep')
+  .attr('x1', d => d.child.y0)
+  .attr('y1', d => d.child.x0 - 0.75)
+  .attr('x2', d => d.child.y1)
+  .attr('y2', d => d.child.x0 - 0.75)
+  .attr('stroke', '#e2e2e8')
+  .attr('stroke-width', 2)
+  .attr('stroke-opacity', 0.2);
+
+const cell = g.selectAll('.cell')
+  .data(root.descendants())
+  .join('g')
+  .attr('class', 'cell')
+  .attr('transform', d => `translate(${d.y0},${d.x0})`);
+
+const rect = cell.append('rect')
+  .attr('width', d => Math.max(0, d.y1 - d.y0))
+  .attr('height', d => Math.max(0, d.x1 - d.x0))
+  .attr('fill', cellFill)
+  .attr('rx', 2);
+
+// Clip paths so text doesn't bleed
+cell.append('clipPath')
+  .attr('id', (d, i) => `cp${i}`)
+  .append('rect')
+  .attr('width', d => Math.max(0, d.y1 - d.y0 - 4))
+  .attr('height', d => Math.max(0, d.x1 - d.x0));
+
+// Primary label
+const label = cell.append('text')
+  .attr('clip-path', (d, i) => `url(#cp${i})`)
+  .attr('x', 5).attr('y', 13)
+  .attr('font-size', d => d.depth <= 1 ? '11px' : '10px')
+  .attr('font-weight', d => d.depth <= 1 ? '600' : '400')
+  .text(d => d.data.name)
+  .style('opacity', d => (d.x1 - d.x0) > 10 && (d.y1 - d.y0) > 20 ? 1 : 0);
+
+// Secondary: PR + additions
+const sub = cell.append('text')
+  .attr('class', 'sub')
+  .attr('clip-path', (d, i) => `url(#cp${i})`)
+  .attr('x', 5).attr('y', 25)
+  .attr('font-size', '9px')
+  .text(d => {
+    const w = d._hWave ? 'W' + d._hWave + '  ' : '';
+    const n = d.data.nodeData;
+    const pr = n && n.prs && n.prs[0] ? '#' + n.prs[0].number + '  ' : '';
+    let add = '';
+    if (n && n.additions) {
+      add = '+' + n.additions.toLocaleString();
+    } else if (d.children) {
+      const sum = d3.sum(d.leaves(), l => (l.data.nodeData ? l.data.nodeData.additions : 0));
+      if (sum > 0) add = '+' + sum.toLocaleString();
+    }
+    return w + pr + add;
+  })
+  .style('opacity', d => (d.x1 - d.x0) > 26 && (d.y1 - d.y0) > 40 ? 1 : 0);
+
+// === Zoom (click to drill in/out) ===
+let focus = root;
+
+function doZoom(p) {
+  if (!p) return;
+  focus = focus === p ? (p.parent || root) : p;
+
+  root.each(d => {
+    d.target = {
+      x0: (d.x0 - focus.x0) / (focus.x1 - focus.x0) * H,
+      x1: (d.x1 - focus.x0) / (focus.x1 - focus.x0) * H,
+      y0: d.y0 - focus.y0,
+      y1: d.y1 - focus.y0
+    };
+  });
+
+  const t = g.transition().duration(500);
+
+  cell.transition(t)
+    .attr('transform', d => `translate(${d.target.y0},${d.target.x0})`)
+    .style('opacity', d => {
+      const h = d.target.x1 - d.target.x0;
+      const w = d.target.y1 - d.target.y0;
+      return d.target.x0 >= -1 && h > 0.5 && w > 0.5 ? 1 : 0;
+    });
+
+  rect.transition(t)
+    .attr('width', d => Math.max(0, d.target.y1 - d.target.y0 - 1))
+    .attr('height', d => Math.max(0, d.target.x1 - d.target.x0));
+
+  label.transition(t)
+    .style('opacity', d => {
+      const h = d.target.x1 - d.target.x0;
+      const w = d.target.y1 - d.target.y0;
+      return h > 10 && w > 20 && d.target.x0 >= -1 ? 1 : 0;
+    });
+
+  sub.transition(t)
+    .style('opacity', d => {
+      const h = d.target.x1 - d.target.x0;
+      const w = d.target.y1 - d.target.y0;
+      return h > 26 && w > 40 && d.target.x0 >= -1 ? 1 : 0;
+    });
+
+  // Animate separator lines
+  seps.transition(t)
+    .attr('x1', d => d.child.target.y0)
+    .attr('y1', d => d.child.target.x0 - 0.75)
+    .attr('x2', d => d.child.target.y1)
+    .attr('y2', d => d.child.target.x0 - 0.75)
+    .style('opacity', d => d.child.target.x0 >= 0 && d.child.target.x1 - d.child.target.x0 > 2 ? 1 : 0);
+
+  updateBreadcrumb(focus);
+}
+
+// Click → sidebar focus (double-click to zoom)
+rect.on('click', (ev, d) => showDetail(d));
+rect.on('dblclick', (ev, d) => doZoom(d));
+
+// === Breadcrumb ===
+function updateBreadcrumb(f) {
+  const trail = [];
+  let p = f;
+  while (p) { trail.unshift(p); p = p.parent; }
+
+  const bc = d3.select('#breadcrumb');
+  bc.selectAll('*').remove();
+
+  trail.forEach((d, i) => {
+    if (i > 0) bc.append('span').attr('class', 'sep').text('/');
+    bc.append('span')
+      .text(d.data.name)
+      .style('color', i === trail.length - 1 ? '#e2e2e8' : '#484f58')
+      .style('font-weight', i === trail.length - 1 ? '600' : '400')
+      .on('click', () => doZoom(d));
+  });
+}
+
+// === HTML escape for user-supplied strings ===
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// === Sanitize PR body (lightweight markdown → HTML) ===
+function sanitizeBody(raw) {
+  if (!raw) return '';
+  let s = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Headings: ## and ###
+  s = s.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+  s = s.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+  // Checkboxes
+  s = s.replace(/^- \[x\]\s+(.+)$/gm, '<li style="list-style:none">&#9745; $1</li>');
+  s = s.replace(/^- \[ \]\s+(.+)$/gm, '<li style="list-style:none">&#9744; $1</li>');
+  // Bold (before bullet detection so ** at line start isn't consumed as bullet)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Bullet lists
+  s = s.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Wrap consecutive <li> in <ul>
+  s = s.replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  // Remaining newlines → <br>
+  s = s.replace(/\n/g, '<br>');
+  // Clean up <br> after block elements
+  s = s.replace(/<\/(h[23]|ul)><br>/g, '</$1>');
+  s = s.replace(/<br><(h[23]|ul)/g, '<$1');
+  return s;
+}
+
+// === Detail on click ===
+
+function showDetail(d) {
+  cell.each(function(dd) {
+    d3.select(this).select('rect').classed('selected', dd === d);
+  });
+
+  const nd = d.data.nodeData;
+
+  let h = `<h2 style="color:${cellFill(d)}">${esc(d.data.name)}</h2>`;
+  h += `<div class="meta">${esc(d.data.id)}</div>`;
+
+  if (d._hWave) h += `<div class="wave-badge" style="background:${cellFill(d)}22;color:${cellFill(d)}">W${d._hWave}</div>`;
+
+  if (nd && (nd.additions || nd.deletions)) {
+    h += `<div class="pr-meta" style="margin:6px 0"><span class="add">+${(nd.additions||0).toLocaleString()}</span><span class="del">-${(nd.deletions||0).toLocaleString()}</span></div>`;
+  }
+
+  if (d.children) {
+    const sumAdd = d3.sum(d.leaves(), l => (l.data.nodeData ? l.data.nodeData.additions : 0));
+    const sumDel = d3.sum(d.leaves(), l => (l.data.nodeData ? l.data.nodeData.deletions : 0));
+    h += `<div style="font-size:11px;color:#484f58;margin:6px 0">${d.value} tasks: <span style="color:#3fb950">+${sumAdd.toLocaleString()}</span> / <span style="color:#f85149">-${sumDel.toLocaleString()}</span></div>`;
+  }
+
+  // 1:1 PR mapping: only this node's own PR(s)
+  if (nd && nd.prs && nd.prs.length > 0) {
+    nd.prs.forEach(pr => {
+      const date = pr.mergedAt || pr.closedAt || '';
+      const ds = date ? new Date(date).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      const body = sanitizeBody(pr.body || '');
+      h += `<div class="pr-card"><div style="font-size:13px"><a href="${esc(pr.url)}" target="_blank">#${pr.number} ${esc(pr.title)}</a></div><div class="pr-meta"><span class="add">+${pr.additions.toLocaleString()}</span><span class="del">-${pr.deletions.toLocaleString()}</span>${ds?`<span>${ds}</span>`:''}</div>${body ? `<div class="pr-body">${body}</div>` : ''}</div>`;
+    });
+  }
+
+  if (d.children) {
+    h += '<div class="child-list"><strong>Contains:</strong><br>';
+    d.children.forEach(c => { h += `<span>${c._hWave ? 'W'+c._hWave+' ' : ''}${esc(c.data.name)}</span>`; });
+    h += '</div>';
+  }
+
+  d3.select('#detail-content').html(h);
+}
+
+updateBreadcrumb(root);
+</script>
+</body>
+</html>
