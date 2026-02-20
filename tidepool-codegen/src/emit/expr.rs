@@ -168,7 +168,7 @@ fn collapse_frame(
                         return Ok(SsaVal::HeapPtr(result));
                     }
 
-                    eprintln!("[codegen] WARNING: unresolved var {:?} in {} (lambda_counter={})", vid, ctx.prefix, ctx.lambda_counter);
+                    ctx.trace_scope(&format!("MISS var {:?} (env has {} entries)", vid, ctx.env.len()));
                     let trap_fn = pipeline.module.declare_function(
                         "unresolved_var_trap",
                         Linkage::Import,
@@ -304,6 +304,10 @@ fn emit_lam(
     let mut fvs = tidepool_repr::free_vars::free_vars(&body_tree);
     fvs.remove(&binder);
 
+    let dropped: Vec<VarId> = fvs.iter().filter(|v| !ctx.env.contains_key(v)).copied().collect();
+    if !dropped.is_empty() {
+        ctx.trace_scope(&format!("lam capture: dropped {} free vars not in scope: {:?}", dropped.len(), dropped));
+    }
     let mut sorted_fvs: Vec<VarId> = fvs.into_iter().filter(|v| ctx.env.contains_key(v)).collect();
     sorted_fvs.sort_by_key(|v| v.0);
 
@@ -345,12 +349,14 @@ fn emit_lam(
     let mut inner_emit = EmitContext::new(ctx.prefix.clone());
     inner_emit.lambda_counter = ctx.lambda_counter;
 
+    inner_emit.trace_scope(&format!("insert lam binder {:?}", binder));
     inner_emit.env.insert(binder, SsaVal::HeapPtr(arg_param));
 
     for (i, (var_id, _)) in captures.iter().enumerate() {
         let offset = CLOSURE_CAPTURED_START + 8 * i as i32;
         let val = inner_builder.ins().load(types::I64, MemFlags::trusted(), closure_self, offset);
         inner_builder.declare_value_needs_stack_map(val);
+        inner_emit.trace_scope(&format!("insert lam capture {:?}", var_id));
         inner_emit.env.insert(*var_id, SsaVal::HeapPtr(val));
     }
 
@@ -402,6 +408,14 @@ pub fn compile_expr(
     tree: &CoreExpr,
     name: &str,
 ) -> Result<FuncId, EmitError> {
+    if std::env::var("TIDEPOOL_DUMP_TREE").is_ok() {
+        eprintln!("[tree] {} nodes:\n{}", tree.nodes.len(), tidepool_repr::pretty::pretty_print(tree));
+        let fvs = tidepool_repr::free_vars::free_vars(tree);
+        if !fvs.is_empty() {
+            eprintln!("[tree] WARNING: {} free vars in input: {:?}", fvs.len(), fvs);
+        }
+    }
+
     let sig = pipeline.make_func_signature();
     let func_id = pipeline.declare_function(name)?;
 
@@ -455,17 +469,13 @@ impl EmitContext {
             CoreFrame::LetNonRec { binder, rhs, body } => {
                 // Dead code elimination: skip RHS if binder is unused in body.
                 let body_fvs = tidepool_repr::free_vars::free_vars(&tree.extract_subtree(*body));
-                // Debug: log DCE decisions for known problematic vars
-                let known_bad = [8214565720323787988u64, 8214565720323787989, 8214565720323787990, 8214565720323784990, 3458764513820540932];
-                if known_bad.contains(&binder.0) {
-                    eprintln!("[dce] {:?} in_fvs={}", binder, body_fvs.contains(binder));
-                }
                 if body_fvs.contains(binder) {
                     let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs)?;
+                    self.trace_scope(&format!("insert LetNonRec {:?}", binder));
                     self.env.insert(*binder, rhs_val);
                     let_cleanup.push(LetCleanup::Single(*binder));
                 } else {
-                    // Binder unused — skip RHS entirely
+                    self.trace_scope(&format!("DCE skip LetNonRec {:?}", binder));
                 }
                 idx = *body;
                 continue;
@@ -477,14 +487,13 @@ impl EmitContext {
                     matches!(&tree.nodes[*rhs_idx], CoreFrame::Lam { .. } | CoreFrame::Con { .. })
                 });
 
-                // Evaluate simple (non-recursive) bindings first
-                for (binder, rhs_idx) in &simple_bindings {
-                    let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
-                    self.env.insert(*binder, rhs_val);
-                }
-
-                // If no recursive bindings remain, just emit body
+                // If no recursive bindings, evaluate all as simple
                 if rec_bindings.is_empty() {
+                    for (binder, rhs_idx) in &simple_bindings {
+                        let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
+                        self.trace_scope(&format!("insert LetRec(simple) {:?}", binder));
+                        self.env.insert(*binder, rhs_val);
+                    }
                     let_cleanup.push(LetCleanup::Rec(bindings.iter().map(|(b, _)| *b).collect()));
                     idx = *body;
                     continue;
@@ -504,7 +513,9 @@ impl EmitContext {
                             let mut fvs = tidepool_repr::free_vars::free_vars(&lam_body_tree);
                             fvs.remove(lam_binder);
                             let mut sorted_fvs: Vec<VarId> = fvs.into_iter().filter(|v| {
-                                self.env.contains_key(v) || rec_bindings.iter().any(|(b, _)| b == v)
+                                self.env.contains_key(v)
+                                    || rec_bindings.iter().any(|(b, _)| b == v)
+                                    || simple_bindings.iter().any(|(b, _)| b == v)
                             }).collect();
                             sorted_fvs.sort_by_key(|v| v.0);
 
@@ -549,7 +560,15 @@ impl EmitContext {
                         PreAlloc::Lam { binder, ptr, .. } => (*binder, *ptr),
                         PreAlloc::Con { binder, ptr, .. } => (*binder, *ptr),
                     };
+                    self.trace_scope(&format!("insert LetRec(rec) {:?}", binder));
                     self.env.insert(binder, SsaVal::HeapPtr(ptr));
+                }
+
+                // Evaluate simple (non-recursive) bindings now that rec bindings are in env
+                for (binder, rhs_idx) in &simple_bindings {
+                    let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
+                    self.trace_scope(&format!("insert LetRec(simple) {:?}", binder));
+                    self.env.insert(*binder, rhs_val);
                 }
 
                 // Phase 3a: Fill Con fields (now that all bindings are in env)
@@ -654,8 +673,16 @@ impl EmitContext {
         // Clean up let-bindings in reverse order
         for cleanup in let_cleanup.into_iter().rev() {
             match cleanup {
-                LetCleanup::Single(var) => { self.env.remove(&var); }
-                LetCleanup::Rec(vars) => { for var in vars { self.env.remove(&var); } }
+                LetCleanup::Single(var) => {
+                    self.trace_scope(&format!("remove LetCleanup {:?}", var));
+                    self.env.remove(&var);
+                }
+                LetCleanup::Rec(vars) => {
+                    for var in &vars {
+                        self.trace_scope(&format!("remove LetCleanup(rec) {:?}", var));
+                    }
+                    for var in vars { self.env.remove(&var); }
+                }
             }
         }
         result

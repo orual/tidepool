@@ -78,10 +78,14 @@ resolveExternals binds =
 
     isResolvable :: VarSet -> Var -> Bool
     isResolvable localSet v =
-      isGlobalId v
-      && not (elemVarSet v localSet)
-      && not (isPrimOp v)
-      && not (isDataCon v)
+      let vName = occNameString (nameOccName (varName v))
+          result = isGlobalId v
+                   && not (elemVarSet v localSet)
+                   && not (isPrimOp v)
+                   && not (isDataCon v)
+      in if not result && not (elemVarSet v localSet) && not (isPrimOp v) && not (isDataCon v)
+         then trace ("  [resolve] SKIP non-global: " ++ vName ++ " (key=" ++ show (getKey (varUnique v)) ++ ")") result
+         else result
 
     bindersOfSet :: CoreBind -> VarSet
     bindersOfSet (NonRec b _) = unitVarSet b

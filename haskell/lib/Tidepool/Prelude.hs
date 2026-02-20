@@ -130,7 +130,7 @@ nub = go []
     elemOf :: Eq a => a -> [a] -> Bool
     elemOf _ []     = False
     elemOf y (z:zs) = y == z || elemOf y zs
-{-# INLINE nub #-}
+{-# INLINABLE nub #-}
 
 -- | Sort a list using merge sort.
 sort :: Ord a => [a] -> [a]
@@ -151,7 +151,7 @@ sort = mergeSort
     merge (x:xs) (y:ys)
       | x <= y    = x : merge xs (y:ys)
       | otherwise  = y : merge (x:xs) ys
-{-# INLINE sort #-}
+{-# INLINABLE sort #-}
 
 -- | Map a function over a list and concatenate results.
 concatMap :: (a -> [b]) -> [a] -> [b]

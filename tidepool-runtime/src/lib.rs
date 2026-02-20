@@ -167,9 +167,14 @@ pub fn compile_haskell(
         }
     })?;
 
+    // Always print stderr for diagnostics (trace output from Haskell)
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    if !stderr_str.is_empty() {
+        eprintln!("[tidepool-extract stderr]\n{}", stderr_str);
+    }
+
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        return Err(CompileError::ExtractFailed(stderr));
+        return Err(CompileError::ExtractFailed(stderr_str.into_owned()));
     }
 
     // 3. Read and deserialize outputs

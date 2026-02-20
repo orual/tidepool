@@ -47,10 +47,9 @@ import qualified Data.ByteString as BS
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 import Control.Monad.State
 import Control.Monad (foldM, forM, when)
-import Debug.Trace (trace)
+
 import Tidepool.Resolve (resolveExternals, UnresolvedVar(..))
 
 data FlatNode
@@ -244,25 +243,17 @@ translateModule allBinds targetName =
 translateModuleClosed :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon, [UnresolvedVar])
 translateModuleClosed allBinds targetName =
   let (closedBinds, unresolved) = resolveExternals allBinds
-      -- Filter out vars the translator knows how to desugar
       filtered = filter (not . isDesugaredVar . uvName) unresolved
-      originalCount = length allBinds
-      closedCount = length closedBinds
-      resolvedCount = closedCount - originalCount
       (nodes, usedDCs) = translateModule closedBinds targetName
-      -- Only report unresolved vars that actually appear in the emitted tree
       referencedIds = collectVarIds nodes
       trulyUnresolved = filter (\uv -> uvKey uv `Set.member` referencedIds) filtered
-  in trace ("  resolveExternals: " ++ show originalCount ++ " original + " ++ show resolvedCount ++ " resolved = " ++ show closedCount ++ " total")
-     (nodes, usedDCs, trulyUnresolved)
+  in (nodes, usedDCs, trulyUnresolved)
   where
-    -- Names that resolveExternals can't inline but translate desugars directly
     isDesugaredVar name = name `elem`
       [ "unpackCString#", "unpackCStringUtf8#", "unpackAppendCString#"
       , "eqString", "$wunsafeTake", "unsafeTake"
       , "divZeroError", "overflowError"
       ]
-    -- Collect all VarIds referenced in the emitted nodes
     collectVarIds :: Seq FlatNode -> Set.Set Word64
     collectVarIds = foldl' (\acc node -> acc `Set.union` nodeVarIds node) Set.empty
     nodeVarIds :: FlatNode -> Set.Set Word64

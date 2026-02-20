@@ -298,6 +298,7 @@ pub unsafe fn heap_validate_deep(ptr: *const u8) -> Result<(), HeapError> {
 pub enum TraceLevel {
     Off,
     Calls,
+    Scope,
     Heap,
 }
 
@@ -307,6 +308,7 @@ pub fn trace_level() -> TraceLevel {
     static LEVEL: OnceLock<TraceLevel> = OnceLock::new();
     *LEVEL.get_or_init(|| match std::env::var("TIDEPOOL_TRACE").as_deref() {
         Ok("calls") => TraceLevel::Calls,
+        Ok("scope") => TraceLevel::Scope,
         Ok("heap") => TraceLevel::Heap,
         _ => TraceLevel::Off,
     })
