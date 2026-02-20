@@ -1,3 +1,8 @@
+//! Cranelift-based JIT compiler for Tidepool Core expressions.
+//!
+//! Compiles `CoreExpr` to native code via Cranelift, with effect machine support
+//! for yielding on algebraic effects and resuming with handler responses.
+
 pub mod alloc;
 pub mod debug;
 pub mod context;

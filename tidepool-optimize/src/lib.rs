@@ -1,3 +1,8 @@
+//! Optimization passes for Tidepool Core expressions.
+//!
+//! Includes beta reduction, case reduction, dead code elimination, inlining,
+//! occurrence analysis, and partial evaluation.
+
 pub mod beta;
 pub mod case_reduce;
 pub mod dce;

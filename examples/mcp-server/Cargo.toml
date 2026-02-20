@@ -1,0 +1,16 @@
+[package]
+name = "mcp-server-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mcp-server-example"
+path = "src/main.rs"
+
+[dependencies]
+tidepool-mcp = { path = "../../tidepool-mcp" }
+tidepool-effect = { path = "../../tidepool-effect" }
+tidepool-eval = { path = "../../tidepool-eval" }
+frunk = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

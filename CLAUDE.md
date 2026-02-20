@@ -31,19 +31,32 @@ Reference these when implementing. They contain exact API signatures, anti-patte
 
 ```
 tidepool/
-├── plans/             ← Spec docs, decisions, research (READ FIRST)
-│   ├── decisions.md   ← Locked architectural decisions
-│   ├── README.md      ← Master plan + dependency graph
-│   ├── anti-patterns.md
-│   ├── phase-1/       ← core-repr spec
-│   ├── phase-2/       ← core-eval, core-heap, core-optimize, core-bridge, core-testing specs
-│   ├── phase-3/       ← codegen spec
-│   └── research/      ← Completed empirical research
-├── flake.nix          ← Dev shell (Rust + GHC 9.12)
-└── CLAUDE.md          ← YOU ARE HERE
+├── tidepool/              ← Facade crate (re-exports all public API)
+├── tidepool-repr/         ← Core IR types: CoreExpr, DataConTable, CBOR serial
+├── tidepool-eval/         ← Tree-walking interpreter: Value, Env, lazy eval
+├── tidepool-heap/         ← Manual heap + copying GC for JIT runtime
+├── tidepool-optimize/     ← Optimization passes: beta, DCE, inline, case reduce
+├── tidepool-bridge/       ← FromCore/ToCore traits + derive macros
+├── tidepool-bridge-derive/← Proc-macro for bridge derives
+├── tidepool-macro/        ← Proc-macro for effect stack declarations
+├── tidepool-effect/       ← Effect handling: DispatchEffect, EffectHandler, HList
+├── tidepool-codegen/      ← Cranelift JIT compiler + effect machine
+├── tidepool-runtime/      ← High-level API: compile_haskell, compile_and_run, cache
+├── tidepool-mcp/          ← MCP server library (generic over effect handlers)
+├── tidepool-testing/      ← Test utilities + property-based generators (internal)
+├── examples/
+│   ├── guess/             ← Demo: number guessing game
+│   ├── guess-interpreted/ ← Demo: interpreted version
+│   ├── tide/              ← Demo: REPL
+│   └── mcp-server/        ← Demo: MCP server with Console/Env handlers
+├── haskell/               ← Haskell harness (tidepool-extract) + test suite
+├── plans/                 ← Spec docs, decisions, research
+│   ├── decisions.md       ← Locked architectural decisions
+│   ├── README.md          ← Master plan + dependency graph
+│   └── research/          ← Completed empirical research
+├── flake.nix              ← Dev shell (Rust + GHC 9.12)
+└── CLAUDE.md              ← YOU ARE HERE
 ```
-
-Workspace crates (`core-repr/`, `core-eval/`, etc.) are scaffolded by TL agents during execution. They do not exist yet.
 
 ### Build
 

@@ -1,3 +1,8 @@
+//! MCP (Model Context Protocol) server library for Tidepool.
+//!
+//! Wraps `tidepool-runtime` in an MCP server exposing a `run_haskell` tool.
+//! Generic over effect handler stacks via `TidepoolMcpServer<H>`.
+
 use dyn_clone::{clone_trait_object, DynClone};
 use rmcp::{
     model::*,

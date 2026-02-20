@@ -1,3 +1,8 @@
+//! Core representation types for Tidepool's GHC Core IR.
+//!
+//! Defines `CoreExpr` (a recursive tree of `CoreFrame` nodes), `DataConTable`,
+//! literals, variables, and CBOR serialization.
+
 pub mod alpha;
 pub mod builder;
 pub mod datacon;

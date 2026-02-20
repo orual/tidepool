@@ -1,3 +1,8 @@
+//! High-level runtime for compiling and executing Haskell source via Tidepool.
+//!
+//! Provides `compile_haskell` (source to Core) and `compile_and_run` (source to
+//! evaluated result), with filesystem caching of compiled CBOR artifacts.
+
 use tidepool_codegen::jit_machine::JitEffectMachine;
 pub use tidepool_codegen::jit_machine::JitError;
 pub use tidepool_effect::dispatch::DispatchEffect;

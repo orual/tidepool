@@ -16,5 +16,6 @@ members = [
     "examples/guess",
     "examples/guess-interpreted",
     "examples/tide",
+    "examples/mcp-server",
 ]
 resolver = "2"
