@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-server-example"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "frunk",
  "tidepool-effect",
@@ -2212,7 +2212,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "tidepool-bridge",
  "tidepool-bridge-derive",
@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-bridge"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "tidepool-eval",
  "tidepool-repr",
@@ -2237,7 +2237,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-bridge-derive"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2250,7 +2250,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-codegen"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "cranelift-codegen",
  "cranelift-frontend",
@@ -2266,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-effect"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "frunk",
  "tidepool-bridge",
@@ -2277,7 +2277,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-eval"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "im",
  "tidepool-repr",
@@ -2285,7 +2285,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-guess"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "frunk",
  "rand 0.8.5",
@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-guess-interpreted"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "frunk",
  "rand 0.8.5",
@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-heap"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bumpalo",
  "tidepool-eval",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-macro"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2335,7 +2335,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-mcp"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "dyn-clone",
  "frunk",
@@ -2351,7 +2351,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-optimize"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "proptest",
  "tidepool-eval",
@@ -2361,14 +2361,14 @@ dependencies = [
 
 [[package]]
 name = "tidepool-repr"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "ciborium",
 ]
 
 [[package]]
 name = "tidepool-runtime"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "blake3",
  "frunk",
@@ -2381,7 +2381,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-testing"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2393,7 +2393,7 @@ dependencies = [
 
 [[package]]
 name = "tidepool-tide"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
