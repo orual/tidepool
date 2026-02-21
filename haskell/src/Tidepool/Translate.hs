@@ -255,6 +255,7 @@ translateModuleClosed allBinds targetName =
       [ "unpackCString#", "unpackCStringUtf8#", "unpackAppendCString#"
       , "eqString", "$wunsafeTake", "unsafeTake"
       , "divZeroError", "overflowError"
+      , "unsafeEqualityProof"
       ]
     collectVarIds :: Seq FlatNode -> Set.Set Word64
     collectVarIds = foldl' (\acc node -> acc `Set.union` nodeVarIds node) Set.empty
@@ -534,6 +535,13 @@ translate expr =
         recordDC dc
         childIdxs <- mapM translate args
         emitNode $ NCon (varId (dataConWorkId dc)) childIdxs
+
+    -- unsafeEqualityProof → unit value (always matches the single UnsafeRefl alt)
+    -- GHC uses this for GADT equality evidence in freer-simple's Member constraint.
+    -- It only appears as a case scrutinee with one alternative, so the tag is irrelevant.
+    Var v | isUnsafeEqualityProofVar v -> do
+        recordDC unitDataCon
+        emitNode $ NCon (varId (dataConWorkId unitDataCon)) []
 
     -- tagToEnum# @T arg → case arg of { 0# → C0; 1# → C1; ... }
     -- We desugar here because type information is erased downstream.
@@ -848,6 +856,10 @@ isRuntimeErrorVar :: Id -> Bool
 isRuntimeErrorVar v =
   let name = occNameString (nameOccName (idName v))
   in name == "divZeroError" || name == "overflowError"
+
+isUnsafeEqualityProofVar :: Id -> Bool
+isUnsafeEqualityProofVar v =
+  occNameString (nameOccName (idName v)) == "unsafeEqualityProof"
 
 isUnpackCStringVar :: Id -> Bool
 isUnpackCStringVar v =
