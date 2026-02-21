@@ -1,15 +1,15 @@
 {
   "meta": {
     "repo": "tidepool-heavy-industries/tidepool",
-    "generated": "2026-02-21T01:41:18Z",
-    "node_count": 72,
-    "pr_count": 62
+    "generated": "2026-02-21T02:50:22Z",
+    "node_count": 71,
+    "pr_count": 61
   },
   "stats": {
-    "merged": 62,
+    "merged": 61,
     "closed": 3,
     "open": 0,
-    "total_additions": 32379,
+    "total_additions": 32168,
     "total_deletions": 1914
   },
   "nodes": [
@@ -357,7 +357,7 @@
           "sha": "f49e3e1",
           "message": "Research: ast-grep-core Rust API and Haskell ADT Design (#63)",
           "timestamp": "2026-02-20T02:29:12-08:00",
-          "kind": "merge"
+          "kind": "direct"
         },
         {
           "sha": "3c08c11",
@@ -414,28 +414,6 @@
           "kind": "direct"
         }
       ]
-    },
-    {
-      "id": "main.ast-grep-research",
-      "parent": "main",
-      "depth": 1,
-      "label": "ast-grep-research",
-      "prs": [
-        {
-          "number": 63,
-          "title": "Research: ast-grep-core Rust API and Haskell ADT Design",
-          "body": "Drafted a research document designing a Haskell ADT and effect interface that mirrors the ast-grep-core Rust API. See plans/research/04-ast-grep-api.md for details.",
-          "state": "merged",
-          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/63",
-          "additions": 211,
-          "deletions": 0,
-          "mergedAt": "2026-02-20T10:29:12Z",
-          "closedAt": "2026-02-20T10:29:12Z"
-        }
-      ],
-      "additions": 211,
-      "deletions": 0,
-      "status": "merged"
     },
     {
       "id": "main.codegen",

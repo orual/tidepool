@@ -15,7 +15,8 @@ raw = subprocess.check_output([
 all_prs = json.loads(raw)
 
 # Only merged PRs with main.* branches (plus special cases)
-prs = [p for p in all_prs if p['state'] == 'MERGED' and (p['headRefName'].startswith('main.') or p['headRefName'] in ('prelude-closure',))]
+skip_branches = {'main.ast-grep-research'}
+prs = [p for p in all_prs if p['state'] == 'MERGED' and (p['headRefName'].startswith('main.') or p['headRefName'] in ('prelude-closure',)) and p['headRefName'] not in skip_branches]
 prs.sort(key=lambda p: p['mergedAt'] or '')
 
 print(f"  {len(prs)} merged PRs")
