@@ -80,7 +80,7 @@
   <div id="detail">
     <div id="detail-content">
       <h2 style="color:#484f58">Build Story</h2>
-      <p class="meta">Click a block to see its PR. Double-click to zoom in. Use breadcrumb to zoom out.</p>
+      <p class="meta">Click a block to expand its phase. Click again to collapse.</p>
       <p style="font-size:11px;color:#30363d;line-height:1.6;margin-top:12px">
         Depth flows left &rarr; right. Siblings stack top &rarr; bottom.<br>
         Color = merge wave (cyan &rarr; purple &rarr; gold).
@@ -165,7 +165,7 @@ const H = Math.max(300, window.innerHeight - headerH);
 d3.partition().size([H, W]).padding(1.5).round(true)(root);
 
 // Compress root band: main gets a thin strip, rest expands to fill
-const rootW = 30; // main only gets 30px
+const rootW = 120; // spine strip for phase labels
 const origDepth = root.y1 - root.y0;
 const scale = (W - rootW) / (W - origDepth);
 root.each(d => {
@@ -287,6 +287,16 @@ function insertGaps(node) {
   }
 }
 insertGaps(root);
+
+// Snapshot rest-state positions for accordion remap
+root.each(d => {
+  d.orig = { x0: d.x0, x1: d.x1, y0: d.y0, y1: d.y1 };
+});
+allGapTicks.forEach(t => {
+  t.origTickX = t.tickX;
+  t.origParentY0 = t.parentY0;
+  t.origParentY1 = t.parentY1;
+});
 
 // === Color ===
 const waveColor = d3.scaleLinear()
@@ -429,26 +439,87 @@ const tickRects = tickG.selectAll('.tick-rect')
   .attr('rx', 1)
   .attr('pointer-events', 'none');
 
-// === Zoom (click to drill in/out) ===
-let focus = root;
+// Phase labels in spine (root strip)
+const spineLabels = g.append('g').attr('class', 'spine-labels');
+(root.children || []).forEach(child => {
+  spineLabels.append('text')
+    .datum(child)
+    .attr('x', rootW / 2)
+    .attr('y', d => (d.orig.x0 + d.orig.x1) / 2)
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', '9px')
+    .attr('font-weight', '600')
+    .attr('fill', d => waveColor(getWave(d)))
+    .attr('opacity', 0.7)
+    .text(d => d.data.name);
+});
 
-function doZoom(p) {
-  if (!p) return;
-  focus = focus === p ? (p.parent || root) : p;
+// === Accordion (expand depth-1 phases) ===
+let expandedChild = null;
+const EXPAND_RATIO = 0.6;
 
-  const focusRange = focus.x1 - focus.x0;
+function doAccordion(clickedD1) {
+  if (expandedChild === clickedD1) {
+    expandedChild = null;
+  } else {
+    expandedChild = clickedD1;
+  }
+
+  const d1children = root.children || [];
+  const totalOrigRange = root.orig.x1 - root.orig.x0;
+
+  let bands = d1children.map((c, i) => {
+    const bandStart = c.orig.x0;
+    const bandEnd = (i + 1 < d1children.length) ? d1children[i + 1].orig.x0 : root.orig.x1;
+    return { node: c, origStart: bandStart, origEnd: bandEnd, origSize: bandEnd - bandStart };
+  });
+
+  if (expandedChild) {
+    const expandedSize = H * EXPAND_RATIO;
+    const restSize = H - expandedSize;
+    const nonExpandedTotal = totalOrigRange - bands.find(b => b.node === expandedChild).origSize;
+    bands.forEach(b => {
+      if (b.node === expandedChild) {
+        b.targetSize = expandedSize;
+      } else {
+        b.targetSize = nonExpandedTotal > 0 ? (b.origSize / nonExpandedTotal) * restSize : restSize / (bands.length - 1);
+      }
+    });
+  } else {
+    bands.forEach(b => { b.targetSize = b.origSize; });
+  }
+
+  let cumTarget = root.orig.x0;
+  bands.forEach(b => {
+    b.targetStart = cumTarget;
+    b.targetEnd = cumTarget + b.targetSize;
+    cumTarget += b.targetSize;
+  });
+
+  function remapX(origX) {
+    if (origX <= root.orig.x0) return bands[0].targetStart;
+    if (origX >= root.orig.x1) return bands[bands.length - 1].targetEnd;
+    for (const b of bands) {
+      if (origX < b.origEnd || b === bands[bands.length - 1]) {
+        const t = (origX - b.origStart) / b.origSize;
+        return b.targetStart + t * b.targetSize;
+      }
+    }
+    return origX;
+  }
+
   root.each(d => {
     d.target = {
-      x0: (d.x0 - focus.x0) / focusRange * H,
-      x1: (d.x1 - focus.x0) / focusRange * H,
-      y0: d.y0 - focus.y0,
-      y1: d.y1 - focus.y0
+      x0: remapX(d.orig.x0),
+      x1: remapX(d.orig.x1),
+      y0: d.orig.y0,
+      y1: d.orig.y1,
     };
-    // Compute tick targets for this node's gap ticks
     if (d._gapTicks) {
       d._gapTicks.forEach(tick => {
         tick.targetX = d.target.y0 + TICK_INSET;
-        tick.targetY = (tick.tickX - focus.x0) / focusRange * H;
+        tick.targetY = remapX(tick.origTickX);
         tick.targetW = Math.max(0, d.target.y1 - d.target.y0 - TICK_INSET * 2);
       });
     }
@@ -457,12 +528,7 @@ function doZoom(p) {
   const t = g.transition().duration(500);
 
   cell.transition(t)
-    .attr('transform', d => `translate(${d.target.y0},${d.target.x0})`)
-    .style('opacity', d => {
-      const h = d.target.x1 - d.target.x0;
-      const w = d.target.y1 - d.target.y0;
-      return d.target.x0 >= -1 && h > 0.5 && w > 0.5 ? 1 : 0;
-    });
+    .attr('transform', d => `translate(${d.target.y0},${d.target.x0})`);
 
   rect.transition(t)
     .attr('width', d => Math.max(0, d.target.y1 - d.target.y0 - 1))
@@ -472,37 +538,50 @@ function doZoom(p) {
     .style('opacity', d => {
       const h = d.target.x1 - d.target.x0;
       const w = d.target.y1 - d.target.y0;
-      return h > 10 && w > 20 && d.target.x0 >= -1 ? 1 : 0;
+      return h > 10 && w > 20 ? 1 : 0;
     });
 
   sub.transition(t)
     .style('opacity', d => {
       const h = d.target.x1 - d.target.x0;
       const w = d.target.y1 - d.target.y0;
-      return h > 26 && w > 40 && d.target.x0 >= -1 ? 1 : 0;
+      return h > 26 && w > 40 ? 1 : 0;
     });
 
-  // Animate separator lines
   seps.transition(t)
     .attr('x1', d => d.child.target.y0)
     .attr('y1', d => d.child.target.x0 - 0.75)
     .attr('x2', d => d.child.target.y1)
     .attr('y2', d => d.child.target.x0 - 0.75)
-    .style('opacity', d => d.child.target.x0 >= 0 && d.child.target.x1 - d.child.target.x0 > 2 ? 1 : 0);
+    .style('opacity', d => {
+      const h = d.child.target.x1 - d.child.target.x0;
+      return h > 2 ? 1 : 0;
+    });
 
-  // Animate commit ticks
   tickRects.transition(t)
     .attr('x', d => d.targetX)
     .attr('y', d => d.targetY)
     .attr('width', d => d.targetW)
     .style('opacity', d => d.targetY >= -TICK_H && d.targetY <= H ? 1 : 0);
 
-  updateBreadcrumb(focus);
+  spineLabels.selectAll('text').transition(t)
+    .attr('y', d => (d.target.x0 + d.target.x1) / 2)
+    .style('opacity', d => (d.target.x1 - d.target.x0) > 14 ? 0.7 : 0);
+
+  updateBreadcrumb(expandedChild || root);
 }
 
-// Click → sidebar focus (double-click to zoom)
-rect.on('click', (ev, d) => showDetail(d));
-rect.on('dblclick', (ev, d) => doZoom(d));
+// Click: show detail + accordion-expand the depth-1 ancestor
+rect.on('click', (ev, d) => {
+  showDetail(d);
+  let target = d;
+  while (target && target.depth > 1) target = target.parent;
+  if (target && target.depth === 1) {
+    doAccordion(target);
+  } else if (d.depth === 0) {
+    doAccordion(null);
+  }
+});
 
 // === Breadcrumb ===
 function updateBreadcrumb(f) {
@@ -519,7 +598,10 @@ function updateBreadcrumb(f) {
       .text(d.data.name)
       .style('color', i === trail.length - 1 ? '#e2e2e8' : '#484f58')
       .style('font-weight', i === trail.length - 1 ? '600' : '400')
-      .on('click', () => doZoom(d));
+      .on('click', () => {
+        if (d.depth <= 1) doAccordion(d.depth === 1 ? d : null);
+        showDetail(d);
+      });
   });
 }
 
