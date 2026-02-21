@@ -18,7 +18,7 @@ import GHC.Core
 import GHC.Types.Id
 import GHC.Types.Var
 import GHC.Types.Unique (getKey)
-import GHC.Core.DataCon (DataCon, dataConRepArity, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, dataConOrigArgTys, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
+import GHC.Core.DataCon (DataCon, dataConRepArity, dataConRepArgTys, dataConFullSig, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, dataConOrigArgTys, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
 import Language.Haskell.Syntax.Basic (Boxity(..))
 import GHC.Builtin.Types (consDataCon, nilDataCon, trueDataCon, falseDataCon, charDataCon, unitDataCon, tupleDataCon, ordLTDataCon, ordEQDataCon, ordGTDataCon, intDataCon, wordDataCon, doubleDataCon, floatDataCon)
 import GHC.Builtin.PrimOps
@@ -26,7 +26,7 @@ import GHC.Types.Literal
 import GHC.Types.Name (nameOccName, isExternalName, isSystemName)
 import GHC.Types.Name.Occurrence (occNameString)
 import GHC.Core.TyCon
-import GHC.Core.Type (splitTyConApp_maybe)
+import GHC.Core.Type (splitTyConApp_maybe, isCoercionTy)
 import GHC.Core.TyCo.Rep (Scaled(..))
 import GHC.Core.TyCo.FVs (tyConsOfType)
 import GHC.Core.FVs (exprSomeFreeVars)
@@ -283,7 +283,7 @@ collectUsedDataCons binds =
       ( varId (dataConWorkId dc)
       , T.pack (occNameString (nameOccName (dataConName dc)))
       , dataConTag dc
-      , dataConRepArity dc
+      , valueRepArity dc
       , map mapBang (dataConSrcBangs dc)
       )
 
@@ -322,7 +322,7 @@ tyConToDCMeta tc = case tyConDataCons_maybe tc of
     ( varId (dataConWorkId dc)
     , T.pack (occNameString (nameOccName (dataConName dc)))
     , dataConTag dc
-    , dataConRepArity dc
+    , valueRepArity dc
     , map mapBang (dataConSrcBangs dc)
     )) dcs
   Nothing  -> []
@@ -521,7 +521,7 @@ translate expr =
         emitNode $ NLetRec [(goId, lamI)] goNXs
 
     Var v | Just dc <- isDataConWorkId_maybe v
-          , length args == dataConRepArity dc -> do
+          , length args == valueRepArity dc -> do
         recordDC dc
         childIdxs <- mapM translate args
         emitNode $ NCon (varId v) childIdxs
@@ -530,7 +530,7 @@ translate expr =
     -- isDataConWorkId_maybe returns Nothing for wrappers, so we check separately.
     -- We emit NCon using the *worker* Id since that's what DataConTable indexes.
     Var v | Just dc <- isDataConWrapId_maybe v
-          , length args == dataConRepArity dc -> do
+          , length args == valueRepArity dc -> do
         recordDC dc
         childIdxs <- mapM translate args
         emitNode $ NCon (varId (dataConWorkId dc)) childIdxs
@@ -780,7 +780,7 @@ mapPrimOp = \case
 
 collectDataCons :: [TyCon] -> [(Word64, Text, Int, Int, [Text])]
 collectDataCons tycons =
-  [ (varId (dataConWorkId dc), T.pack (occNameString (nameOccName (dataConName dc))), dataConTag dc, dataConRepArity dc, map mapBang (dataConSrcBangs dc))
+  [ (varId (dataConWorkId dc), T.pack (occNameString (nameOccName (dataConName dc))), dataConTag dc, valueRepArity dc, map mapBang (dataConSrcBangs dc))
   | tc <- tycons
   , isAlgTyCon tc
   , dc <- tyConDataCons tc
@@ -802,7 +802,7 @@ wiredInDataCons = concatMap (\dc ->
     [( varId (dataConWorkId dc)
      , T.pack (occNameString (nameOccName (dataConName dc)))
      , dataConTag dc
-     , dataConRepArity dc
+     , valueRepArity dc
      , map mapBang (dataConSrcBangs dc)
      )]
   ) wiredInList
@@ -816,6 +816,17 @@ wiredInDataCons = concatMap (\dc ->
       , tupleDataCon Boxed 3  -- (,,)
       , ordLTDataCon, ordEQDataCon, ordGTDataCon
       ]
+
+-- | Count value arguments excluding GADT equality evidence.
+-- dataConRepArity includes equality evidence args (EqSpec) for GADT constructors,
+-- but GHC Core passes these as Coercion arguments, which isValueArg filters out.
+-- Subtract the EqSpec count to match what the translator sees as "value arguments".
+-- For non-GADT constructors (including typeclass dicts), EqSpec is empty so this
+-- equals dataConRepArity.
+valueRepArity :: DataCon -> Int
+valueRepArity dc =
+  let (_, _, eqSpec, _, _, _) = dataConFullSig dc
+  in dataConRepArity dc - length eqSpec
 
 -- | Recognize GHC's unpackCString# and unpackCStringUtf8# builtins.
 -- These convert Addr# (C string pointers) to [Char]. Since our

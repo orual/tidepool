@@ -1,8 +1,14 @@
 /// Reproducer for MCP `pure (sort [3,1,2 :: Int])` crash and broader
 /// freer-simple integration tests matching the exact source templates
 /// the MCP server generates.
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use frunk::HNil;
+use tidepool_bridge_derive::FromCore;
+use tidepool_effect::dispatch::{EffectContext, EffectHandler};
+use tidepool_eval::value::Value;
+use tidepool_effect::error::EffectError;
 use tidepool_runtime::{compile_and_run, compile_and_run_pure, compile_haskell};
 
 // ---------------------------------------------------------------------------
@@ -106,6 +112,131 @@ fn run_plain(body: &str) -> serde_json::Value {
             let val = compile_and_run_pure(&src, "result", &include)
                 .expect("compile_and_run_pure failed");
             val.to_json()
+        })
+        .unwrap()
+        .join()
+        .expect("thread panicked")
+}
+
+// ---------------------------------------------------------------------------
+// Effect handlers for testing
+// ---------------------------------------------------------------------------
+
+// Tag 0: Console effect
+#[derive(FromCore)]
+enum ConsoleReq {
+    #[core(name = "Print")]
+    Print(String),
+}
+
+struct TestConsole {
+    lines: Arc<Mutex<Vec<String>>>,
+}
+
+impl TestConsole {
+    fn new() -> (Self, Arc<Mutex<Vec<String>>>) {
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        (TestConsole { lines: lines.clone() }, lines)
+    }
+}
+
+impl EffectHandler for TestConsole {
+    type Request = ConsoleReq;
+    fn handle(&mut self, req: ConsoleReq, cx: &EffectContext) -> Result<Value, EffectError> {
+        match req {
+            ConsoleReq::Print(s) => {
+                self.lines.lock().unwrap().push(s);
+                cx.respond(())
+            }
+        }
+    }
+}
+
+// Tag 1: KV effect
+#[derive(FromCore)]
+enum KvReq {
+    #[core(name = "KvGet")]
+    Get(String),
+    #[core(name = "KvSet")]
+    Set(String, String),
+    #[core(name = "KvDelete")]
+    Delete(String),
+    #[core(name = "KvKeys")]
+    Keys,
+}
+
+struct TestKv {
+    store: HashMap<String, String>,
+}
+
+impl TestKv {
+    fn new() -> Self {
+        TestKv { store: HashMap::new() }
+    }
+}
+
+impl EffectHandler for TestKv {
+    type Request = KvReq;
+    fn handle(&mut self, req: KvReq, cx: &EffectContext) -> Result<Value, EffectError> {
+        match req {
+            KvReq::Get(k) => {
+                let val: Option<String> = self.store.get(&k).cloned();
+                cx.respond(val)
+            }
+            KvReq::Set(k, v) => {
+                self.store.insert(k, v);
+                cx.respond(())
+            }
+            KvReq::Delete(k) => {
+                self.store.remove(&k);
+                cx.respond(())
+            }
+            KvReq::Keys => {
+                let keys: Vec<String> = self.store.keys().cloned().collect();
+                cx.respond(keys)
+            }
+        }
+    }
+}
+
+// Tag 2: Fs effect (stub)
+#[derive(FromCore)]
+enum FsReq {
+    #[core(name = "FsRead")]
+    Read(String),
+    #[core(name = "FsWrite")]
+    Write(String, String),
+}
+
+struct TestFs;
+
+impl EffectHandler for TestFs {
+    type Request = FsReq;
+    fn handle(&mut self, req: FsReq, cx: &EffectContext) -> Result<Value, EffectError> {
+        match req {
+            FsReq::Read(_) => cx.respond("stub".to_string()),
+            FsReq::Write(_, _) => cx.respond(()),
+        }
+    }
+}
+
+/// Run an effectful MCP test with real Console/KV/Fs handlers.
+/// Returns (json_result, console_lines).
+fn run_mcp_effectful(lines: &[&str]) -> (serde_json::Value, Vec<String>) {
+    let src = mcp_source(lines);
+    let pp = prelude_path();
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let include = [pp.as_path()];
+            let (console, captured) = TestConsole::new();
+            let kv = TestKv::new();
+            let mut handlers = frunk::hlist![console, kv, TestFs];
+            let val = compile_and_run(&src, "result", &include, &mut handlers, &())
+                .expect("compile_and_run failed");
+            let json = val.to_json();
+            let lines = captured.lock().unwrap().clone();
+            (json, lines)
         })
         .unwrap()
         .join()
@@ -255,4 +386,128 @@ fn test_mcp_inline_sort() {
         "pure (msort [3,1,2 :: Int])",
     ]);
     assert_eq!(json, serde_json::json!([1, 2, 3]));
+}
+
+// ===========================================================================
+// Effectful tests (Console/KV/Fs handlers with real dispatch)
+// ===========================================================================
+
+#[test]
+#[ignore]
+fn test_effect_kv_set_get() {
+    // The original bug: () return from KvSet must be TAG_CON
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"k\" \"v\")",
+        "send (KvGet \"k\")",
+    ]);
+    assert_eq!(json, serde_json::json!("v")); // Just "v" → unwrapped
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_get_missing() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvGet \"nope\")",
+    ]);
+    assert_eq!(json, serde_json::json!(null)); // Nothing → null
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_delete_then_get() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"k\" \"v\")",
+        "send (KvDelete \"k\")",
+        "send (KvGet \"k\")",
+    ]);
+    assert_eq!(json, serde_json::json!(null)); // Nothing after delete
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_keys() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"a\" \"1\")",
+        "send (KvSet \"b\" \"2\")",
+        "send (KvSet \"c\" \"3\")",
+        "send KvKeys",
+    ]);
+    // Keys come back as a list, order may vary
+    let arr = json.as_array().expect("expected array");
+    assert_eq!(arr.len(), 3);
+    let mut keys: Vec<String> = arr.iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    keys.sort();
+    assert_eq!(keys, vec!["a", "b", "c"]);
+}
+
+#[test]
+#[ignore]
+fn test_effect_console_print() {
+    let (json, lines) = run_mcp_effectful(&[
+        "send (Print \"hello\")",
+        "pure (42 :: Int)",
+    ]);
+    assert_eq!(json, serde_json::json!(42));
+    assert_eq!(lines, vec!["hello"]);
+}
+
+#[test]
+#[ignore]
+fn test_effect_console_multi_print() {
+    let (json, lines) = run_mcp_effectful(&[
+        "send (Print \"a\")",
+        "send (Print \"b\")",
+        "send (Print \"c\")",
+        "pure \"done\"",
+    ]);
+    assert_eq!(json, serde_json::json!("done"));
+    assert_eq!(lines, vec!["a", "b", "c"]);
+}
+
+#[test]
+#[ignore]
+fn test_effect_mixed_console_kv() {
+    let (json, lines) = run_mcp_effectful(&[
+        "send (Print \"storing\")",
+        "send (KvSet \"x\" \"42\")",
+        "v <- send (KvGet \"x\")",
+        "send (Print \"loaded\")",
+        "pure v",
+    ]);
+    assert_eq!(json, serde_json::json!("42")); // Just "42" → unwrapped
+    assert_eq!(lines, vec!["storing", "loaded"]);
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_conditional() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"flag\" \"yes\")",
+        "v <- send (KvGet \"flag\")",
+        "case v of { Just _ -> send (KvSet \"result\" \"found\"); Nothing -> send (KvSet \"result\" \"missing\") }",
+        "send (KvGet \"result\")",
+    ]);
+    assert_eq!(json, serde_json::json!("found")); // Just "found" → unwrapped
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_overwrite() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"k\" \"old\")",
+        "send (KvSet \"k\" \"new\")",
+        "send (KvGet \"k\")",
+    ]);
+    assert_eq!(json, serde_json::json!("new")); // Just "new" → unwrapped
+}
+
+#[test]
+#[ignore]
+fn test_effect_kv_store_string_value() {
+    let (json, _) = run_mcp_effectful(&[
+        "send (KvSet \"greeting\" \"hello\")",
+        "v <- send (KvGet \"greeting\")",
+        "case v of { Just s -> pure s; Nothing -> pure \"\" }",
+    ]);
+    assert_eq!(json, serde_json::json!("hello"));
 }

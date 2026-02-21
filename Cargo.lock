@@ -2388,6 +2388,8 @@ dependencies = [
  "frunk",
  "serde_json",
  "tempfile",
+ "tidepool-bridge",
+ "tidepool-bridge-derive",
  "tidepool-codegen",
  "tidepool-effect",
  "tidepool-eval",

@@ -17,3 +17,7 @@ blake3 = "1"
 
 [dev-dependencies]
 frunk = "0.4"
+tidepool-bridge-derive = { version = "0.0.1", path = "../tidepool-bridge-derive" }
+tidepool-bridge = { version = "0.0.1", path = "../tidepool-bridge" }
+tidepool-effect = { version = "0.0.1", path = "../tidepool-effect" }
+tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
