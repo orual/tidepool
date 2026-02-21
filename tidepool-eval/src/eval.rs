@@ -96,7 +96,21 @@ fn eval_at(
     heap: &mut dyn Heap,
 ) -> Result<Value, EvalError> {
     match &expr.nodes[idx] {
-        CoreFrame::Var(v) => env.get(v).cloned().ok_or(EvalError::UnboundVar(*v)),
+        CoreFrame::Var(v) => {
+            let tag = (v.0 >> 56) as u8;
+            if tag == 0x45 {
+                // 'E' = error tag: synthetic error VarIds from Translate.hs
+                let kind = v.0 & 0xFF;
+                return Err(match kind {
+                    0 => EvalError::TypeMismatch { expected: "non-zero divisor", got: crate::error::ValueKind::Other("division by zero".into()) },
+                    1 => EvalError::TypeMismatch { expected: "no overflow", got: crate::error::ValueKind::Other("arithmetic overflow".into()) },
+                    2 => EvalError::UserError,
+                    3 => EvalError::Undefined,
+                    _ => EvalError::UserError,
+                });
+            }
+            env.get(v).cloned().ok_or(EvalError::UnboundVar(*v))
+        }
         CoreFrame::Lit(lit) => Ok(Value::Lit(lit.clone())),
         CoreFrame::App { fun, arg } => {
             let fun_val = force(eval_at(expr, *fun, env, heap)?, heap)?;

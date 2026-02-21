@@ -253,10 +253,12 @@ translateModuleClosed allBinds targetName =
   where
     isDesugaredVar name = name `elem`
       [ "unpackCString#", "unpackCStringUtf8#", "unpackAppendCString#"
-      , "eqString", "$wunsafeTake", "unsafeTake"
+      , "$wunsafeTake", "unsafeTake"
       , "divZeroError", "overflowError"
+      , "error", "undefined"
       , "unsafeEqualityProof"
       ]
+      || any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "krep$"]
     collectVarIds :: Seq FlatNode -> Set.Set Word64
     collectVarIds = foldl' (\acc node -> acc `Set.union` nodeVarIds node) Set.empty
     nodeVarIds :: FlatNode -> Set.Set Word64
@@ -401,79 +403,6 @@ translate expr =
         -- Build: letrec go = \a -> ... in go xs
         emitNode $ NLetRec [(goId, lamIdx)] appIdx
 
-    -- Desugar eqString xs ys → recursive char-by-char comparison.
-    -- GHC rewrites (== @[Char]) to eqString via a built-in RULE at -O2.
-    -- eqString has no unfolding in the .hi file, so we desugar manually.
-    Var v | isEqStringVar v, [xsArg, ysArg] <- args -> do
-        xsIdx <- translate xsArg
-        ysIdx <- translate ysArg
-        goId <- freshSynthVarId
-        aId <- freshSynthVarId
-        bId <- freshSynthVarId
-        xId <- freshSynthVarId
-        xrestId <- freshSynthVarId
-        yId <- freshSynthVarId
-        yrestId <- freshSynthVarId
-        let consId = varId (dataConWorkId consDataCon)
-            nilId  = varId (dataConWorkId nilDataCon)
-            trueId = varId (dataConWorkId trueDataCon)
-            falseId = varId (dataConWorkId falseDataCon)
-        recordDC consDataCon
-        recordDC nilDataCon
-        recordDC trueDataCon
-        recordDC falseDataCon
-        -- Build False and True results
-        falseIdx <- emitNode $ NCon falseId []
-        trueIdx  <- emitNode $ NCon trueId []
-        -- Build: case b of { [] -> True; (:) _ _ -> False }  (both lists empty = equal)
-        bRefInner <- emitNode $ NVar bId
-        let bNilAlt  = FlatAlt (FDataAlt nilId) [] trueIdx
-            bConsAlt = FlatAlt (FDataAlt consId) [yId, yrestId] falseIdx
-        bCaseWhenANil <- emitNode $ NCase bRefInner bId [bNilAlt, bConsAlt]
-        -- Build: go xrest yrest
-        goRef1 <- emitNode $ NVar goId
-        xrestRef <- emitNode $ NVar xrestId
-        goXrest <- emitNode $ NApp goRef1 xrestRef
-        yrestRef <- emitNode $ NVar yrestId
-        goXrestYrest <- emitNode $ NApp goXrest yrestRef
-        -- Build: case x of { C# x# -> case y of { C# y# -> case (CharEq x# y#) of ... } }
-        xRawId <- freshSynthVarId
-        yRawId <- freshSynthVarId
-        let charId = varId (dataConWorkId charDataCon)
-        recordDC charDataCon
-        xRawRef <- emitNode $ NVar xRawId
-        yRawRef <- emitNode $ NVar yRawId
-        charEqIdx <- emitNode $ NPrimOp (T.pack "CharEq") [xRawRef, yRawRef]
-        let eqFalseAlt = FlatAlt (FLitAlt (LEInt 0)) [] falseIdx
-            eqDefaultAlt = FlatAlt FDefault [] goXrestYrest
-        charEqCase <- emitNode $ NCase charEqIdx 0 [eqFalseAlt, eqDefaultAlt]
-        yRef <- emitNode $ NVar yId
-        let yUnboxAlt = FlatAlt (FDataAlt charId) [yRawId] charEqCase
-        yCase <- emitNode $ NCase yRef yId [yUnboxAlt]
-        xRef <- emitNode $ NVar xId
-        let xUnboxAlt = FlatAlt (FDataAlt charId) [xRawId] yCase
-        charEqCaseFinal <- emitNode $ NCase xRef xId [xUnboxAlt]
-        -- Build: case b of { [] -> False; (:) y yrest -> case x of ... }
-        bRef2 <- emitNode $ NVar bId
-        let bNilAlt2  = FlatAlt (FDataAlt nilId) [] falseIdx
-            bConsAlt2 = FlatAlt (FDataAlt consId) [yId, yrestId] charEqCaseFinal
-        bCaseWhenACons <- emitNode $ NCase bRef2 bId [bNilAlt2, bConsAlt2]
-        -- Build: case a of { [] -> <bCaseWhenANil>; (:) x xrest -> <bCaseWhenACons> }
-        aRef <- emitNode $ NVar aId
-        let aNilAlt  = FlatAlt (FDataAlt nilId) [] bCaseWhenANil
-            aConsAlt = FlatAlt (FDataAlt consId) [xId, xrestId] bCaseWhenACons
-        aCaseIdx <- emitNode $ NCase aRef aId [aNilAlt, aConsAlt]
-        -- Build: \b -> case a of ...
-        lamB <- emitNode $ NLam bId aCaseIdx
-        -- Build: \a -> \b -> ...
-        lamA <- emitNode $ NLam aId lamB
-        -- Build: go xs ys
-        goRef2 <- emitNode $ NVar goId
-        goXs <- emitNode $ NApp goRef2 xsIdx
-        goXsYs <- emitNode $ NApp goXs ysIdx
-        -- Build: letrec go = \a -> \b -> ... in go xs ys
-        emitNode $ NLetRec [(goId, lamA)] goXsYs
-
     -- Desugar $wunsafeTake n# xs → recursive list take with unboxed counter.
     -- GHC worker-wrappers `take` at -O2; the worker $wunsafeTake has no unfolding.
     Var v | isUnsafeTakeVar v, [nArg, xsArg] <- args -> do
@@ -591,6 +520,8 @@ translateHead = \case
     | isRuntimeErrorVar v -> do
         let kind = if occNameString (nameOccName (idName v)) == "divZeroError" then 0 else 1
         emitNode $ NVar (0x4500000000000000 .|. kind)  -- tag 'E' for error
+    | isErrorVar v -> emitNode $ NVar 0x4500000000000002  -- tag 'E', kind 2 (error)
+    | isUndefinedVar v -> emitNode $ NVar 0x4500000000000003  -- tag 'E', kind 3 (undefined)
     | otherwise -> do
         emitNode $ NVar (varId v)
   Lit l -> emitNode $ NLit (mapLit l)
@@ -868,8 +799,11 @@ valueRepArity dc =
 isAppendVar :: Id -> Bool
 isAppendVar v = occNameString (nameOccName (idName v)) == "++"
 
-isEqStringVar :: Id -> Bool
-isEqStringVar v = occNameString (nameOccName (idName v)) == "eqString"
+isErrorVar :: Id -> Bool
+isErrorVar v = occNameString (nameOccName (idName v)) == "error"
+
+isUndefinedVar :: Id -> Bool
+isUndefinedVar v = occNameString (nameOccName (idName v)) == "undefined"
 
 isUnsafeTakeVar :: Id -> Bool
 isUnsafeTakeVar v =

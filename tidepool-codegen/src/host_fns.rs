@@ -11,6 +11,8 @@ type GcHook = fn(&[StackRoot]);
 pub enum RuntimeError {
     DivisionByZero,
     Overflow,
+    UserError,
+    Undefined,
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -18,6 +20,8 @@ impl std::fmt::Display for RuntimeError {
         match self {
             RuntimeError::DivisionByZero => write!(f, "division by zero"),
             RuntimeError::Overflow => write!(f, "arithmetic overflow"),
+            RuntimeError::UserError => write!(f, "Haskell error called"),
+            RuntimeError::Undefined => write!(f, "Haskell undefined forced"),
         }
     }
 }
@@ -176,7 +180,9 @@ pub extern "C" fn runtime_error(kind: u64) -> *mut u8 {
     let err = match kind {
         0 => RuntimeError::DivisionByZero,
         1 => RuntimeError::Overflow,
-        _ => RuntimeError::Overflow,
+        2 => RuntimeError::UserError,
+        3 => RuntimeError::Undefined,
+        _ => RuntimeError::UserError,
     };
     RUNTIME_ERROR.with(|cell| {
         *cell.borrow_mut() = Some(err);

@@ -19,7 +19,6 @@ module Tidepool.Prelude
   , not, (&&), (||), otherwise, seq
   , fst, snd, curry, uncurry
   , error, undefined
-  , show
     -- * List operations
   , map, filter, foldl, foldl', foldr
   , null
@@ -52,6 +51,10 @@ module Tidepool.Prelude
   , intercalate
   , isPrefixOf
   , intersperse
+    -- * Partial functions (use with care)
+  , head
+  , tail
+  , last
     -- * Numeric
   , showInt
     -- * String comparison
@@ -311,6 +314,25 @@ intersperse _   []     = []
 intersperse _   [x]    = [x]
 intersperse sep (x:xs) = x : sep : intersperse sep xs
 {-# INLINE intersperse #-}
+
+-- | Extract the first element. Partial: errors on empty list.
+head :: [a] -> a
+head (x:_) = x
+head []    = error "head: empty list"
+{-# INLINE head #-}
+
+-- | Extract all elements after the head. Partial: errors on empty list.
+tail :: [a] -> [a]
+tail (_:xs) = xs
+tail []     = error "tail: empty list"
+{-# INLINE tail #-}
+
+-- | Extract the last element. Partial: errors on empty list.
+last :: [a] -> a
+last [x]    = x
+last (_:xs) = last xs
+last []     = error "last: empty list"
+{-# INLINE last #-}
 
 -- | Convert an Int to its decimal String representation.
 -- Uses quot/rem separately to avoid quotRemInt# (unboxed tuple primop).

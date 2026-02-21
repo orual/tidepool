@@ -158,6 +158,12 @@ impl JitEffectMachine {
                     crate::host_fns::RuntimeError::Overflow => {
                         crate::yield_type::YieldError::Overflow
                     }
+                    crate::host_fns::RuntimeError::UserError => {
+                        crate::yield_type::YieldError::UserError
+                    }
+                    crate::host_fns::RuntimeError::Undefined => {
+                        crate::yield_type::YieldError::Undefined
+                    }
                 }))
             } else {
                 Err(JitError::Yield(crate::yield_type::YieldError::NullPointer))

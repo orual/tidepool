@@ -94,6 +94,8 @@ impl CompiledEffectMachine {
                 return Yield::Error(match err {
                     crate::host_fns::RuntimeError::DivisionByZero => YieldError::DivisionByZero,
                     crate::host_fns::RuntimeError::Overflow => YieldError::Overflow,
+                    crate::host_fns::RuntimeError::UserError => YieldError::UserError,
+                    crate::host_fns::RuntimeError::Undefined => YieldError::Undefined,
                 });
             }
             return Yield::Error(YieldError::NullPointer);

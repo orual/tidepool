@@ -52,6 +52,10 @@ pub enum EvalError {
     NotAFunction,
     /// Jump to unknown join point
     UnboundJoin(JoinId),
+    /// Haskell `error "..."` called
+    UserError,
+    /// Haskell `undefined` forced
+    Undefined,
 }
 
 impl std::fmt::Display for EvalError {
@@ -78,6 +82,8 @@ impl std::fmt::Display for EvalError {
             EvalError::HeapExhausted => write!(f, "heap exhausted"),
             EvalError::NotAFunction => write!(f, "application of non-function value"),
             EvalError::UnboundJoin(id) => write!(f, "jump to unbound join point: j_{}", id.0),
+            EvalError::UserError => write!(f, "Haskell error called"),
+            EvalError::Undefined => write!(f, "Haskell undefined forced"),
         }
     }
 }

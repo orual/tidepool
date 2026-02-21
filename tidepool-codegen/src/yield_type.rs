@@ -52,6 +52,10 @@ pub enum YieldError {
     DivisionByZero,
     /// Arithmetic overflow in JIT code.
     Overflow,
+    /// Haskell `error` called in JIT code.
+    UserError,
+    /// Haskell `undefined` forced in JIT code.
+    Undefined,
 }
 
 impl std::fmt::Display for YieldError {
@@ -69,6 +73,8 @@ impl std::fmt::Display for YieldError {
             YieldError::NullPointer => write!(f, "null pointer in effect result"),
             YieldError::DivisionByZero => write!(f, "division by zero"),
             YieldError::Overflow => write!(f, "arithmetic overflow"),
+            YieldError::UserError => write!(f, "Haskell error called"),
+            YieldError::Undefined => write!(f, "Haskell undefined forced"),
         }
     }
 }
