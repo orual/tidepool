@@ -627,6 +627,30 @@ translateHead = \case
       return (varId b, rhs')
     bodyIdx <- translate body
     emitNode $ NLetRec pairIdxs bodyIdx
+  -- Desugar multi-return primops: case quotRemInt# a b of (# q, r #) -> body
+  -- Split into:
+  --   case quotInt# a b of q { DEFAULT ->
+  --   case remInt# a b of r { DEFAULT ->
+  --   body }}
+  -- This ensures both components are forced and a/b are shared.
+  Case scrut _caseBinder _ty [Alt (DataAlt _dc) binders body]
+    | (Var v, allArgs) <- collectArgs scrut
+    , Just pop <- isPrimOpId_maybe v
+    , Just (op1Name, op2Name) <- splitMultiReturnPrimOp pop
+    , let valArgs = filter isValueArg allArgs
+    , [a, b] <- valArgs
+    , vBinders <- filter (not . isTyVar) binders
+    , [qBinder, rBinder] <- vBinders -> do
+        aIdx <- translate a
+        bIdx <- translate b
+        qValIdx <- emitNode $ NPrimOp op1Name [aIdx, bIdx]
+        rValIdx <- emitNode $ NPrimOp op2Name [aIdx, bIdx]
+        -- Bind q and r using Case to force them, then translate body
+        bodyIdx <- translate body
+        -- case rVal of rBinder { DEFAULT -> body }
+        rCaseIdx <- emitNode $ NCase rValIdx (varId rBinder) [FlatAlt FDefault [] bodyIdx]
+        -- case qVal of qBinder { DEFAULT -> rCaseIdx }
+        emitNode $ NCase qValIdx (varId qBinder) [FlatAlt FDefault [] rCaseIdx]
   Case scrut b _alts_ty alts -> do
     scrutIdx <- translate scrut
     altData <- mapM translateAlt alts
@@ -873,6 +897,14 @@ isUnpackAppendCStringVar :: Id -> Bool
 isUnpackAppendCStringVar v =
   let name = occNameString (nameOccName (idName v))
   in name == "unpackAppendCString#"
+
+-- | Recognize primops that return unboxed tuples and can be split into
+-- two individual primops. Returns (primop1, primop2) text names.
+splitMultiReturnPrimOp :: PrimOp -> Maybe (Text, Text)
+splitMultiReturnPrimOp = \case
+  IntQuotRemOp  -> Just (T.pack "IntQuot", T.pack "IntRem")
+  WordQuotRemOp -> Just (T.pack "WordQuot", T.pack "WordRem")
+  _             -> Nothing
 
 -- | Extract Addr# literal bytes from an expression.
 -- Handles both direct Lit and Var with an unfolding to Lit
