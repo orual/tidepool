@@ -2,9 +2,7 @@ module Tidepool.Resolve (resolveExternals, UnresolvedVar(..)) where
 
 import GHC.Core (CoreBind, CoreExpr, Bind(..), Expr(..), maybeUnfoldingTemplate)
 import GHC.Core.FVs (exprSomeFreeVars)
-import GHC.Types.Id (Id, idUnfolding, realIdUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe, idName)
-import GHC.Utils.Outputable (showPprUnsafe)
-import Debug.Trace (trace)
+import GHC.Types.Id (Id, idUnfolding, realIdUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe)
 import GHC.Types.Var (Var, varName, varUnique)
 import GHC.Types.Var.Set (VarSet, emptyVarSet, unitVarSet, elemVarSet, extendVarSet)
 import GHC.Types.Unique (getKey)
@@ -57,15 +55,17 @@ resolveExternals hscEnv binds = do
   (resolvedBinds, substituteBinds, _, unresolved) <- go localNameMap externals emptyVarSet localBinders [] [] []
   let resolvedPairs = concatMap toRecPairs resolvedBinds
       substitutePairs = concatMap toRecPairs substituteBinds
-      -- Resolved bindings (external unfoldings) go BEFORE originals
-      -- because originals may reference them.
-      -- Substitute bindings (aliases to local Prelude functions) go AFTER
-      -- originals because they reference local bindings via Var aliases.
+      origPairs = concatMap toRecPairs binds
+      -- Merge originals and substitutes into one Rec so they can see each other.
+      -- Substitutes are aliases (NonRec specVar (Var preludeVar)) that reference
+      -- originals, and originals may reference substitutes via specialization vars.
+      -- Resolved bindings (external unfoldings) go in a separate outer Rec since
+      -- they only provide definitions, never reference originals.
       augmented = case (resolvedPairs, substitutePairs) of
         ([], []) -> binds
         (rs, []) -> Rec rs : binds
-        ([], ss) -> binds ++ [Rec ss]
-        (rs, ss) -> Rec rs : binds ++ [Rec ss]
+        ([], ss) -> [Rec (origPairs ++ ss)]
+        (rs, ss) -> Rec rs : [Rec (origPairs ++ ss)]
   return (augmented, unresolved)
   where
     go :: Map.Map String (Var, CoreExpr) -> [Var] -> VarSet -> VarSet
@@ -92,24 +92,20 @@ resolveExternals hscEnv binds = do
                    -- Standard unfolding failed. Attempt specialization fallback.
                    mbFallback <- attemptSpecFallback hscEnv v
                    case mbFallback of
-                     Just (genId, unfoldingExpr) -> do
-                       trace ("  [resolve] DESPEC " ++ vName ++ " -> " ++
-                              occNameString (nameOccName (idName genId))) $
-                         let newBind = NonRec genId unfoldingExpr
-                             newFVs = exprSomeFreeVars (const True) unfoldingExpr
-                             localSet' = extendVarSet (extendVarSet localSet v) genId
-                             newExternals = filter (isResolvable localSet')
-                                                   (nonDetEltsUniqSet newFVs)
-                         in go nameMap (newExternals ++ rest) visited' localSet' (newBind : acc) subAcc unres
+                     Just (genId, unfoldingExpr) ->
+                       let newBind = NonRec genId unfoldingExpr
+                           newFVs = exprSomeFreeVars (const True) unfoldingExpr
+                           localSet' = extendVarSet (extendVarSet localSet v) genId
+                           newExternals = filter (isResolvable localSet')
+                                                 (nonDetEltsUniqSet newFVs)
+                       in go nameMap (newExternals ++ rest) visited' localSet' (newBind : acc) subAcc unres
                      Nothing ->
                        -- Despec failed too. Try Prelude substitution.
                        case preludeSubstitute nameMap vName v of
-                         Just subBind -> do
-                           trace ("  [resolve] SUBSTITUTE " ++ vName) $
-                             let localSet' = extendVarSet localSet v
-                             in go nameMap rest visited' localSet' acc (subBind : subAcc) unres
+                         Just subBind ->
+                           let localSet' = extendVarSet localSet v
+                           in go nameMap rest visited' localSet' acc (subBind : subAcc) unres
                          Nothing ->
-                           trace ("  [resolve] FAIL " ++ vName ++ " (key=" ++ show (getKey (varUnique v)) ++ "): " ++ showPprUnsafe (idUnfolding v)) $
                            let uv = UnresolvedVar
                                  { uvKey    = fromIntegral (getKey (varUnique v))
                                  , uvName   = occNameString (nameOccName (varName v))
@@ -125,14 +121,10 @@ resolveExternals hscEnv binds = do
 
     isResolvable :: VarSet -> Var -> Bool
     isResolvable localSet v =
-      let vName = occNameString (nameOccName (varName v))
-          result = isGlobalId v
-                   && not (elemVarSet v localSet)
-                   && not (isPrimOp v)
-                   && not (isDataCon v)
-      in if not result && not (elemVarSet v localSet) && not (isPrimOp v) && not (isDataCon v)
-         then trace ("  [resolve] SKIP non-global: " ++ vName ++ " (key=" ++ show (getKey (varUnique v)) ++ ")") result
-         else result
+      isGlobalId v
+      && not (elemVarSet v localSet)
+      && not (isPrimOp v)
+      && not (isDataCon v)
 
     bindersOfSet :: CoreBind -> VarSet
     bindersOfSet (NonRec b _) = unitVarSet b
@@ -180,15 +172,15 @@ preludeMethodSubstitutes =
 
 -- | Try to substitute an unresolvable specialized var with a Prelude function.
 -- Creates a simple alias (NonRec specVar (Var preludeVar)) pointing to the
--- local Prelude function. The alias binding is placed AFTER originals so it
--- can see the local Prelude var in scope.
+-- local Prelude function. The alias binding is placed in the same Rec group
+-- as originals so both can see each other.
 preludeSubstitute :: Map.Map String (Var, CoreExpr) -> String -> Var -> Maybe CoreBind
 preludeSubstitute nameMap specName specVar =
   case findSubstitute specName of
     Nothing -> Nothing
     Just preludeName ->
       case Map.lookup preludeName nameMap of
-        Nothing -> trace ("  [resolve] SUBSTITUTE miss: no local " ++ preludeName) Nothing
+        Nothing -> Nothing
         Just (preludeVar, _preludeRhs) ->
           Just (NonRec specVar (Var preludeVar))
   where
@@ -216,10 +208,7 @@ attemptSpecFallback hscEnv specVar = do
           origNc <- readMVar (nsNames nc)
           let genOcc = mkVarOcc genOccStr
           case lookupOrigNameCache origNc modCtx genOcc of
-            Nothing -> do
-              trace ("  [resolve] DESPEC lookup miss: " ++ occStr ++
-                     " -> " ++ genOccStr ++ " not in NameCache") $
-                return Nothing
+            Nothing -> return Nothing
             Just genName -> do
               eps <- hscEPS hscEnv
               let pte = eps_PTE eps
@@ -230,12 +219,8 @@ attemptSpecFallback hscEnv specVar = do
                     Nothing ->
                       case maybeUnfoldingTemplate (idUnfolding genId) of
                         Just expr -> return (Just (genId, expr))
-                        Nothing -> do
-                          trace ("  [resolve] DESPEC no unfolding for generic: " ++ genOccStr) $
-                            return Nothing
-                _ -> do
-                  trace ("  [resolve] DESPEC not AnId in PTE: " ++ genOccStr) $
-                    return Nothing
+                        Nothing -> return Nothing
+                _ -> return Nothing
 
 -- | Strip GHC specialization markers from an OccName string.
 -- Returns Just the generic name, or Nothing if no $s markers found.

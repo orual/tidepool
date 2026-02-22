@@ -6,6 +6,9 @@ module Tidepool.Translate
   , collectUsedDataCons
   , collectTransitiveDCons
   , wiredInDataCons
+  , dcToMeta
+  , valueRepArity
+  , mapBang
   , FlatNode(..)
   , FlatAlt(..)
   , FlatAltCon(..)
@@ -16,7 +19,7 @@ module Tidepool.Translate
 import GHC
 import GHC.Core
 import GHC.Types.Id
-import GHC.Types.Var
+import GHC.Types.Var (isTyVar, varUnique)
 import GHC.Types.Unique (getKey)
 import GHC.Core.DataCon (DataCon, dataConRepArity, dataConRepArgTys, dataConFullSig, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, dataConOrigArgTys, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
 import Language.Haskell.Syntax.Basic (Boxity(..))
@@ -89,6 +92,7 @@ data TransState = TransState
   , tsUsedDCs :: !(Map.Map Word64 DataCon)
   , tsRecJoinIds :: !(Set.Set Word64)  -- join IDs from Rec groups (translated as LetRec lambdas)
   , tsSynthCounter :: !Word64          -- counter for synthetic VarIds (tag 'T')
+  , tsUnresolvedIds :: !(Set.Set Word64) -- IDs that should be translated as error nodes
   }
 
 type TransM = State TransState
@@ -117,7 +121,7 @@ translateBinds :: [CoreBind] -> [(String, Seq FlatNode)]
 translateBinds binds = concatMap translateBind binds
   where
     translateBind (NonRec b rhs) =
-      let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
+      let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0 Set.empty)
           finalNodes = tsNodes s
           rootIdx = Seq.length finalNodes - 1
       in if idx == rootIdx
@@ -125,7 +129,7 @@ translateBinds binds = concatMap translateBind binds
          else error "Root index mismatch in NonRec"
     translateBind (Rec pairs) =
       map (\(b, rhs) ->
-        let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
+        let (idx, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0 Set.empty)
             finalNodes = tsNodes s
             rootIdx = Seq.length finalNodes - 1
         in if idx == rootIdx
@@ -137,11 +141,11 @@ translateBinds binds = concatMap translateBind binds
 -- All bindings become nested Let expressions wrapping a Var reference to the
 -- target binding. This eliminates cross-binding Var references since all
 -- definitions share one flat node array.
-translateModule :: [CoreBind] -> String -> (Seq FlatNode, Map.Map Word64 DataCon)
-translateModule allBinds targetName =
+translateModule :: [CoreBind] -> String -> Set.Set Word64 -> (Seq FlatNode, Map.Map Word64 DataCon)
+translateModule allBinds targetName unresolvedIds =
   let targetId = findTargetId targetName allBinds
       neededBinds = reachableBinds allBinds targetId
-      (_, finalState) = runState (wrapAllBinds neededBinds targetId) (TransState Seq.empty Map.empty Set.empty 0)
+      (_, finalState) = runState (wrapAllBinds neededBinds targetId) (TransState Seq.empty Map.empty Set.empty 0 unresolvedIds)
   in (tsNodes finalState, tsUsedDCs finalState)
   where
     findTargetId name binds =
@@ -245,47 +249,11 @@ translateModule allBinds targetName =
 translateModuleClosed :: HscEnv -> [CoreBind] -> String -> IO (Seq FlatNode, Map.Map Word64 DataCon, [UnresolvedVar], [CoreBind])
 translateModuleClosed hscEnv allBinds targetName = do
   (closedBinds, unresolved) <- resolveExternals hscEnv allBinds
-  let filtered = filter (not . isDesugaredVar . uvName) unresolved
-      (nodes, usedDCs) = translateModule closedBinds targetName
-      referencedIds = collectVarIds nodes
-      -- Collect all binder VarIds (Let-bound vars in the CBOR tree)
-      definedIds = collectDefinedIds nodes
-      -- Find NVar IDs that are not defined by any Let binding
-      orphanIds = Set.difference referencedIds definedIds
-      trulyUnresolved = filter (\uv -> uvKey uv `Set.member` referencedIds) filtered
-  -- Debug: print orphan IDs that might cause SIGSEGV
-  when (not (Set.null orphanIds) && targetName == "result") $ do
-    putStrLn $ "  [translate] ORPHAN NVar IDs for " ++ targetName ++ ": " ++
-           show (Set.toList orphanIds)
-    -- Try to find these IDs in the binder list
-    let allBinders = [(varId b, occNameString (nameOccName (idName b))) | bind <- closedBinds, b <- case bind of { NonRec b _ -> [b]; Rec ps -> map fst ps }]
-    mapM_ (\oid -> case lookup oid allBinders of
-      Just name -> putStrLn $ "    " ++ show oid ++ " = " ++ name ++ " (defined but not in CBOR tree)"
-      Nothing   -> putStrLn $ "    " ++ show oid ++ " = <not found in any binding>"
-      ) (Set.toList orphanIds)
+  let unresolvedIds = Set.fromList (map uvKey unresolved)
+      (nodes, usedDCs) = translateModule closedBinds targetName unresolvedIds
+      referencedIds = foldl' (\acc n -> case n of { NVar v -> Set.insert v acc; _ -> acc }) Set.empty nodes
+      trulyUnresolved = filter (\uv -> uvKey uv `Set.member` referencedIds) unresolved
   return (nodes, usedDCs, trulyUnresolved, closedBinds)
-  where
-    isDesugaredVar name = name `elem`
-      [ "unpackCString#", "unpackCStringUtf8#", "unpackAppendCString#"
-      , "$wunsafeTake", "unsafeTake"
-      , "divZeroError", "overflowError"
-      , "error", "undefined"
-      , "unsafeEqualityProof"
-      ]
-      || any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "krep$"]
-    collectVarIds :: Seq FlatNode -> Set.Set Word64
-    collectVarIds = foldl' (\acc node -> acc `Set.union` nodeVarIds node) Set.empty
-    nodeVarIds :: FlatNode -> Set.Set Word64
-    nodeVarIds (NVar v) = Set.singleton v
-    nodeVarIds _ = Set.empty
-    collectDefinedIds :: Seq FlatNode -> Set.Set Word64
-    collectDefinedIds = foldl' (\acc node -> acc `Set.union` nodeDefIds node) Set.empty
-    nodeDefIds :: FlatNode -> Set.Set Word64
-    nodeDefIds (NLetNonRec v _ _) = Set.singleton v
-    nodeDefIds (NLetRec pairs _) = Set.fromList (map fst pairs)
-    nodeDefIds (NLam v _) = Set.singleton v
-    nodeDefIds (NCase _ _ alts) = Set.fromList [v | FlatAlt _ bs _ <- alts, v <- bs]
-    nodeDefIds _ = Set.empty
 
 -- | Collect all DataCons encountered during translation of Core bindings.
 -- This includes constructors from imported packages (e.g. freer-simple's
@@ -296,21 +264,22 @@ collectUsedDataCons binds =
   in map dcToMeta (Map.elems allDCs)
   where
     collectFromBind (NonRec _ rhs) =
-      let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
+      let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0 Set.empty)
       in tsUsedDCs s
     collectFromBind (Rec pairs) =
       foldMap (\(_, rhs) ->
-        let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0)
+        let (_, s) = runState (translate rhs) (TransState Seq.empty Map.empty Set.empty 0 Set.empty)
         in tsUsedDCs s
       ) pairs
 
-    dcToMeta dc =
-      ( varId (dataConWorkId dc)
-      , T.pack (occNameString (nameOccName (dataConName dc)))
-      , dataConTag dc
-      , valueRepArity dc
-      , map mapBang (dataConSrcBangs dc)
-      )
+dcToMeta :: DataCon -> (Word64, Text, Int, Int, [Text])
+dcToMeta dc =
+  ( varId (dataConWorkId dc)
+  , T.pack (occNameString (nameOccName (dataConName dc)))
+  , dataConTag dc
+  , valueRepArity dc
+  , map mapBang (dataConSrcBangs dc)
+  )
 
 -- | Compute transitive closure of TyCons reachable from all binder types,
 -- expanding through newtypes, then return metadata for all their DataCons.
@@ -546,7 +515,10 @@ translateHead = \case
     | isUndefinedVar v -> emitNode $ NVar 0x4500000000000003  -- tag 'E', kind 3 (undefined)
     | isTypeMetadataVar v -> emitNode $ NVar 0x4500000000000004  -- tag 'E', kind 4 (type metadata)
     | otherwise -> do
-        emitNode $ NVar (varId v)
+        unresolved <- gets (Set.member (varId v) . tsUnresolvedIds)
+        if unresolved
+          then emitNode $ NVar 0x4500000000000004
+          else emitNode $ NVar (varId v)
   Lit l -> emitNode $ NLit (mapLit l)
   Lam b body
     | isTyVar b -> translate body
@@ -844,10 +816,12 @@ isUnsafeEqualityProofVar v =
 
 -- | Recognize GHC type-representation metadata vars ($tc*, $trModule*, krep$*, $krep*).
 -- These have no runtime semantics and no unfoldings; emit as error VarId.
+-- These vars can appear deep inside resolved unfoldings (e.g. Typeable infrastructure)
+-- and are not reported by resolveExternals as unresolved.
 isTypeMetadataVar :: Id -> Bool
 isTypeMetadataVar v =
   let name = occNameString (nameOccName (idName v))
-  in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "krep$"]
+  in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "krep$", "tr$Module"]
 
 isUnpackCStringVar :: Id -> Bool
 isUnpackCStringVar v =

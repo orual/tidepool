@@ -12,7 +12,7 @@ import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 import GHC.Core (CoreBind, Bind(..))
-import GHC.Core.DataCon (DataCon, dataConRepArity, dataConFullSig, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
+import GHC.Core.DataCon (DataCon)
 import GHC.Types.Name (nameOccName, isExternalName)
 import GHC.Types.Id (idName)
 import GHC.Types.Name.Occurrence (occNameString)
@@ -23,7 +23,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Tidepool.GhcPipeline (runPipeline, PipelineResult(..), dumpCore)
-import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons, collectTransitiveDCons, wiredInDataCons, UnresolvedVar(..))
+import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons, collectTransitiveDCons, wiredInDataCons, UnresolvedVar(..), dcToMeta, valueRepArity, mapBang)
 import Tidepool.CborEncode (encodeTree, encodeMetadata)
 
 main :: IO ()
@@ -191,30 +191,6 @@ processFile args path = do
       hPutStrLn stderr $ "Error: " ++ show e
       exitFailure
     Right () -> return ()
-
-dcToMeta :: DataCon -> (Word64, Text, Int, Int, [Text])
-dcToMeta dc =
-  ( fromIntegral (getKey (varUnique (dataConWorkId dc)))
-  , T.pack (occNameString (nameOccName (dataConName dc)))
-  , dataConTag dc
-  , valueRepArity dc
-  , map mapBang (dataConSrcBangs dc)
-  )
-
--- | Count value arguments excluding GADT equality evidence.
--- dataConRepArity includes equality evidence args (EqSpec) for GADT constructors,
--- but GHC Core passes these as Coercion arguments, which isValueArg filters out.
-valueRepArity :: DataCon -> Int
-valueRepArity dc =
-  let (_, _, eqSpec, _, _, _) = dataConFullSig dc
-  in dataConRepArity dc - length eqSpec
-
-mapBang :: HsSrcBang -> Text
-mapBang (HsSrcBang _ (HsBang srcUnpack srcBang)) =
-  case (srcUnpack, srcBang) of
-    (_, SrcStrict) -> "SrcBang"
-    (SrcUnpack, _) -> "SrcUnpack"
-    _              -> "NoSrcBang"
 
 -- | Deduplicate binding names by appending _1, _2, etc. for collisions.
 dedup :: Map.Map String Int -> [(String, a)] -> [(String, a)]
