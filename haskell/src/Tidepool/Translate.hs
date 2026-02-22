@@ -172,41 +172,46 @@ translateModule allBinds targetName unresolvedIds =
       in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc", "$cShow"]
 
     -- | Filter bindings to only those transitively reachable from the target.
-    -- BFS/DFS from the target binding's free variables, collecting all binding
-    -- groups that are transitively referenced. Preserves original ordering.
+    -- Flattens Rec groups into individual (binder, rhs) pairs for fine-grained
+    -- reachability analysis, then reconstructs reachable pairs into a single Rec.
+    -- This prevents a single large Rec from pulling in all bindings when only
+    -- a few are actually needed.
     reachableBinds :: [CoreBind] -> Id -> [CoreBind]
     reachableBinds binds target =
-      let -- For each binding group, collect binder keys and free variable keys
-          bindInfo :: [(CoreBind, Set.Set Word64, Set.Set Word64)]
-          bindInfo = map (\bind ->
-            let pairs = case bind of
-                  NonRec b rhs -> [(b, rhs)]
-                  Rec ps       -> ps
-                bkeys = Set.fromList [varId b | (b, _) <- pairs]
-                fvs = Set.unions [exprFreeVarKeys rhs | (_, rhs) <- pairs]
-            in (bind, bkeys, fvs)) binds
+      let -- Flatten all binding groups into individual (binder, rhs) pairs
+          allPairs :: [(Id, CoreExpr)]
+          allPairs = concatMap (\bind -> case bind of
+            NonRec b rhs -> [(b, rhs)]
+            Rec ps       -> ps) binds
 
-          -- Map from binder key -> index into bindInfo
+          -- Index each pair individually
+          pairInfo :: [((Id, CoreExpr), Word64, Set.Set Word64)]
+          pairInfo = map (\p@(b, rhs) ->
+            (p, varId b, exprFreeVarKeys rhs)) allPairs
+
+          -- Map from binder key -> index into pairInfo
           keyToIdx :: Map.Map Word64 Int
           keyToIdx = Map.fromList
-            [(k, i) | (i, (_, bkeys, _)) <- zip [0..] bindInfo, k <- Set.toList bkeys]
+            [(k, i) | (i, (_, k, _)) <- zip [0..] pairInfo]
 
-          -- DFS collecting reachable bind-group indices
+          -- DFS collecting reachable pair indices
           go :: Set.Set Int -> [Word64] -> Set.Set Int
           go visited [] = visited
           go visited (v:vs) = case Map.lookup v keyToIdx of
             Just idx | not (Set.member idx visited) ->
-              let (_, _, fvs) = bindInfo !! idx
+              let (_, _, fvs) = pairInfo !! idx
               in go (Set.insert idx visited) (Set.toList fvs ++ vs)
             _ -> go visited vs
 
           targetKey = varId target
           reachable = case Map.lookup targetKey keyToIdx of
             Just idx ->
-              let (_, _, fvs) = bindInfo !! idx
+              let (_, _, fvs) = pairInfo !! idx
               in go (Set.singleton idx) (Set.toList fvs)
             Nothing -> Set.empty
-      in [bind | (i, (bind, _, _)) <- zip [0..] bindInfo, Set.member i reachable]
+
+          reachablePairs = [(b, rhs) | (i, ((b, rhs), _, _)) <- zip [0..] pairInfo, Set.member i reachable]
+      in if null reachablePairs then [] else [Rec reachablePairs]
 
     -- | Extract free variable keys (as Word64) from a Core expression.
     exprFreeVarKeys :: CoreExpr -> Set.Set Word64

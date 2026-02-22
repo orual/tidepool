@@ -564,6 +564,21 @@ impl EmitContext {
                     self.env.insert(binder, SsaVal::HeapPtr(ptr));
                 }
 
+                // Phase 2.5: Evaluate trivial simple bindings (Var aliases) before
+                // Lam body compilation. These are just env lookups that don't depend
+                // on closure code pointers. Resolved Lam bodies may capture them as
+                // free variables (e.g., substitute aliases like $fEqList_$s$c==1).
+                let mut deferred_simple = Vec::new();
+                for (binder, rhs_idx) in &simple_bindings {
+                    if matches!(&tree.nodes[*rhs_idx], CoreFrame::Var(_)) {
+                        let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
+                        self.trace_scope(&format!("insert LetRec(trivial) {:?}", binder));
+                        self.env.insert(*binder, rhs_val);
+                    } else {
+                        deferred_simple.push((*binder, *rhs_idx));
+                    }
+                }
+
                 // Phase 3a: Compile Lam bodies and fill closures FIRST
                 // (must happen before Con field filling, because Con fields may
                 // contain App nodes that call closures from this same LetRec group)
@@ -655,8 +670,9 @@ impl EmitContext {
                     }
                 }
 
-                // Phase 3c: Evaluate simple (non-recursive) bindings now that all closures are fully initialized
-                for (binder, rhs_idx) in &simple_bindings {
+                // Phase 3c: Evaluate deferred simple bindings (non-Var, non-recursive)
+                // now that all closures are fully initialized
+                for (binder, rhs_idx) in &deferred_simple {
                     let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
                     self.trace_scope(&format!("insert LetRec(simple) {:?}", binder));
                     self.env.insert(*binder, rhs_val);

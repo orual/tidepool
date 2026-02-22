@@ -55,17 +55,15 @@ resolveExternals hscEnv binds = do
   (resolvedBinds, substituteBinds, _, unresolved) <- go localNameMap externals emptyVarSet localBinders [] [] []
   let resolvedPairs = concatMap toRecPairs resolvedBinds
       substitutePairs = concatMap toRecPairs substituteBinds
+      -- All three groups (resolved, originals, substitutes) form a 3-way cycle:
+      -- originals → resolved (via GHC unfoldings), resolved → substitutes (via
+      -- specialized method refs), substitutes → originals (via Var aliases).
+      -- Merge into one Rec so the JIT's LetRec handling can pre-allocate all
+      -- bindings before compiling any Lam bodies. The reachableBinds filter in
+      -- Translate.hs handles individual binding reachability within the Rec.
       origPairs = concatMap toRecPairs binds
-      -- Merge originals and substitutes into one Rec so they can see each other.
-      -- Substitutes are aliases (NonRec specVar (Var preludeVar)) that reference
-      -- originals, and originals may reference substitutes via specialization vars.
-      -- Resolved bindings (external unfoldings) go in a separate outer Rec since
-      -- they only provide definitions, never reference originals.
-      augmented = case (resolvedPairs, substitutePairs) of
-        ([], []) -> binds
-        (rs, []) -> Rec rs : binds
-        ([], ss) -> [Rec (origPairs ++ ss)]
-        (rs, ss) -> Rec rs : [Rec (origPairs ++ ss)]
+      allPairs = resolvedPairs ++ origPairs ++ substitutePairs
+      augmented = if null allPairs then [] else [Rec allPairs]
   return (augmented, unresolved)
   where
     go :: Map.Map String (Var, CoreExpr) -> [Var] -> VarSet -> VarSet
