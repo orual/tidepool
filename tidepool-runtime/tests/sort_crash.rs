@@ -818,11 +818,7 @@ fn test_map_intersection_with() {
     assert_eq!(json, serde_json::json!([[2, 120], [3, 230]]));
 }
 
-// BUG: Map.findWithDefault triggers "Jump to unknown label JoinId(...)"
-// in the JIT. Fat interface join point with tag-'a' unique not resolved.
-// Map.lookup works; findWithDefault does not.
 #[test]
-#[ignore]
 fn test_map_find_with_default() {
     let json = run_mcp_with_imports(
         &[
@@ -833,6 +829,127 @@ fn test_map_find_with_default() {
         &["qualified Data.Map.Strict as Map"],
     );
     assert_eq!(json, serde_json::json!(30));
+}
+
+#[test]
+fn test_map_find_with_default_missing() {
+    // findWithDefault when key is absent — exercises the default-value branch
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(3,30),(5,50)]",
+            "pure (Map.findWithDefault 999 2 m)",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!(999));
+}
+
+#[test]
+fn test_map_alter_insert() {
+    // Map.alter with a lambda that inserts — lambda crosses join boundary
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(3,30)]",
+            "let m' = Map.alter (\\_ -> Just 20) 2 m",
+            "pure (Map.toList m')",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[1, 10], [2, 20], [3, 30]]));
+}
+
+#[test]
+fn test_map_alter_delete() {
+    // Map.alter with a lambda that deletes
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(2,20),(3,30)]",
+            "let m' = Map.alter (\\_ -> Nothing) 2 m",
+            "pure (Map.toList m')",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[1, 10], [3, 30]]));
+}
+
+#[test]
+fn test_map_update_with_key() {
+    // Map.updateWithKey passes a (key, value) -> Maybe value lambda into tree walk
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,100::Int),(2,200),(3,300)]",
+            "let m' = Map.updateWithKey (\\k v -> if k == 2 then Nothing else Just (v + k)) 2 m",
+            "pure (Map.toList m')",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[1, 100], [3, 300]]));
+}
+
+#[test]
+fn test_map_map_with_key() {
+    // Map.mapWithKey — transforms values using key, lambda crosses join boundary
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(2,20),(3,30)]",
+            "pure (Map.toList (Map.mapWithKey (\\k v -> k * 100 + v) m))",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[1, 110], [2, 220], [3, 330]]));
+}
+
+#[test]
+fn test_map_foldr_with_key() {
+    // Map.foldrWithKey — fold with 3-arg lambda (k -> v -> acc -> acc)
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(2,20),(3,30)]",
+            "pure (Map.foldrWithKey (\\k v acc -> acc + k * v) (0::Int) m)",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    // 1*10 + 2*20 + 3*30 = 10 + 40 + 90 = 140
+    assert_eq!(json, serde_json::json!(140));
+}
+
+#[test]
+fn test_map_union_with_key() {
+    // Map.unionWithKey — merge with key-dependent combining function
+    let json = run_mcp_with_imports(
+        &[
+            "let m1 = Map.fromList [(1::Int,10::Int),(2,20)]",
+            "let m2 = Map.fromList [(2::Int,200::Int),(3,300)]",
+            "pure (Map.toList (Map.unionWithKey (\\k a b -> k + a + b) m1 m2))",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    // key 1: only in m1 -> 10
+    // key 2: both -> 2 + 20 + 200 = 222
+    // key 3: only in m2 -> 300
+    assert_eq!(json, serde_json::json!([[1, 10], [2, 222], [3, 300]]));
+}
+
+#[test]
+fn test_map_filter_with_key() {
+    // Map.filterWithKey — predicate lambda crossing join boundary
+    let json = run_mcp_with_imports(
+        &[
+            "let m = Map.fromList [(1::Int,10::Int),(2,20),(3,30),(4,40)]",
+            "pure (Map.toList (Map.filterWithKey (\\k v -> k + v > 25) m))",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    // k=1,v=10: 11 <= 25 no; k=2,v=20: 22 <= 25 no; k=3,v=30: 33 > 25 yes; k=4,v=40: 44 > 25 yes
+    assert_eq!(json, serde_json::json!([[3, 30], [4, 40]]));
 }
 
 #[test]

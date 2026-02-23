@@ -550,6 +550,18 @@ translateHead = \case
         bodyIdx <- translate body
         emitNode $ NLam (varId b) bodyIdx
   Let (NonRec b rhs) body
+    | Just arity <- isJoinId_maybe b
+    , jumpCrossesLam (varId b) body -> do
+        -- Join point is used inside a lambda in the body — can't compile as
+        -- a Cranelift block (lambdas are separate functions). Convert to a
+        -- regular LetNonRec with a lambda wrapper, same as Rec join handling.
+        let (params, joinBody) = collectValueBinders arity rhs
+        joinBodyIdx <- translate joinBody
+        rhsIdx <- foldM (\inner p -> emitNode $ NLam (varId p) inner)
+                        joinBodyIdx (reverse params)
+        modify' $ \s -> s { tsRecJoinIds = Set.insert (varId b) (tsRecJoinIds s) }
+        bodyIdx <- translate body
+        emitNode $ NLetNonRec (varId b) rhsIdx bodyIdx
     | Just arity <- isJoinId_maybe b -> do
         let (params, joinRhs) = collectValueBinders arity rhs
         joinRhsIdx <- translate joinRhs
@@ -904,3 +916,25 @@ isJoinId_maybe :: Id -> Maybe Int
 isJoinId_maybe v = case idJoinPointHood v of
   JoinPoint n -> Just n
   NotJoinPoint -> Nothing
+
+-- | Check if a jump to a given VarId occurs under a Lam in the expression.
+-- When this is true, compiling the join point as a Cranelift block won't work
+-- because the lambda gets compiled as a separate function with its own context.
+jumpCrossesLam :: Word64 -> CoreExpr -> Bool
+jumpCrossesLam vid = go False
+  where
+    go underLam (Var v)   = underLam && varId v == vid
+    go underLam (App f a) = go underLam f || go underLam a
+    go _        (Lam b e)
+      | isTyVar b         = go False e  -- type lambdas don't create new functions
+      | otherwise          = go True e
+    go underLam (Let b e) = goBind underLam b || go underLam e
+    go underLam (Case e _ _ alts) = go underLam e || any (goAlt underLam) alts
+    go underLam (Cast e _) = go underLam e
+    go underLam (Tick _ e) = go underLam e
+    go _ (Lit _)          = False
+    go _ (Type _)         = False
+    go _ (Coercion _)     = False
+    goBind underLam (NonRec _ rhs)  = go underLam rhs
+    goBind underLam (Rec pairs)     = any (go underLam . snd) pairs
+    goAlt underLam (Alt _ _ e)      = go underLam e
