@@ -2,7 +2,7 @@ module Tidepool.Resolve (resolveExternals, UnresolvedVar(..)) where
 
 import GHC.Core (CoreBind, CoreExpr, Bind(..), Expr(..), maybeUnfoldingTemplate)
 import GHC.Core.FVs (exprSomeFreeVars)
-import GHC.Types.Id (Id, idUnfolding, realIdUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe)
+import GHC.Types.Id (Id, idUnfolding, realIdUnfolding, isGlobalId, isPrimOpId_maybe, isDataConWorkId_maybe, isDataConWrapId_maybe, isDeadEndId)
 import GHC.Types.Var (Var, varName, varUnique)
 import GHC.Types.Var.Set (VarSet, emptyVarSet, unitVarSet, elemVarSet, extendVarSet)
 import GHC.Types.Unique (getKey)
@@ -137,6 +137,23 @@ resolveExternals hscEnv binds = do
       && not (isPrimOp v)
       && not (isDataCon v)
       && not (isMagicUnpackVar v)
+      && not (isBottomingFunction v)
+
+    -- | Functions that always diverge (error, undefined, etc.).
+    -- Don't resolve their unfoldings — doing so pulls in CallStack
+    -- construction, SrcLoc formatting, exception machinery, and hundreds
+    -- of unsupported primops. The translator emits them as Raise nodes
+    -- that become runtime_error calls in the JIT.
+    -- Primary: GHC's demand analysis (isDeadEndId).
+    -- Fallback: name-based for cross-module Ids without demand info.
+    isBottomingFunction :: Var -> Bool
+    isBottomingFunction v =
+      isDeadEndId v || nameIsBottoming
+      where
+        nameIsBottoming =
+          let name = occNameString (nameOccName (varName v))
+          in name `elem` [ "error", "errorWithoutStackTrace", "undefined"
+                         , "divZeroError", "overflowError", "ratioZeroDenomError" ]
 
     bindersOfSet :: CoreBind -> VarSet
     bindersOfSet (NonRec b _) = unitVarSet b
