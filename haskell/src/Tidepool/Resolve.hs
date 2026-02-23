@@ -23,6 +23,10 @@ import GHC.Types.Name.Env (lookupNameEnv)
 import GHC.Types.TyThing (TyThing(..))
 import Control.Concurrent.MVar (readMVar)
 
+-- Fat interface fallback (mi_extra_decls) — disabled for now, threshold bump
+-- may be sufficient. Re-enable if workers still return NoUnfolding.
+-- import Tidepool.FatIface (FatIfaceCache, newFatIfaceCache, lookupFatIface)
+
 data UnresolvedVar = UnresolvedVar
   { uvKey    :: !Word64
   , uvName   :: !String
