@@ -215,6 +215,28 @@ fn collapse_frame(
             Ok(SsaVal::HeapPtr(ptr))
         }
         EmitFrame::PrimOp { ref op, ref args } => {
+            if matches!(op, tidepool_repr::PrimOpKind::Raise) {
+                // raise# is GHC's exception primitive — used for impossible branches
+                // and `error` calls. Emit a call to runtime_error(2) which sets a
+                // thread-local error flag and returns null. The JIT machine converts
+                // null results to Result::Err(JitError::Yield(UserError)).
+                let err_fn = pipeline.module.declare_function(
+                    "runtime_error",
+                    Linkage::Import,
+                    &{
+                        let mut sig = Signature::new(pipeline.isa.default_call_conv());
+                        sig.params.push(AbiParam::new(types::I64));
+                        sig.returns.push(AbiParam::new(types::I64));
+                        sig
+                    },
+                ).map_err(|e| EmitError::CraneliftError(e.to_string()))?;
+                let err_ref = pipeline.module.declare_func_in_func(err_fn, builder.func);
+                let kind_val = builder.ins().iconst(types::I64, 2); // UserError
+                let inst = builder.ins().call(err_ref, &[kind_val]);
+                let result = builder.inst_results(inst)[0];
+                builder.declare_value_needs_stack_map(result);
+                return Ok(SsaVal::HeapPtr(result));
+            }
             primop::emit_primop(builder, op, args)
         }
         EmitFrame::App { fun, arg } => {
