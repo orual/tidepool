@@ -1291,6 +1291,8 @@ name = "mcp-server-example"
 version = "0.0.1"
 dependencies = [
  "frunk",
+ "serde",
+ "serde_json",
  "tidepool-bridge",
  "tidepool-bridge-derive",
  "tidepool-effect",

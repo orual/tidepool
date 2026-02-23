@@ -202,7 +202,7 @@ pub fn compile_haskell(
     Ok((expr, table))
 }
 
-const DEFAULT_NURSERY_SIZE: usize = 1 << 20; // 1 MiB
+const DEFAULT_NURSERY_SIZE: usize = 1 << 26; // 64 MiB
 
 /// Compile Haskell source and run it with the given effect handlers,
 /// using the specified nursery size.

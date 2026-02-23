@@ -34,6 +34,9 @@ pub struct EffectDecl {
     pub description: &'static str,
     /// Haskell GADT constructor declarations (one per line inside `data T a where`).
     pub constructors: &'static [&'static str],
+    /// Extra Haskell type/function definitions emitted before the GADT.
+    /// Use for supporting types (e.g. `data Lang = ...`) and helper functions.
+    pub type_defs: &'static [&'static str],
 }
 
 /// Trait for effect handlers that can describe their Haskell-side type.
@@ -101,6 +104,10 @@ fn build_preamble(effects: &[EffectDecl]) -> String {
     out.push('\n');
 
     for eff in effects {
+        for td in eff.type_defs {
+            out.push_str(td);
+            out.push('\n');
+        }
         out.push_str(&format!("data {} a where\n", eff.type_name));
         for ctor in eff.constructors {
             out.push_str(&format!("  {}\n", ctor));
@@ -510,6 +517,7 @@ mod tests {
                 type_name: "Console",
                 description: "Print output",
                 constructors: &["Print :: String -> Console ()"],
+                type_defs: &[],
             },
             EffectDecl {
                 type_name: "KV",
@@ -518,6 +526,7 @@ mod tests {
                     "KvGet :: String -> KV (Maybe String)",
                     "KvSet :: String -> String -> KV ()",
                 ],
+                type_defs: &[],
             },
         ];
         let preamble = build_preamble(&effects);
@@ -529,9 +538,9 @@ mod tests {
     #[test]
     fn test_build_effect_stack_type() {
         let effects = vec![
-            EffectDecl { type_name: "Console", description: "", constructors: &[] },
-            EffectDecl { type_name: "KV", description: "", constructors: &[] },
-            EffectDecl { type_name: "Fs", description: "", constructors: &[] },
+            EffectDecl { type_name: "Console", description: "", constructors: &[], type_defs: &[] },
+            EffectDecl { type_name: "KV", description: "", constructors: &[], type_defs: &[] },
+            EffectDecl { type_name: "Fs", description: "", constructors: &[], type_defs: &[] },
         ];
         assert_eq!(build_effect_stack_type(&effects), "'[Console, KV, Fs]");
         assert_eq!(build_effect_stack_type(&[]), "'[]");
@@ -543,6 +552,7 @@ mod tests {
             type_name: "Console",
             description: "",
             constructors: &["Print :: String -> Console ()"],
+            type_defs: &[],
         }];
         let preamble = build_preamble(&effects);
         let stack = build_effect_stack_type(&effects);
@@ -565,6 +575,7 @@ mod tests {
             type_name: "Console",
             description: "Print to console",
             constructors: &["Print :: String -> Console ()"],
+            type_defs: &[],
         }];
         let desc = build_eval_tool_description(&effects);
         assert!(desc.contains("Console: Print to console"));
