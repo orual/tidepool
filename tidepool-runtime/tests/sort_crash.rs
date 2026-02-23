@@ -62,6 +62,48 @@ data Fs a where
     s
 }
 
+fn mcp_source_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> String {
+    let mut s = String::from(
+r#"{-# LANGUAGE NoImplicitPrelude, DataKinds, TypeOperators, FlexibleContexts, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}
+module Expr where
+import Tidepool.Prelude
+import Control.Monad.Freer
+"#);
+    for imp in imports {
+        s.push_str("import ");
+        s.push_str(imp);
+        s.push('\n');
+    }
+    s.push_str("default (Int)\n\ndata Console a where\n  Print :: String -> Console ()\n\ndata KV a where\n  KvGet :: String -> KV (Maybe String)\n  KvSet :: String -> String -> KV ()\n  KvDelete :: String -> KV ()\n  KvKeys :: KV [String]\n\ndata Fs a where\n  FsRead :: String -> Fs String\n  FsWrite :: String -> String -> Fs ()\n\n");
+    for helper in helpers {
+        s.push_str(helper);
+        s.push_str("\n\n");
+    }
+    s.push_str("result :: Eff '[Console, KV, Fs] _\nresult = do\n");
+    for line in lines {
+        s.push_str("  ");
+        s.push_str(line);
+        s.push('\n');
+    }
+    s
+}
+
+fn run_mcp_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> serde_json::Value {
+    let src = mcp_source_with_imports(lines, helpers, imports);
+    let pp = prelude_path();
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let include = [pp.as_path()];
+            let val = compile_and_run(&src, "result", &include, &mut HNil, &())
+                .expect("compile_and_run failed");
+            val.to_json()
+        })
+        .unwrap()
+        .join()
+        .expect("thread panicked")
+}
+
 /// Build a plain (non-effect) Haskell module with the prelude.
 fn plain_source(body: &str) -> String {
     format!(
@@ -736,4 +778,42 @@ persist key filename = do
         ],
     );
     assert_eq!(json, serde_json::json!("done"));
+}
+
+// ===========================================================================
+// Fat interface Rec group tests (cross-module join points)
+// ===========================================================================
+
+#[test]
+fn test_map_difference_with() {
+    // Map.differenceWith uses fat interface bindings that may contain
+    // Rec groups with join points. Previously failed with
+    // "Jump to unknown label JoinId(...)" because Rec groups were
+    // flattened and join point siblings were lost.
+    let json = run_mcp_with_imports(
+        &[
+            "let m1 = Map.fromList [(1::Int,10::Int),(2,20),(3,30)]",
+            "let m2 = Map.fromList [(2::Int,15::Int),(3,40)]",
+            "let m' = Map.differenceWith (\\a b -> if a > b then Just (a - b) else Nothing) m1 m2",
+            "pure (Map.toList m')",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[1, 10], [2, 5]]));
+}
+
+#[test]
+fn test_map_intersection_with() {
+    // Another Map operation that exercises fat interface Rec groups.
+    let json = run_mcp_with_imports(
+        &[
+            "let m1 = Map.fromList [(1::Int,10::Int),(2,20),(3,30)]",
+            "let m2 = Map.fromList [(2::Int,100::Int),(3,200)]",
+            "pure (Map.toList (Map.intersectionWith (+) m1 m2))",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
+    );
+    assert_eq!(json, serde_json::json!([[2, 120], [3, 230]]));
 }

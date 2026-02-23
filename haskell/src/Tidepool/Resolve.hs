@@ -115,7 +115,21 @@ resolveExternals hscEnv binds = do
                            -- not exposed via realIdUnfolding.
                            mbFat <- lookupFatIface hscEnv fatCache (varName v)
                            case mbFat of
-                             Just fatExpr -> handleUnfolding fatExpr
+                             Just (NonRec _b fatExpr) -> handleUnfolding fatExpr
+                             Just (Rec fatPairs) ->
+                               -- Pull the ENTIRE Rec group, not just the requested
+                               -- binding. Rec groups from fat interfaces may contain
+                               -- join points that siblings reference. Without all
+                               -- members, join point definitions are missing and the
+                               -- JIT emits "Jump to unknown label JoinId(...)".
+                               let fatBinds = [NonRec b e | (b, e) <- fatPairs]
+                                   allFVs = foldMap (exprSomeFreeVars (const True) . snd) fatPairs
+                                   binders = [b | (b, _) <- fatPairs]
+                                   localSet' = foldl extendVarSet localSet binders
+                                   visited'' = foldl extendVarSet visited' binders
+                                   newExternals = filter (isResolvable localSet')
+                                                        (nonDetEltsUniqSet allFVs)
+                               in go fatCache nameMap (newExternals ++ rest) visited'' localSet' (fatBinds ++ acc) subAcc unres
                              Nothing ->
                                let uv = UnresolvedVar
                                      { uvKey    = fromIntegral (getKey (varUnique v))

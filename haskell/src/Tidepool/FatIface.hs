@@ -32,18 +32,27 @@ import System.IO (hPutStrLn, stderr)
 
 -- | Cache of deserialized fat interface Core, keyed by Module.
 -- Each module's extra-decls are deserialized at most once.
-newtype FatIfaceCache = FatIfaceCache (IORef (Map.Map Module (Map.Map Name CoreExpr)))
+-- For each Name, we store the full CoreBind it belongs to — this preserves
+-- Rec group structure so that looking up any member returns all siblings
+-- (critical for join points that reference each other within a Rec group).
+newtype FatIfaceCache = FatIfaceCache (IORef (Map.Map Module (Map.Map Name CoreBind)))
 
 -- | Create an empty cache.
 newFatIfaceCache :: IO FatIfaceCache
 newFatIfaceCache = FatIfaceCache <$> newIORef Map.empty
 
--- | Look up a Name's CoreExpr from the fat interface of its defining module.
+-- | Look up a Name's CoreBind from the fat interface of its defining module.
+-- For NonRec bindings, returns the single binding.
+-- For Rec bindings, returns the FULL Rec group — this is critical because
+-- Rec groups may contain join points that siblings reference. Without the
+-- full group, join point definitions are lost and the JIT emits
+-- "Jump to unknown label JoinId(...)".
+--
 -- Returns Nothing if:
 --   - The Name has no module (local/anonymous)
 --   - The module wasn't compiled with -fwrite-if-simplified-core
 --   - The binding isn't found in mi_extra_decls
-lookupFatIface :: HscEnv -> FatIfaceCache -> Name -> IO (Maybe CoreExpr)
+lookupFatIface :: HscEnv -> FatIfaceCache -> Name -> IO (Maybe CoreBind)
 lookupFatIface hscEnv (FatIfaceCache cacheRef) name = do
   case nameModule_maybe name of
     Nothing -> return Nothing
@@ -59,7 +68,7 @@ lookupFatIface hscEnv (FatIfaceCache cacheRef) name = do
 
 -- | Load and deserialize mi_extra_decls for a single module.
 -- Uses findAndReadIface to bypass the PIT cache (which strips mi_extra_decls).
-loadModuleExtraDecls :: HscEnv -> Module -> IO (Map.Map Name CoreExpr)
+loadModuleExtraDecls :: HscEnv -> Module -> IO (Map.Map Name CoreBind)
 loadModuleExtraDecls hscEnv modl = do
   result <- try $ loadModuleExtraDeclsUnsafe hscEnv modl
   case result of
@@ -69,7 +78,7 @@ loadModuleExtraDecls hscEnv modl = do
         "  [fat-iface] " ++ showSDocUnsafe (ppr modl) ++ ": exception: " ++ show e
       return Map.empty
 
-loadModuleExtraDeclsUnsafe :: HscEnv -> Module -> IO (Map.Map Name CoreExpr)
+loadModuleExtraDeclsUnsafe :: HscEnv -> Module -> IO (Map.Map Name CoreBind)
 loadModuleExtraDeclsUnsafe hscEnv modl = do
   let doc = text "tidepool fat-iface lookup"
       -- findAndReadIface wants InstalledModule (GenModule UnitId)
@@ -96,9 +105,12 @@ loadModuleExtraDeclsUnsafe hscEnv modl = do
             "  [fat-iface] " ++ showSDocUnsafe (ppr modl) ++ ": loaded " ++ show (length coreBinds) ++ " bindings"
           return (bindingsToMap coreBinds)
 
--- | Flatten CoreBinds into a Name→CoreExpr map.
-bindingsToMap :: [CoreBind] -> Map.Map Name CoreExpr
+-- | Index CoreBinds into a Name→CoreBind map.
+-- For NonRec bindings, each name maps to its own NonRec.
+-- For Rec bindings, EVERY member maps to the SAME full Rec group.
+-- This preserves Rec group structure for join point resolution.
+bindingsToMap :: [CoreBind] -> Map.Map Name CoreBind
 bindingsToMap = foldl' addBind Map.empty
   where
-    addBind m (NonRec b e) = Map.insert (varName b) e m
-    addBind m (Rec pairs)  = foldl' (\m' (b, e) -> Map.insert (varName b) e m') m pairs
+    addBind m bind@(NonRec b _) = Map.insert (varName b) bind m
+    addBind m bind@(Rec pairs)  = foldl' (\m' (b, _) -> Map.insert (varName b) bind m') m pairs
