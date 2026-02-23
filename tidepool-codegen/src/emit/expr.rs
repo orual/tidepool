@@ -627,9 +627,18 @@ impl EmitContext {
                     }
                 }
 
-                // Phase 3a: Compile Lam bodies and fill closures FIRST
-                // (must happen before Con field filling, because Con fields may
-                // contain App nodes that call closures from this same LetRec group)
+                // Phase 3a: Compile Lam bodies and set code pointers.
+                // Capture VALUES are NOT filled here — some captures reference
+                // deferred simple bindings (Phase 3c) that aren't in env yet.
+                // We compile the inner function (which reads captures by slot
+                // position) and store code pointers, then fill capture slots
+                // in Phase 3a' after simple bindings are evaluated.
+                struct PendingCaptures {
+                    closure_ptr: cranelift_codegen::ir::Value,
+                    fvs: Vec<VarId>,
+                }
+                let mut pending_captures: Vec<PendingCaptures> = Vec::new();
+
                 for pa in &pre_allocs {
                     let (closure_ptr, sorted_fvs, rhs_idx) = match pa {
                         PreAlloc::Lam { ptr, fvs, rhs_idx, .. } => (*ptr, fvs, *rhs_idx),
@@ -640,14 +649,6 @@ impl EmitContext {
                         _ => unreachable!(),
                     };
                     let lam_body_tree = tree.extract_subtree(lam_body);
-
-                    let captures: Vec<(VarId, SsaVal)> = sorted_fvs.iter().map(|v| {
-                        let val = self.env.get(v).unwrap_or_else(|| {
-                            panic!("LetRec Lam capture: VarId({:#x}) not in env. env keys: {:?}",
-                                   v.0, self.env.keys().map(|k| format!("{:#x}", k.0)).collect::<Vec<_>>())
-                        });
-                        (*v, *val)
-                    }).collect();
 
                     let lambda_name = self.next_lambda_name();
                     let mut closure_sig = Signature::new(pipeline.isa.default_call_conv());
@@ -686,7 +687,9 @@ impl EmitContext {
                     inner_emit.lambda_counter = self.lambda_counter;
                     inner_emit.env.insert(lam_binder, SsaVal::HeapPtr(inner_arg));
 
-                    for (i, (var_id, _)) in captures.iter().enumerate() {
+                    // Load captures by position — the inner function doesn't need
+                    // the outer SSA values, just the slot offsets.
+                    for (i, var_id) in sorted_fvs.iter().enumerate() {
                         let offset = CLOSURE_CAPTURED_START + 8 * i as i32;
                         let val = inner_builder.ins().load(types::I64, MemFlags::trusted(), inner_self, offset);
                         inner_builder.declare_value_needs_stack_map(val);
@@ -706,10 +709,23 @@ impl EmitContext {
                     let code_ptr = builder.ins().func_addr(types::I64, func_ref);
                     builder.ins().store(MemFlags::trusted(), code_ptr, closure_ptr, CLOSURE_CODE_PTR_OFFSET);
 
-                    for (i, (_, ssaval)) in captures.into_iter().enumerate() {
-                        let cap_val = ensure_heap_ptr(builder, vmctx, gc_sig, ssaval);
-                        let offset = CLOSURE_CAPTURED_START + 8 * i as i32;
-                        builder.ins().store(MemFlags::trusted(), cap_val, closure_ptr, offset);
+                    // Fill captures that are already in env. Defer those that
+                    // reference deferred simple bindings (not yet evaluated).
+                    let mut has_deferred = false;
+                    for (i, var_id) in sorted_fvs.iter().enumerate() {
+                        if let Some(ssaval) = self.env.get(var_id) {
+                            let cap_val = ensure_heap_ptr(builder, vmctx, gc_sig, *ssaval);
+                            let offset = CLOSURE_CAPTURED_START + 8 * i as i32;
+                            builder.ins().store(MemFlags::trusted(), cap_val, closure_ptr, offset);
+                        } else {
+                            has_deferred = true;
+                        }
+                    }
+                    if has_deferred {
+                        pending_captures.push(PendingCaptures {
+                            closure_ptr,
+                            fvs: sorted_fvs.clone(),
+                        });
                     }
                 }
 
@@ -743,6 +759,21 @@ impl EmitContext {
                     let rhs_val = self.emit_node(pipeline, builder, vmctx, gc_sig, tree, *rhs_idx)?;
                     self.trace_scope(&format!("insert LetRec(simple) {:?}", binder));
                     self.env.insert(*binder, rhs_val);
+                }
+
+                // Phase 3a': Fill closure capture slots. Deferred from Phase 3a
+                // because some captures reference deferred simple bindings
+                // (evaluated in Phase 3c). All captured VarIds are now in env.
+                for pc in &pending_captures {
+                    for (i, var_id) in pc.fvs.iter().enumerate() {
+                        let ssaval = self.env.get(var_id).unwrap_or_else(|| {
+                            panic!("LetRec capture fill: VarId({:#x}) not in env after Phase 3c. env keys: {:?}",
+                                   var_id.0, self.env.keys().map(|k| format!("{:#x}", k.0)).collect::<Vec<_>>())
+                        });
+                        let cap_val = ensure_heap_ptr(builder, vmctx, gc_sig, *ssaval);
+                        let offset = CLOSURE_CAPTURED_START + 8 * i as i32;
+                        builder.ins().store(MemFlags::trusted(), cap_val, pc.closure_ptr, offset);
+                    }
                 }
 
                 // Phase 3d: Fill deferred Con fields (those that reference simple
