@@ -14,12 +14,14 @@ result
 investigate-*.tmp.md
 
 # Scratch files
-data.txt
-test.txt
-hello.txt
-greeting.txt
-names.txt
-reversed.txt
+*.txt
+scratch*
+
+# Binary artifacts
+haskell/tidepool-extract
+haskell/haskell/
+haskell/test/text_cbor/
+*.proptest-regressions
 
 # Ad-hoc test artifacts
 haskell/Test*.hs

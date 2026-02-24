@@ -1,3 +1,8 @@
+//! Number guessing game — interpreted version.
+//!
+//! Same Haskell effect program as `tidepool-guess`, but executed via the tree-walking
+//! interpreter instead of Cranelift JIT. Useful for comparison and debugging.
+
 use tidepool_bridge_derive::FromCore;
 use tidepool_effect::{EffectContext, EffectError, EffectHandler, EffectMachine};
 use tidepool_eval::value::Value;

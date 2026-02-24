@@ -1,3 +1,9 @@
+//! Number guessing game — JIT-compiled version.
+//!
+//! Demonstrates Tidepool's end-to-end workflow: a Haskell effect program is compiled
+//! at build time via `haskell_inline!`, JIT-compiled to native code via Cranelift,
+//! and driven by Rust-side effect handlers for console IO and random number generation.
+
 use tidepool_codegen::jit_machine::JitEffectMachine;
 use tidepool_bridge_derive::FromCore;
 use tidepool_effect::{EffectContext, EffectError, EffectHandler};

@@ -1,10 +1,13 @@
 [package]
 name = "tidepool-mcp"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 description = "Model Context Protocol (MCP) server for Tidepool"
+readme = "../README.md"
 
 [dependencies]
 tidepool-runtime = { version = "0.0.1", path = "../tidepool-runtime" }

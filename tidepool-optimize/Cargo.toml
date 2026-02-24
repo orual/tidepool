@@ -1,10 +1,13 @@
 [package]
 name = "tidepool-optimize"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 description = "Optimization passes for Tidepool Core"
+readme = "../README.md"
 
 [dependencies]
 tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }

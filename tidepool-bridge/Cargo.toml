@@ -1,19 +1,17 @@
 [package]
 name = "tidepool-bridge"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 description = "Bridge between Rust types and Tidepool Core values"
+readme = "../README.md"
 
 [dependencies]
-
 tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
-
 tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
 
-
-
 [dev-dependencies]
-
 proptest = "1"

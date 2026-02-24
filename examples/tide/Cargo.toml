@@ -1,9 +1,7 @@
 [package]
 name = "tidepool-tide"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
+version.workspace = true
+edition.workspace = true
 description = "Tidepool interactive shell and compiler"
 publish = false
 

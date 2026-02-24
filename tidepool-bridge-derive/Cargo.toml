@@ -1,10 +1,13 @@
 [package]
 name = "tidepool-bridge-derive"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 description = "Derive macros for the Tidepool bridge"
+readme = "../README.md"
 
 [lib]
 proc-macro = true

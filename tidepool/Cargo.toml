@@ -1,10 +1,15 @@
 [package]
 name = "tidepool"
-version = "0.0.1"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tidepool-heavy-industries/tidepool"
-description = "Haskell Core to Rust compiler and runtime — facade crate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Compile Haskell effect stacks to Cranelift JIT, drive from Rust"
+readme = "../README.md"
+keywords = ["haskell", "jit", "cranelift", "effects", "compiler"]
+categories = ["compilers", "wasm"]
 
 [dependencies]
 tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }

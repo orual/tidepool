@@ -1117,7 +1117,12 @@ fn test_emit_primop_int64_ge() {
         CoreFrame::Lit(Literal::LitInt(2)),
         CoreFrame::Lit(Literal::LitInt(3)),
         CoreFrame::PrimOp { op: PrimOpKind::Int64Ge, args: vec![0, 1] },
+    ] };
+    let result = compile_and_run(&tree);
+    unsafe { assert_eq!(read_lit_int(result.result_ptr), 0); }
+}
 
+#[test]
 fn test_emit_primop_bytearray_set() {
     let ba = VarId(1);
     let dummy = VarId(2);
@@ -1266,7 +1271,12 @@ fn test_emit_int64_to_int_conversion() {
     let tree = RecursiveTree { nodes: vec![
         CoreFrame::Lit(Literal::LitInt(42)),
         CoreFrame::PrimOp { op: PrimOpKind::Int64ToInt, args: vec![0] },
+    ] };
+    let result = compile_and_run(&tree);
+    unsafe { assert_eq!(read_lit_int(result.result_ptr), 42); }
+}
 
+#[test]
 fn test_error_sentinel_let_non_rec_deferred() {
     // let x = error_var in 42
     // x should be deferred (poison closure) and not crash.
@@ -1403,7 +1413,9 @@ fn test_emit_word64_to_int64_conversion() {
     ] };
     let result = compile_and_run(&tree);
     unsafe { assert_eq!(read_lit_int(result.result_ptr), -1); }
+}
 
+#[test]
 fn test_emit_primop_bytearray_compare_unequal() {
     let ba1 = VarId(1);
     let ba2 = VarId(2);
@@ -1532,7 +1544,9 @@ fn test_emit_primop_bytearray_resize() {
     ] };
     let result = compile_and_run(&tree);
     unsafe { assert_eq!(read_lit_int(result.result_ptr), 20); }
+}
 
+#[test]
 fn test_emit_primop_float_comparisons() {
     fn run_cmp(op: PrimOpKind, a: f32, b: f32) -> i64 {
         let tree = RecursiveTree { nodes: vec![
