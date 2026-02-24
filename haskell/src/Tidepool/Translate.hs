@@ -20,14 +20,14 @@ import Debug.Trace (trace)
 import GHC
 import GHC.Core
 import GHC.Types.Id
-import GHC.Types.Var (isTyVar, varUnique)
+import GHC.Types.Var (isTyVar, varUnique, varName)
 import GHC.Types.Unique (getKey)
 import GHC.Core.DataCon (DataCon, dataConRepArity, dataConRepArgTys, dataConFullSig, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, dataConOrigArgTys, isUnboxedTupleDataCon, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
 import Language.Haskell.Syntax.Basic (Boxity(..))
 import GHC.Builtin.Types (consDataCon, nilDataCon, trueDataCon, falseDataCon, charDataCon, unitDataCon, tupleDataCon, ordLTDataCon, ordEQDataCon, ordGTDataCon, intDataCon, wordDataCon, doubleDataCon, floatDataCon)
 import GHC.Builtin.PrimOps
 import GHC.Types.Literal
-import GHC.Types.Name (nameOccName, isExternalName, isSystemName)
+import GHC.Types.Name (nameOccName, isExternalName, isSystemName, nameModule_maybe)
 import GHC.Types.Name.Occurrence (occNameString)
 import GHC.Core.TyCon
 import GHC.Core.Type (splitTyConApp_maybe, isCoercionTy)
@@ -340,9 +340,10 @@ translateModuleClosed hscEnv allBinds targetName = do
       trulyUnresolved = filter (\uv -> uvKey uv `Set.member` referencedIds) unresolved
       -- Debug: find dangling NVar references (referenced but not bound by any Let/Lam/Case)
       boundIds = foldl' collectBound Set.empty nodes
-      danglingIds = Set.filter (\v -> not (Set.member v boundIds) && v /= 0x4500000000000004) referencedIds
+      danglingIds = Set.filter (\v -> not (Set.member v boundIds) && (v `shiftR` 56) /= 0x45) referencedIds
   -- Debug: find and report dangling NVar references
-  let varRefMap = Map.fromList [(varId v, showPprUnsafe v) | v <- concatMap deepVarRefsOfCB closedBinds]
+  let allVarRefs = concatMap deepVarRefsOfCB closedBinds
+      varRefMap = Map.fromList [(varId v, v) | v <- allVarRefs]
   when (not (Set.null danglingIds)) $ do
     let nameMap = Map.fromList [(varId b, showPprUnsafe b) | b <- concatMap bindersOfCB closedBinds]
     hPutStrLn stderr $ "  [DEBUG] Dangling NVar references (" ++ show (Set.size danglingIds) ++ "):"
@@ -350,8 +351,13 @@ translateModuleClosed hscEnv allBinds targetName = do
       let tag = toEnum (fromIntegral (v `shiftR` 56)) :: Char
           key = v .&. ((1 `shiftL` 56) - 1)
           name = Map.findWithDefault "<unknown>" v nameMap
-          refName = Map.findWithDefault "<?>" v varRefMap
-      hPutStrLn stderr $ "    VarId(0x" ++ showHex v (") tag='" ++ [tag] ++ "' key=" ++ show key ++ " name=" ++ name ++ " ref=" ++ refName)
+          refInfo = case Map.lookup v varRefMap of
+            Just var -> showPprUnsafe var ++ " :: " ++ showPprUnsafe (idType var)
+                     ++ case nameModule_maybe (varName var) of
+                          Just m  -> " [" ++ moduleNameString (moduleName m) ++ "]"
+                          Nothing -> " [no module]"
+            Nothing -> "<?>"
+      hPutStrLn stderr $ "    VarId(0x" ++ showHex v (") tag='" ++ [tag] ++ "' key=" ++ show key ++ " name=" ++ name ++ " ref=" ++ refInfo)
       ) (Set.toList danglingIds)
   return (nodes, usedDCs, trulyUnresolved, closedBinds)
   where
@@ -1150,7 +1156,9 @@ isAppendVar :: Id -> Bool
 isAppendVar v = occNameString (nameOccName (idName v)) == "++"
 
 isErrorVar :: Id -> Bool
-isErrorVar v = occNameString (nameOccName (idName v)) == "error"
+isErrorVar v =
+  let name = occNameString (nameOccName (idName v))
+  in name == "error" || name == "errorWithoutStackTrace"
 
 isUndefinedVar :: Id -> Bool
 isUndefinedVar v = occNameString (nameOccName (idName v)) == "undefined"

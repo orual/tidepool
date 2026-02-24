@@ -672,7 +672,7 @@ fn test_effect_kv_overwrite() {
 }
 
 #[test]
-#[ignore] // SIGSEGV — dangling NVar $wlvl when Text from effect handler is used with words
+#[ignore] // Passes alone but SIGSEGV on 2nd run — heap corruption in JIT runtime cleanup
 fn test_effect_words() {
     // FsRead returns "stub" by default in our mock
     let (json, _) = run_mcp_effectful(&[
