@@ -365,25 +365,20 @@ impl ToCore for String {
         let text_id = table
             .get_by_name("Text")
             .ok_or_else(|| BridgeError::UnknownDataConName("Text".into()))?;
-        let i_hash_id = table
-            .get_by_name("I#")
-            .ok_or_else(|| BridgeError::UnknownDataConName("I#".into()))?;
         let bytes = self.as_bytes().to_vec();
         let len = bytes.len() as i64;
-        // GHC 9.12 Text uses lifted ByteArray (not raw ByteArray#):
-        //   data Text = Text !ByteArray !Int !Int
-        //   data ByteArray = ByteArray ByteArray#
+        // GHC Core at -O2 uses the worker representation of Text with
+        // unboxed fields: Text ByteArray# Int# Int#
+        // (not the source-level Text !ByteArray !Int !Int with boxed wrappers).
+        // The JIT compiles GHC Core directly, so values injected from Rust
+        // must match the worker representation.
         let ba_raw = Value::ByteArray(Arc::new(Mutex::new(bytes)));
-        let ba_lifted = match table.get_by_name("ByteArray") {
-            Some(ba_id) => Value::Con(ba_id, vec![ba_raw]),
-            None => ba_raw, // fallback: use raw if no ByteArray constructor in table
-        };
         Ok(Value::Con(
             text_id,
             vec![
-                ba_lifted,
-                Value::Con(i_hash_id, vec![Value::Lit(Literal::LitInt(0))]),
-                Value::Con(i_hash_id, vec![Value::Lit(Literal::LitInt(len))]),
+                ba_raw,
+                Value::Lit(Literal::LitInt(0)),
+                Value::Lit(Literal::LitInt(len)),
             ],
         ))
     }
