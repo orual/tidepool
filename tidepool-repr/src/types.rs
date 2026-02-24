@@ -71,19 +71,19 @@ pub enum PrimOpKind {
     IntAnd,
     IntOr,
     IntXor,
-    IntNot,      // unary
-    IntShl,      // uncheckedIShiftL#
-    IntShra,     // uncheckedIShiftRA# (arithmetic right shift)
-    IntShrl,     // uncheckedIShiftRL# (logical right shift)
+    IntNot,  // unary
+    IntShl,  // uncheckedIShiftL#
+    IntShra, // uncheckedIShiftRA# (arithmetic right shift)
+    IntShrl, // uncheckedIShiftRL# (logical right shift)
     // --- Tier 2: Word arithmetic + bitwise ---
     WordQuot,
     WordRem,
     WordAnd,
     WordOr,
     WordXor,
-    WordNot,     // unary
-    WordShl,     // uncheckedShiftL#
-    WordShrl,    // uncheckedShiftRL#
+    WordNot,  // unary
+    WordShl,  // uncheckedShiftL#
+    WordShrl, // uncheckedShiftRL#
     // --- Tier 2: Int↔Word conversions ---
     Int2Word,
     Word2Int,
@@ -99,7 +99,7 @@ pub enum PrimOpKind {
     FloatSub,
     FloatMul,
     FloatDiv,
-    FloatNegate,  // unary
+    FloatNegate, // unary
     FloatEq,
     FloatNe,
     FloatLt,

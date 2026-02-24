@@ -73,7 +73,7 @@ pub extern "C" fn gc_trigger(vmctx: *mut VMContext) {
                 let registry = unsafe { &*registry_ptr };
                 // Walk frames starting from gc_trigger's own frame.
                 let roots = unsafe { frame_walker::walk_frames(rbp, registry, rsp) };
-                
+
                 // Call test hook if present
                 HOOK.with(|hook_cell| {
                     if let Some(hook) = *hook_cell.borrow() {
@@ -281,7 +281,10 @@ pub unsafe extern "C" fn debug_app_check(fun_ptr: *const u8) {
             return; // Error already flagged, just continue
         }
         eprintln!("[JIT] App: fun_ptr is NULL — unresolved binding");
-        eprintln!("[JIT] Backtrace:\n{:?}", std::backtrace::Backtrace::force_capture());
+        eprintln!(
+            "[JIT] Backtrace:\n{:?}",
+            std::backtrace::Backtrace::force_capture()
+        );
         let _ = std::io::stderr().flush();
         std::process::abort();
     }
@@ -326,7 +329,9 @@ pub extern "C" fn runtime_new_byte_array(size: i64) -> i64 {
         std::alloc::handle_alloc_error(layout);
     }
     // Write length prefix
-    unsafe { *(ptr as *mut u64) = size as u64; }
+    unsafe {
+        *(ptr as *mut u64) = size as u64;
+    }
     ptr as i64
 }
 
@@ -334,18 +339,24 @@ pub extern "C" fn runtime_new_byte_array(size: i64) -> i64 {
 pub extern "C" fn runtime_copy_addr_to_byte_array(src: i64, dest_ba: i64, dest_off: i64, len: i64) {
     let src_ptr = src as *const u8;
     let dest_ptr = unsafe { (dest_ba as *mut u8).add(8 + dest_off as usize) };
-    unsafe { std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, len as usize); }
+    unsafe {
+        std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, len as usize);
+    }
 }
 
 /// Set `len` bytes in `ba` starting at `off` to `val`.
 pub extern "C" fn runtime_set_byte_array(ba: i64, off: i64, len: i64, val: i64) {
     let ptr = unsafe { (ba as *mut u8).add(8 + off as usize) };
-    unsafe { std::ptr::write_bytes(ptr, val as u8, len as usize); }
+    unsafe {
+        std::ptr::write_bytes(ptr, val as u8, len as usize);
+    }
 }
 
 /// Shrink a mutable byte array to `new_size` bytes (just updates the length prefix).
 pub extern "C" fn runtime_shrink_byte_array(ba: i64, new_size: i64) {
-    unsafe { *(ba as *mut u64) = new_size as u64; }
+    unsafe {
+        *(ba as *mut u64) = new_size as u64;
+    }
 }
 
 /// Resize a mutable byte array. Allocates a new buffer, copies existing data,
@@ -369,27 +380,45 @@ pub extern "C" fn runtime_resize_byte_array(ba: i64, new_size: i64) -> i64 {
     }
 
     // Write new length prefix
-    unsafe { *(new_ptr as *mut u64) = new_size as u64; }
+    unsafe {
+        *(new_ptr as *mut u64) = new_size as u64;
+    }
 
     // Free old buffer
     let old_total = 8 + old_size;
     let old_layout = std::alloc::Layout::from_size_align(old_total, 8).unwrap();
-    unsafe { std::alloc::dealloc(old_ptr, old_layout); }
+    unsafe {
+        std::alloc::dealloc(old_ptr, old_layout);
+    }
 
     new_ptr as i64
 }
 
 /// Copy `len` bytes between byte arrays: src[src_off..] -> dest[dest_off..].
 /// Used by both copyByteArray# and copyMutableByteArray#.
-pub extern "C" fn runtime_copy_byte_array(src: i64, src_off: i64, dest: i64, dest_off: i64, len: i64) {
+pub extern "C" fn runtime_copy_byte_array(
+    src: i64,
+    src_off: i64,
+    dest: i64,
+    dest_off: i64,
+    len: i64,
+) {
     let src_ptr = unsafe { (src as *const u8).add(8 + src_off as usize) };
     let dest_ptr = unsafe { (dest as *mut u8).add(8 + dest_off as usize) };
     // Use copy (not copy_nonoverlapping) since src and dest may be the same array
-    unsafe { std::ptr::copy(src_ptr, dest_ptr, len as usize); }
+    unsafe {
+        std::ptr::copy(src_ptr, dest_ptr, len as usize);
+    }
 }
 
 /// Compare byte arrays: returns -1, 0, or 1.
-pub extern "C" fn runtime_compare_byte_arrays(a: i64, a_off: i64, b: i64, b_off: i64, len: i64) -> i64 {
+pub extern "C" fn runtime_compare_byte_arrays(
+    a: i64,
+    a_off: i64,
+    b: i64,
+    b_off: i64,
+    len: i64,
+) -> i64 {
     let a_ptr = unsafe { (a as *const u8).add(8 + a_off as usize) };
     let b_ptr = unsafe { (b as *const u8).add(8 + b_off as usize) };
     let a_slice = unsafe { std::slice::from_raw_parts(a_ptr, len as usize) };
@@ -420,10 +449,15 @@ pub extern "C" fn runtime_text_measure_off(addr: i64, off: i64, len: i64) -> i64
     let mut chars_left = len;
     while chars_left > 0 {
         let b = unsafe { *ptr.add(byte_count as usize) };
-        let char_len = if b < 0x80 { 1 }
-            else if b < 0xE0 { 2 }
-            else if b < 0xF0 { 3 }
-            else { 4 };
+        let char_len = if b < 0x80 {
+            1
+        } else if b < 0xE0 {
+            2
+        } else if b < 0xF0 {
+            3
+        } else {
+            4
+        };
         byte_count += char_len;
         chars_left -= 1;
     }
@@ -449,10 +483,15 @@ pub extern "C" fn runtime_text_reverse(dest: i64, len: i64, src: i64) {
     let mut write_pos = len as usize;
     while read_pos < len as usize {
         let b = src_slice[read_pos];
-        let char_len = if b < 0x80 { 1 }
-            else if b < 0xE0 { 2 }
-            else if b < 0xF0 { 3 }
-            else { 4 };
+        let char_len = if b < 0x80 {
+            1
+        } else if b < 0xE0 {
+            2
+        } else if b < 0xF0 {
+            3
+        } else {
+            4
+        };
         write_pos -= char_len;
         unsafe {
             std::ptr::copy_nonoverlapping(
@@ -473,15 +512,39 @@ pub fn host_fn_symbols() -> Vec<(&'static str, *const u8)> {
         ("unresolved_var_trap", unresolved_var_trap as *const u8),
         ("runtime_error", runtime_error as *const u8),
         ("debug_app_check", debug_app_check as *const u8),
-        ("runtime_new_byte_array", runtime_new_byte_array as *const u8),
-        ("runtime_copy_addr_to_byte_array", runtime_copy_addr_to_byte_array as *const u8),
-        ("runtime_set_byte_array", runtime_set_byte_array as *const u8),
-        ("runtime_shrink_byte_array", runtime_shrink_byte_array as *const u8),
-        ("runtime_resize_byte_array", runtime_resize_byte_array as *const u8),
-        ("runtime_copy_byte_array", runtime_copy_byte_array as *const u8),
-        ("runtime_compare_byte_arrays", runtime_compare_byte_arrays as *const u8),
+        (
+            "runtime_new_byte_array",
+            runtime_new_byte_array as *const u8,
+        ),
+        (
+            "runtime_copy_addr_to_byte_array",
+            runtime_copy_addr_to_byte_array as *const u8,
+        ),
+        (
+            "runtime_set_byte_array",
+            runtime_set_byte_array as *const u8,
+        ),
+        (
+            "runtime_shrink_byte_array",
+            runtime_shrink_byte_array as *const u8,
+        ),
+        (
+            "runtime_resize_byte_array",
+            runtime_resize_byte_array as *const u8,
+        ),
+        (
+            "runtime_copy_byte_array",
+            runtime_copy_byte_array as *const u8,
+        ),
+        (
+            "runtime_compare_byte_arrays",
+            runtime_compare_byte_arrays as *const u8,
+        ),
         ("runtime_strlen", runtime_strlen as *const u8),
-        ("runtime_text_measure_off", runtime_text_measure_off as *const u8),
+        (
+            "runtime_text_measure_off",
+            runtime_text_measure_off as *const u8,
+        ),
         ("runtime_text_memchr", runtime_text_memchr as *const u8),
         ("runtime_text_reverse", runtime_text_reverse as *const u8),
     ]
@@ -561,13 +624,13 @@ mod tests {
             let ba = runtime_new_byte_array(5);
             let bytes = std::slice::from_raw_parts_mut((ba as *mut u8).add(8), 5);
             bytes.copy_from_slice(b"abcde");
-            
+
             let new_ba = runtime_resize_byte_array(ba, 10);
             assert_eq!(*(new_ba as *const u64), 10);
             let new_bytes = std::slice::from_raw_parts((new_ba as *const u8).add(8), 10);
             assert_eq!(&new_bytes[0..5], b"abcde");
             assert_eq!(&new_bytes[5..10], &[0, 0, 0, 0, 0]);
-            
+
             free_byte_array(new_ba);
         }
     }
@@ -578,12 +641,12 @@ mod tests {
             let ba = runtime_new_byte_array(10);
             let bytes = std::slice::from_raw_parts_mut((ba as *mut u8).add(8), 10);
             bytes.copy_from_slice(b"0123456789");
-            
+
             let new_ba = runtime_resize_byte_array(ba, 5);
             assert_eq!(*(new_ba as *const u64), 5);
             let new_bytes = std::slice::from_raw_parts((new_ba as *const u8).add(8), 5);
             assert_eq!(new_bytes, b"01234");
-            
+
             free_byte_array(new_ba);
         }
     }
@@ -593,15 +656,15 @@ mod tests {
         unsafe {
             let ba1 = runtime_new_byte_array(10);
             let ba2 = runtime_new_byte_array(10);
-            
+
             let bytes1 = std::slice::from_raw_parts_mut((ba1 as *mut u8).add(8), 10);
             bytes1.copy_from_slice(b"abcdefghij");
-            
+
             runtime_copy_byte_array(ba1, 2, ba2, 4, 3);
-            
+
             let bytes2 = std::slice::from_raw_parts((ba2 as *const u8).add(8), 10);
             assert_eq!(&bytes2[4..7], b"cde");
-            
+
             free_byte_array(ba1);
             free_byte_array(ba2);
         }
@@ -613,12 +676,12 @@ mod tests {
             let ba = runtime_new_byte_array(10);
             let bytes = std::slice::from_raw_parts_mut((ba as *mut u8).add(8), 10);
             bytes.copy_from_slice(b"0123456789");
-            
+
             // Overlapping copy: 01234 -> 23456
             runtime_copy_byte_array(ba, 0, ba, 2, 5);
-            
+
             assert_eq!(bytes, b"0101234789");
-            
+
             free_byte_array(ba);
         }
     }
@@ -628,14 +691,14 @@ mod tests {
         unsafe {
             let ba1 = runtime_new_byte_array(5);
             let ba2 = runtime_new_byte_array(5);
-            
+
             std::ptr::copy_nonoverlapping(b"apple".as_ptr(), (ba1 as *mut u8).add(8), 5);
             std::ptr::copy_nonoverlapping(b"apply".as_ptr(), (ba2 as *mut u8).add(8), 5);
-            
+
             assert_eq!(runtime_compare_byte_arrays(ba1, 0, ba2, 0, 4), 0); // "appl" == "appl"
             assert_eq!(runtime_compare_byte_arrays(ba1, 0, ba2, 0, 5), -1); // "apple" < "apply"
             assert_eq!(runtime_compare_byte_arrays(ba2, 0, ba1, 0, 5), 1); // "apply" > "apple"
-            
+
             free_byte_array(ba1);
             free_byte_array(ba2);
         }
@@ -673,7 +736,10 @@ mod tests {
         let s = b"abacaba";
         assert_eq!(runtime_text_memchr(s.as_ptr() as i64, 0, 7, b'a' as i64), 0);
         assert_eq!(runtime_text_memchr(s.as_ptr() as i64, 1, 6, b'a' as i64), 1); // 'a' at index 2 of original, which is offset 1 from s+1
-        assert_eq!(runtime_text_memchr(s.as_ptr() as i64, 0, 7, b'z' as i64), -1);
+        assert_eq!(
+            runtime_text_memchr(s.as_ptr() as i64, 0, 7, b'z' as i64),
+            -1
+        );
     }
 
     #[test]
@@ -696,13 +762,16 @@ mod tests {
 
     #[test]
     fn test_runtime_text_measure_complex() {
-        // "Aλ文😀" 
+        // "Aλ文😀"
         // A: 1 byte
         // λ: 2 bytes
         // 文: 3 bytes (E6 96 87)
         // 😀: 4 bytes
         let s = "Aλ文😀".as_bytes();
-        assert_eq!(runtime_text_measure_off(s.as_ptr() as i64, 0, 4), 1 + 2 + 3 + 4);
+        assert_eq!(
+            runtime_text_measure_off(s.as_ptr() as i64, 0, 4),
+            1 + 2 + 3 + 4
+        );
         assert_eq!(runtime_text_measure_off(s.as_ptr() as i64, 1, 2), 2 + 3);
     }
 }

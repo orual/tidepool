@@ -138,8 +138,7 @@ impl CompiledEffectMachine {
                 return Yield::Error(YieldError::BadUnionFields(union_num_fields));
             }
 
-            let tag_ptr =
-                unsafe { *(union_ptr.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
+            let tag_ptr = unsafe { *(union_ptr.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
             if tag_ptr.is_null() {
                 return Yield::Error(YieldError::NullPointer);
             }
@@ -198,8 +197,7 @@ impl CompiledEffectMachine {
                         return std::ptr::null_mut();
                     }
 
-                    let result_con_tag =
-                        *(result.add(layout::CON_TAG_OFFSET) as *const u64);
+                    let result_con_tag = *(result.add(layout::CON_TAG_OFFSET) as *const u64);
 
                     if result_con_tag == self.tags.val {
                         // Val(y) — extract y, apply k2(y)
@@ -207,8 +205,7 @@ impl CompiledEffectMachine {
                         self.apply_cont_heap(k2, y)
                     } else if result_con_tag == self.tags.e {
                         // E(union, k') — compose: E(union, Node(k', k2))
-                        let union_val =
-                            *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
+                        let union_val = *(result.add(layout::CON_FIELDS_OFFSET) as *const *mut u8);
                         let k_prime =
                             *(result.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8);
 
@@ -267,11 +264,16 @@ impl CompiledEffectMachine {
             // Dump captures
             let num_captured = *(closure.add(layout::CLOSURE_NUM_CAPTURED_OFFSET) as *const u16);
             for i in 0..num_captured as usize {
-                let cap = *(closure.add(layout::CLOSURE_CAPTURED_OFFSET + 8 * i) as *const *const u8);
+                let cap =
+                    *(closure.add(layout::CLOSURE_CAPTURED_OFFSET + 8 * i) as *const *const u8);
                 if cap.is_null() {
                     eprintln!("[trace]   capture[{}] = NULL", i);
                 } else {
-                    eprintln!("[trace]   capture[{}] = {}", i, crate::debug::heap_describe(cap));
+                    eprintln!(
+                        "[trace]   capture[{}] = {}",
+                        i,
+                        crate::debug::heap_describe(cap)
+                    );
                 }
             }
         }
@@ -286,7 +288,11 @@ impl CompiledEffectMachine {
             if result.is_null() {
                 eprintln!("[trace] {} returned NULL", name);
             } else {
-                eprintln!("[trace] {} returned {}", name, crate::debug::heap_describe(result));
+                eprintln!(
+                    "[trace] {} returned {}",
+                    name,
+                    crate::debug::heap_describe(result)
+                );
             }
         }
 

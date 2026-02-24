@@ -1,9 +1,11 @@
-use crate::pipeline::CodegenPipeline;
-use crate::emit::*;
 use crate::emit::expr::ensure_heap_ptr;
-use tidepool_repr::{VarId, Alt, AltCon, Literal, CoreExpr};
-use cranelift_codegen::ir::{self, types, InstBuilder, MemFlags, Value, condcodes::IntCC, TrapCode};
+use crate::emit::*;
+use crate::pipeline::CodegenPipeline;
+use cranelift_codegen::ir::{
+    self, condcodes::IntCC, types, InstBuilder, MemFlags, TrapCode, Value,
+};
 use cranelift_frontend::FunctionBuilder;
+use tidepool_repr::{Alt, AltCon, CoreExpr, Literal, VarId};
 
 /// Emit Case dispatch. The scrutinee has already been evaluated (stack-safe).
 #[allow(clippy::too_many_arguments)]
@@ -44,11 +46,29 @@ pub fn emit_case(
     // 5. Dispatch
     if !data_alts.is_empty() {
         emit_data_dispatch(
-            ctx, pipeline, builder, vmctx, gc_sig, tree, scrut_ptr, &data_alts, default_alt, merge_block,
+            ctx,
+            pipeline,
+            builder,
+            vmctx,
+            gc_sig,
+            tree,
+            scrut_ptr,
+            &data_alts,
+            default_alt,
+            merge_block,
         )?;
     } else if !lit_alts.is_empty() {
         emit_lit_dispatch(
-            ctx, pipeline, builder, vmctx, gc_sig, tree, scrut, &lit_alts, default_alt, merge_block,
+            ctx,
+            pipeline,
+            builder,
+            vmctx,
+            gc_sig,
+            tree,
+            scrut,
+            &lit_alts,
+            default_alt,
+            merge_block,
         )?;
     } else if let Some(alt) = default_alt {
         // Default only
@@ -89,7 +109,9 @@ fn emit_data_dispatch(
     merge_block: ir::Block,
 ) -> Result<(), EmitError> {
     // Load con_tag as u64 from offset 8
-    let con_tag = builder.ins().load(types::I64, MemFlags::trusted(), scrut_ptr, CON_TAG_OFFSET);
+    let con_tag = builder
+        .ins()
+        .load(types::I64, MemFlags::trusted(), scrut_ptr, CON_TAG_OFFSET);
 
     // Use comparison chain instead of jump table because DataConIds are large
     // GHC Uniques (arbitrary u64 values), not small sequential integers.
@@ -100,7 +122,9 @@ fn emit_data_dispatch(
 
             let tag_val = builder.ins().iconst(types::I64, tag.0 as i64);
             let eq = builder.ins().icmp(IntCC::Equal, con_tag, tag_val);
-            builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+            builder
+                .ins()
+                .brif(eq, alt_block, &[], next_check_block, &[]);
 
             // Emit alt body
             builder.switch_to_block(alt_block);
@@ -111,7 +135,10 @@ fn emit_data_dispatch(
             let mut bound_vars = Vec::new();
             for (i, &binder) in alt.binders.iter().enumerate() {
                 let offset = CON_FIELDS_START + (8 * i as i32);
-                let field_val = builder.ins().load(types::I64, MemFlags::trusted(), scrut_ptr, offset);
+                let field_val =
+                    builder
+                        .ins()
+                        .load(types::I64, MemFlags::trusted(), scrut_ptr, offset);
                 builder.declare_value_needs_stack_map(field_val);
                 ctx.env.insert(binder, SsaVal::HeapPtr(field_val));
                 bound_vars.push(binder);
@@ -161,7 +188,11 @@ fn emit_lit_dispatch(
     // Unbox scrutinee: Raw values are already unboxed, HeapPtr needs LIT_VALUE_OFFSET load
     let scrut_value = match scrut {
         SsaVal::Raw(v, _) => v,
-        SsaVal::HeapPtr(ptr) => builder.ins().load(types::I64, MemFlags::trusted(), ptr, LIT_VALUE_OFFSET),
+        SsaVal::HeapPtr(ptr) => {
+            builder
+                .ins()
+                .load(types::I64, MemFlags::trusted(), ptr, LIT_VALUE_OFFSET)
+        }
     };
 
     for &alt in lit_alts {
@@ -173,31 +204,55 @@ fn emit_lit_dispatch(
                 Literal::LitInt(n) => {
                     let lit_val = builder.ins().iconst(types::I64, *n);
                     let eq = builder.ins().icmp(IntCC::Equal, scrut_value, lit_val);
-                    builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+                    builder
+                        .ins()
+                        .brif(eq, alt_block, &[], next_check_block, &[]);
                 }
                 Literal::LitWord(n) => {
                     let lit_val = builder.ins().iconst(types::I64, *n as i64);
                     let eq = builder.ins().icmp(IntCC::Equal, scrut_value, lit_val);
-                    builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+                    builder
+                        .ins()
+                        .brif(eq, alt_block, &[], next_check_block, &[]);
                 }
                 Literal::LitChar(c) => {
                     let lit_val = builder.ins().iconst(types::I64, *c as i64);
                     let eq = builder.ins().icmp(IntCC::Equal, scrut_value, lit_val);
-                    builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+                    builder
+                        .ins()
+                        .brif(eq, alt_block, &[], next_check_block, &[]);
                 }
                 Literal::LitFloat(bits) => {
-                    let scrut_f64 = builder.ins().bitcast(types::F64, MemFlags::new().with_endianness(ir::Endianness::Little), scrut_value);
+                    let scrut_f64 = builder.ins().bitcast(
+                        types::F64,
+                        MemFlags::new().with_endianness(ir::Endianness::Little),
+                        scrut_value,
+                    );
                     let lit_val = builder.ins().f64const(f64::from_bits(*bits));
-                    let eq = builder.ins().fcmp(ir::condcodes::FloatCC::Equal, scrut_f64, lit_val);
-                    builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+                    let eq = builder
+                        .ins()
+                        .fcmp(ir::condcodes::FloatCC::Equal, scrut_f64, lit_val);
+                    builder
+                        .ins()
+                        .brif(eq, alt_block, &[], next_check_block, &[]);
                 }
                 Literal::LitDouble(bits) => {
-                    let scrut_f64 = builder.ins().bitcast(types::F64, MemFlags::new().with_endianness(ir::Endianness::Little), scrut_value);
+                    let scrut_f64 = builder.ins().bitcast(
+                        types::F64,
+                        MemFlags::new().with_endianness(ir::Endianness::Little),
+                        scrut_value,
+                    );
                     let lit_val = builder.ins().f64const(f64::from_bits(*bits));
-                    let eq = builder.ins().fcmp(ir::condcodes::FloatCC::Equal, scrut_f64, lit_val);
-                    builder.ins().brif(eq, alt_block, &[], next_check_block, &[]);
+                    let eq = builder
+                        .ins()
+                        .fcmp(ir::condcodes::FloatCC::Equal, scrut_f64, lit_val);
+                    builder
+                        .ins()
+                        .brif(eq, alt_block, &[], next_check_block, &[]);
                 }
-                Literal::LitString(_) => return Err(EmitError::NotYetImplemented("LitString in Case".into())),
+                Literal::LitString(_) => {
+                    return Err(EmitError::NotYetImplemented("LitString in Case".into()))
+                }
             }
         }
 

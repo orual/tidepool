@@ -101,8 +101,8 @@ pub fn run_pass_to_fixpoint(pass: &dyn Pass, expr: &mut CoreExpr) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tidepool_repr::{CoreFrame, RecursiveTree, VarId};
     use std::cell::Cell;
+    use tidepool_repr::{CoreFrame, RecursiveTree, VarId};
 
     struct TestPass {
         name: String,

@@ -1,7 +1,7 @@
 use crate::occ::{get_occ, occ_analysis, Occ};
+use std::collections::HashMap;
 use tidepool_eval::{Changed, Pass};
 use tidepool_repr::{CoreExpr, CoreFrame, MapLayer};
-use std::collections::HashMap;
 
 /// Dead Code Elimination pass.
 /// Removes `LetNonRec` bindings where the binder is unused.

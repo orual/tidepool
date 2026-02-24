@@ -45,7 +45,11 @@ pub fn wrap_with_datacon_env(expr: &CoreExpr, table: &DataConTable) -> CoreExpr 
         } else {
             // Build curried lambda chain: \v0 -> \v1 -> ... -> Con(id, [v0, v1, ...])
             // Fresh vars use a hash of the DataConId to avoid collisions
-            let fresh_base = dc.id.0.wrapping_mul(0x517cc1b727220a95).wrapping_add(0xFFFF_0000_0000_0000);
+            let fresh_base = dc
+                .id
+                .0
+                .wrapping_mul(0x517cc1b727220a95)
+                .wrapping_add(0xFFFF_0000_0000_0000);
             let fresh_vars: Vec<VarId> = (0..arity)
                 .map(|i| VarId(fresh_base.wrapping_add(i as u64)))
                 .collect();

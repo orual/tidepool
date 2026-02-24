@@ -1,16 +1,16 @@
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tidepool_eval::{env::Env, eval::eval, heap::VecHeap};
 use tidepool_repr::{
     Alt, AltCon, CoreExpr, CoreFrame, DataConId, Literal, PrimOpKind, RecursiveTree, VarId,
 };
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 /// Builds a small expression: (\x -> x + 1) 41
 /// Baseline expectation: < 1us (interpreter overhead only)
 fn small_expr() -> CoreExpr {
     RecursiveTree {
         nodes: vec![
-            CoreFrame::Var(VarId(1)),            // 0: x
-            CoreFrame::Lit(Literal::LitInt(1)),  // 1
+            CoreFrame::Var(VarId(1)),           // 0: x
+            CoreFrame::Lit(Literal::LitInt(1)), // 1
             CoreFrame::PrimOp {
                 op: PrimOpKind::IntAdd,
                 args: vec![0, 1],
@@ -20,7 +20,7 @@ fn small_expr() -> CoreExpr {
                 body: 2,
             }, // 3: \x -> x + 1
             CoreFrame::Lit(Literal::LitInt(41)), // 4
-            CoreFrame::App { fun: 3, arg: 4 },   // 5: (\x -> x + 1) 41
+            CoreFrame::App { fun: 3, arg: 4 },  // 5: (\x -> x + 1) 41
         ],
     }
 }
@@ -29,12 +29,12 @@ fn small_expr() -> CoreExpr {
 /// Baseline expectation: < 10us
 fn medium_expr() -> CoreExpr {
     let mut nodes = Vec::new();
-    
+
     // Build from inside out
     // result = Var(24)
     nodes.push(CoreFrame::Var(VarId(24)));
     let mut current_body = nodes.len() - 1;
-    
+
     for i in (0..25).rev() {
         let binder = VarId(i as u64);
         let rhs = if i == 0 {
@@ -49,8 +49,12 @@ fn medium_expr() -> CoreExpr {
             });
             nodes.len() - 1
         };
-        
-        nodes.push(CoreFrame::LetNonRec { binder, rhs, body: current_body });
+
+        nodes.push(CoreFrame::LetNonRec {
+            binder,
+            rhs,
+            body: current_body,
+        });
         current_body = nodes.len() - 1;
     }
 
@@ -61,10 +65,10 @@ fn medium_expr() -> CoreExpr {
 /// Baseline expectation: < 100us
 fn large_expr() -> CoreExpr {
     let mut nodes = Vec::new();
-    
+
     nodes.push(CoreFrame::Var(VarId(124)));
     let mut current_body = nodes.len() - 1;
-    
+
     for i in (0..125).rev() {
         let binder = VarId(i as u64);
         let rhs = if i == 0 {
@@ -79,8 +83,12 @@ fn large_expr() -> CoreExpr {
             });
             nodes.len() - 1
         };
-        
-        nodes.push(CoreFrame::LetNonRec { binder, rhs, body: current_body });
+
+        nodes.push(CoreFrame::LetNonRec {
+            binder,
+            rhs,
+            body: current_body,
+        });
         current_body = nodes.len() - 1;
     }
 

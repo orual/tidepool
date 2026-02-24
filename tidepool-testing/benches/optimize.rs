@@ -1,3 +1,5 @@
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use tidepool_eval::pass::Pass;
 use tidepool_optimize::beta::BetaReduce;
 use tidepool_optimize::case_reduce::CaseReduce;
 use tidepool_optimize::dce::Dce;
@@ -6,8 +8,6 @@ use tidepool_optimize::pipeline::{default_passes, run_pipeline};
 use tidepool_repr::{
     Alt, AltCon, CoreExpr, CoreFrame, DataConId, Literal, PrimOpKind, RecursiveTree, VarId,
 };
-use tidepool_eval::pass::Pass;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 /// Builds a reducible expression (~30 nodes).
 /// Contains:

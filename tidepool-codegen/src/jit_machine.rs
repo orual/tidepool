@@ -1,7 +1,7 @@
+use cranelift_module::FuncId;
 use tidepool_effect::{DispatchEffect, EffectContext, EffectError};
 use tidepool_eval::value::Value;
 use tidepool_repr::{CoreExpr, DataConTable};
-use cranelift_module::FuncId;
 
 use crate::context::VMContext;
 use crate::effect_machine::{CompiledEffectMachine, ConTags};
@@ -26,7 +26,9 @@ impl std::fmt::Display for JitError {
         match self {
             JitError::Compilation(e) => write!(f, "JIT compilation error: {}", e),
             JitError::Pipeline(e) => write!(f, "pipeline error: {}", e),
-            JitError::MissingConTags => write!(f, "missing freer-simple constructors in DataConTable"),
+            JitError::MissingConTags => {
+                write!(f, "missing freer-simple constructors in DataConTable")
+            }
             JitError::Effect(e) => write!(f, "effect dispatch error: {}", e),
             JitError::Yield(e) => write!(f, "yield error: {}", e),
             JitError::HeapBridge(e) => write!(f, "heap bridge error: {}", e),
@@ -104,8 +106,8 @@ impl JitEffectMachine {
         let result = loop {
             match yield_result {
                 Yield::Done(ptr) => {
-                    let val = unsafe { heap_bridge::heap_to_value(ptr) }
-                        .map_err(JitError::HeapBridge)?;
+                    let val =
+                        unsafe { heap_bridge::heap_to_value(ptr) }.map_err(JitError::HeapBridge)?;
                     break Ok(val);
                 }
                 Yield::Request {
@@ -156,9 +158,7 @@ impl JitEffectMachine {
                 crate::host_fns::RuntimeError::DivisionByZero => {
                     crate::yield_type::YieldError::DivisionByZero
                 }
-                crate::host_fns::RuntimeError::Overflow => {
-                    crate::yield_type::YieldError::Overflow
-                }
+                crate::host_fns::RuntimeError::Overflow => crate::yield_type::YieldError::Overflow,
                 crate::host_fns::RuntimeError::UserError => {
                     crate::yield_type::YieldError::UserError
                 }

@@ -53,7 +53,11 @@ impl std::fmt::Display for EffectError {
                 expected,
                 got,
             } => {
-                write!(f, "{} expects {} fields, got {}", constructor, expected, got)
+                write!(
+                    f,
+                    "{} expects {} fields, got {}",
+                    constructor, expected, got
+                )
             }
             EffectError::UnexpectedValue { context, got } => {
                 write!(f, "expected {}, got {}", context, got)

@@ -39,11 +39,7 @@ fn pp_at(expr: &CoreExpr, idx: usize) -> String {
                 binders.push(*next_binder);
                 current_body = *next_body;
             }
-            let binders_str = binders
-                .iter()
-                .map(format_var)
-                .collect::<Vec<_>>()
-                .join(" ");
+            let binders_str = binders.iter().map(format_var).collect::<Vec<_>>().join(" ");
             format!("\\{} -> {}", binders_str, pp_at(expr, current_body))
         }
         CoreFrame::LetNonRec { binder, rhs, body } => {
@@ -97,11 +93,7 @@ fn pp_at(expr: &CoreExpr, idx: usize) -> String {
             rhs,
             body,
         } => {
-            let params_str = params
-                .iter()
-                .map(format_var)
-                .collect::<Vec<_>>()
-                .join(" ");
+            let params_str = params.iter().map(format_var).collect::<Vec<_>>().join(" ");
             format!(
                 "join {} ({}) = {}\nin {}",
                 label,
@@ -142,11 +134,7 @@ fn primop_name(op: &PrimOpKind) -> String {
 }
 
 fn format_alt_con(con: &AltCon, binders: &[VarId]) -> String {
-    let binders_str = binders
-        .iter()
-        .map(format_var)
-        .collect::<Vec<_>>()
-        .join(" ");
+    let binders_str = binders.iter().map(format_var).collect::<Vec<_>>().join(" ");
     let mut s = con.to_string();
     if !binders_str.is_empty() {
         s.push(' ');

@@ -1,5 +1,5 @@
-use tidepool_macro::haskell_eval;
 use tidepool_eval::Value;
+use tidepool_macro::haskell_eval;
 
 // .hs paths resolve relative to CARGO_MANIFEST_DIR (tidepool-macro/),
 // so one ../ reaches the workspace root.

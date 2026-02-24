@@ -22,7 +22,7 @@ pub unsafe fn walk_frames(
 ) -> Vec<StackRoot> {
     let mut roots = Vec::new();
     let mut rbp = start_rbp;
-    
+
     // First, try to find the first JIT return address by searching up from RSP.
     // This handles cases where gc_trigger doesn't have a frame pointer.
     let mut current_return_addr = None;
@@ -34,7 +34,7 @@ pub unsafe fn walk_frames(
             current_return_addr = Some(val);
             // If we found a JIT return address, the RBP for this frame is the current RBP
             // if gc_trigger has no frame, or it's the saved RBP if it does.
-            // Actually, if we found a JIT return address at search_ptr, 
+            // Actually, if we found a JIT return address at search_ptr,
             // then search_ptr + 8 is the SP at the safepoint!
             break;
         }
@@ -52,7 +52,7 @@ pub unsafe fn walk_frames(
         } else {
             *((rbp + 8) as *const usize)
         };
-        
+
         // Check if this return address is in JIT code
         if !stack_maps.contains_address(return_addr) {
             if !roots.is_empty() {
@@ -75,7 +75,7 @@ pub unsafe fn walk_frames(
             // Cranelift stack map offsets are SP-relative at the safepoint.
             // The return address we found is the one pushed by the 'call' in JIT code.
             // The SP just before that 'call' was (addr_of_return_addr + 8).
-            
+
             // We need to find where this return_addr was on the stack.
             //
             // If this is the first frame we found, and it was found via the initial RSP search
@@ -86,7 +86,7 @@ pub unsafe fn walk_frames(
             } else {
                 rbp + 8
             };
-            
+
             let sp_at_safepoint = addr_of_return_addr + 8;
 
             for &offset in &info.offsets {
@@ -101,7 +101,7 @@ pub unsafe fn walk_frames(
 
         // Walk to next frame: *(rbp) is the saved caller RBP
         let next_rbp = *(rbp as *const usize);
-        
+
         // Basic sanity checks to prevent infinite loops or jumping to null
         if next_rbp == 0 || next_rbp == rbp || next_rbp < rbp {
             break;

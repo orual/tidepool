@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use tidepool_eval::{Changed, Pass};
 use tidepool_repr::{AltCon, CoreExpr, CoreFrame, MapLayer};
-use std::collections::HashMap;
 
 /// A pass that performs case-of-known-constructor and case-of-known-literal reductions.
 pub struct CaseReduce;

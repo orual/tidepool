@@ -117,25 +117,22 @@ fn test_unknown_variant() {
     let table = test_table();
     let value = Value::Con(DataConId(100), vec![]);
     let res = MyBool::from_value(&value, &table);
-    assert!(matches!(res, Err(BridgeError::UnknownDataCon(DataConId(100)))));
+    assert!(matches!(
+        res,
+        Err(BridgeError::UnknownDataCon(DataConId(100)))
+    ));
 }
 
 #[derive(Debug, PartialEq, Eq, FromCore, ToCore)]
 
 enum UnusedParam<T> {
-
     #[core(name = "True")]
-
     Constant(std::marker::PhantomData<T>),
-
 }
-
-
 
 #[test]
 
 fn test_unused_param_derive() {
-
     let table = test_table();
 
     // This should compile even if T doesn't implement FromCore/ToCore
@@ -151,15 +148,11 @@ fn test_unused_param_derive() {
     let back = UnusedParam::<NotBridgeable>::from_value(&value, &table).unwrap();
 
     assert_eq!(val, back);
-
 }
-
-
 
 #[test]
 
 fn test_arity_mismatch() {
-
     let table = test_table();
 
     let true_id = table.get_by_name("True").unwrap();

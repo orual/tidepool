@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use tidepool_eval::{Changed, Pass};
 use tidepool_repr::{CoreExpr, CoreFrame, MapLayer};
-use std::collections::HashMap;
 
 /// Beta reduction pass: find `App { fun, arg }` where `fun` is a `Lam { binder, body }`.
 /// Replaces it with `subst(body, binder, arg)`.
@@ -292,7 +292,9 @@ mod tests {
         let val_orig = eval(&expr_orig, &env, &mut heap).expect("Original eval failed");
         let val_reduced = eval(&expr_reduced, &env, &mut heap).expect("Reduced eval failed");
 
-        if let (tidepool_eval::Value::Lit(l1), tidepool_eval::Value::Lit(l2)) = (&val_orig, &val_reduced) {
+        if let (tidepool_eval::Value::Lit(l1), tidepool_eval::Value::Lit(l2)) =
+            (&val_orig, &val_reduced)
+        {
             assert_eq!(l1, l2);
         } else {
             panic!(

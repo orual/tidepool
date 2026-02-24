@@ -5,11 +5,11 @@
 //! and execute correctly via the `recursion` crate's explicit stack.
 
 use tidepool_codegen::context::VMContext;
-use tidepool_codegen::pipeline::CodegenPipeline;
-use tidepool_codegen::host_fns;
 use tidepool_codegen::emit::expr::compile_expr;
-use tidepool_repr::*;
+use tidepool_codegen::host_fns;
+use tidepool_codegen::pipeline::CodegenPipeline;
 use tidepool_heap::layout;
+use tidepool_repr::*;
 
 struct TestResult {
     result_ptr: *const u8,
@@ -66,14 +66,20 @@ fn build_list(values: &[i64]) -> CoreExpr {
 
     // Start with Nil
     let nil_idx = nodes.len();
-    nodes.push(CoreFrame::Con { tag: NIL_TAG, fields: vec![] });
+    nodes.push(CoreFrame::Con {
+        tag: NIL_TAG,
+        fields: vec![],
+    });
 
     let mut tail = nil_idx;
     for &v in values.iter().rev() {
         let lit_idx = nodes.len();
         nodes.push(CoreFrame::Lit(Literal::LitInt(v)));
         let cons_idx = nodes.len();
-        nodes.push(CoreFrame::Con { tag: CONS_TAG, fields: vec![lit_idx, tail] });
+        nodes.push(CoreFrame::Con {
+            tag: CONS_TAG,
+            fields: vec![lit_idx, tail],
+        });
         tail = cons_idx;
     }
 
@@ -94,7 +100,10 @@ fn build_deep_add_chain(depth: usize) -> CoreExpr {
         let one_idx = nodes.len();
         nodes.push(CoreFrame::Lit(Literal::LitInt(1)));
         let add_idx = nodes.len();
-        nodes.push(CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![acc, one_idx] });
+        nodes.push(CoreFrame::PrimOp {
+            op: PrimOpKind::IntAdd,
+            args: vec![acc, one_idx],
+        });
         acc = add_idx;
     }
 
@@ -120,9 +129,15 @@ fn build_deep_app_chain(depth: usize) -> CoreExpr {
         let var_idx = nodes.len();
         nodes.push(CoreFrame::Var(var_id));
         let lam_idx = nodes.len();
-        nodes.push(CoreFrame::Lam { binder: var_id, body: var_idx });
+        nodes.push(CoreFrame::Lam {
+            binder: var_id,
+            body: var_idx,
+        });
         let app_idx = nodes.len();
-        nodes.push(CoreFrame::App { fun: lam_idx, arg: inner });
+        nodes.push(CoreFrame::App {
+            fun: lam_idx,
+            arg: inner,
+        });
         inner = app_idx;
     }
 
@@ -140,7 +155,10 @@ fn build_deep_con_chain(depth: usize) -> CoreExpr {
     let mut inner = lit_idx;
     for i in 0..depth {
         let con_idx = nodes.len();
-        nodes.push(CoreFrame::Con { tag: DataConId(100 + i as u64), fields: vec![inner] });
+        nodes.push(CoreFrame::Con {
+            tag: DataConId(100 + i as u64),
+            fields: vec![inner],
+        });
         inner = con_idx;
     }
 
@@ -158,7 +176,11 @@ fn build_deep_con_chain(depth: usize) -> CoreExpr {
 fn test_deep_list_200() {
     let values: Vec<i64> = (1..=200).collect();
     let tree = build_list(&values);
-    assert!(tree.nodes.len() > 400, "tree should have >400 nodes, got {}", tree.nodes.len());
+    assert!(
+        tree.nodes.len() > 400,
+        "tree should have >400 nodes, got {}",
+        tree.nodes.len()
+    );
 
     let result = compile_and_run(&tree);
     unsafe {
@@ -193,7 +215,9 @@ fn test_deep_add_chain_500() {
     assert!(tree.nodes.len() > 1000);
 
     let result = compile_and_run(&tree);
-    unsafe { assert_eq!(read_lit_int(result.result_ptr), 500); }
+    unsafe {
+        assert_eq!(read_lit_int(result.result_ptr), 500);
+    }
 }
 
 /// 1000 nested additions.
@@ -203,7 +227,9 @@ fn test_deep_add_chain_1000() {
     assert!(tree.nodes.len() > 2000);
 
     let result = compile_and_run(&tree);
-    unsafe { assert_eq!(read_lit_int(result.result_ptr), 1000); }
+    unsafe {
+        assert_eq!(read_lit_int(result.result_ptr), 1000);
+    }
 }
 
 /// 200 nested identity applications: (λx.x) ((λx.x) (... 42)) = 42.
@@ -214,7 +240,9 @@ fn test_deep_app_chain_200() {
     assert!(tree.nodes.len() > 600);
 
     let result = compile_and_run(&tree);
-    unsafe { assert_eq!(read_lit_int(result.result_ptr), 42); }
+    unsafe {
+        assert_eq!(read_lit_int(result.result_ptr), 42);
+    }
 }
 
 /// 200 nested unary constructors wrapping a Lit(42).
@@ -228,7 +256,7 @@ fn test_deep_con_chain_200() {
         // Outermost constructor
         assert_eq!(layout::read_tag(result.result_ptr), layout::TAG_CON);
         assert_eq!(read_con_tag(result.result_ptr), 100 + 199); // last tag
-        // Dig down to innermost
+                                                                // Dig down to innermost
         let mut ptr = result.result_ptr;
         for i in (0..200).rev() {
             assert_eq!(read_con_tag(ptr), 100 + i as u64);
@@ -256,14 +284,20 @@ fn test_let_chain_then_deep_list() {
 
     // Build the list body: Cons(x0, Cons(x1, ... Nil))
     let nil_idx = nodes.len();
-    nodes.push(CoreFrame::Con { tag: NIL_TAG, fields: vec![] });
+    nodes.push(CoreFrame::Con {
+        tag: NIL_TAG,
+        fields: vec![],
+    });
 
     let mut tail = nil_idx;
     for i in (0..n).rev() {
         let var_idx = nodes.len();
         nodes.push(CoreFrame::Var(VarId(i as u64)));
         let cons_idx = nodes.len();
-        nodes.push(CoreFrame::Con { tag: CONS_TAG, fields: vec![var_idx, tail] });
+        nodes.push(CoreFrame::Con {
+            tag: CONS_TAG,
+            fields: vec![var_idx, tail],
+        });
         tail = cons_idx;
     }
 

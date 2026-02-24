@@ -1,6 +1,6 @@
-use tidepool_repr::DataConId;
 use std::error::Error;
 use std::fmt;
+use tidepool_repr::DataConId;
 
 /// Errors that can occur when bridging between Rust types and Core Values.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -66,10 +66,14 @@ fn test_letrec_single_con() {
     let x = VarId(1);
     let tree = RecursiveTree {
         nodes: vec![
-            CoreFrame::Lit(Literal::LitInt(42)),              // 0: field value
-            CoreFrame::Con { tag: DataConId(7), fields: vec![0] }, // 1: Con_7(42#)
-            CoreFrame::Var(x),                                 // 2: x
-            CoreFrame::LetRec {                                // 3: root
+            CoreFrame::Lit(Literal::LitInt(42)), // 0: field value
+            CoreFrame::Con {
+                tag: DataConId(7),
+                fields: vec![0],
+            }, // 1: Con_7(42#)
+            CoreFrame::Var(x),                   // 2: x
+            CoreFrame::LetRec {
+                // 3: root
                 bindings: vec![(x, 1)],
                 body: 2,
             },
@@ -98,12 +102,19 @@ fn test_letrec_con_mutual_reference() {
     let b = VarId(2);
     let tree = RecursiveTree {
         nodes: vec![
-            CoreFrame::Lit(Literal::LitInt(10)),               // 0
-            CoreFrame::Con { tag: DataConId(1), fields: vec![0] }, // 1: a = Con_1(10#)
-            CoreFrame::Var(a),                                  // 2: ref to a
-            CoreFrame::Con { tag: DataConId(2), fields: vec![2] }, // 3: b = Con_2(a)
-            CoreFrame::Var(b),                                  // 4: ref to b
-            CoreFrame::LetRec {                                 // 5: root
+            CoreFrame::Lit(Literal::LitInt(10)), // 0
+            CoreFrame::Con {
+                tag: DataConId(1),
+                fields: vec![0],
+            }, // 1: a = Con_1(10#)
+            CoreFrame::Var(a),                   // 2: ref to a
+            CoreFrame::Con {
+                tag: DataConId(2),
+                fields: vec![2],
+            }, // 3: b = Con_2(a)
+            CoreFrame::Var(b),                   // 4: ref to b
+            CoreFrame::LetRec {
+                // 5: root
                 bindings: vec![(a, 1), (b, 3)],
                 body: 4,
             },
@@ -138,12 +149,16 @@ fn test_letrec_mixed_con_and_lam() {
     let x = VarId(3);
     let tree = RecursiveTree {
         nodes: vec![
-            CoreFrame::Var(x),                                  // 0: x
-            CoreFrame::Lam { binder: x, body: 0 },             // 1: f = λx. x
-            CoreFrame::Var(f),                                  // 2: ref to f
-            CoreFrame::Con { tag: DataConId(5), fields: vec![2] }, // 3: node = Con_5(f)
-            CoreFrame::Var(node),                               // 4: ref to node
-            CoreFrame::LetRec {                                 // 5: root
+            CoreFrame::Var(x),                     // 0: x
+            CoreFrame::Lam { binder: x, body: 0 }, // 1: f = λx. x
+            CoreFrame::Var(f),                     // 2: ref to f
+            CoreFrame::Con {
+                tag: DataConId(5),
+                fields: vec![2],
+            }, // 3: node = Con_5(f)
+            CoreFrame::Var(node),                  // 4: ref to node
+            CoreFrame::LetRec {
+                // 5: root
                 bindings: vec![(f, 1), (node, 3)],
                 body: 4,
             },
@@ -183,19 +198,26 @@ fn test_letrec_con_closure_is_callable() {
     let tree = RecursiveTree {
         nodes: vec![
             // f = λx. x + 1
-            CoreFrame::Var(x),                                              // 0
-            CoreFrame::Lit(Literal::LitInt(1)),                             // 1
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![0, 1] }, // 2: x + 1
-            CoreFrame::Lam { binder: x, body: 2 },                         // 3: f = λx. x+1
+            CoreFrame::Var(x),                  // 0
+            CoreFrame::Lit(Literal::LitInt(1)), // 1
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![0, 1],
+            }, // 2: x + 1
+            CoreFrame::Lam { binder: x, body: 2 }, // 3: f = λx. x+1
             // leaf = Con_5(f)
-            CoreFrame::Var(f),                                              // 4
-            CoreFrame::Con { tag: DataConId(5), fields: vec![4] },          // 5: leaf = Con_5(f)
+            CoreFrame::Var(f), // 4
+            CoreFrame::Con {
+                tag: DataConId(5),
+                fields: vec![4],
+            }, // 5: leaf = Con_5(f)
             // body: case leaf of Con_5 g -> g 41
-            CoreFrame::Var(leaf),                                           // 6: scrutinee
-            CoreFrame::Var(g),                                              // 7: g
-            CoreFrame::Lit(Literal::LitInt(41)),                            // 8: 41
-            CoreFrame::App { fun: 7, arg: 8 },                             // 9: g 41
-            CoreFrame::Case {                                               // 10: case
+            CoreFrame::Var(leaf),                // 6: scrutinee
+            CoreFrame::Var(g),                   // 7: g
+            CoreFrame::Lit(Literal::LitInt(41)), // 8: 41
+            CoreFrame::App { fun: 7, arg: 8 },   // 9: g 41
+            CoreFrame::Case {
+                // 10: case
                 scrutinee: 6,
                 binder: scrut,
                 alts: vec![Alt {
@@ -204,7 +226,8 @@ fn test_letrec_con_closure_is_callable() {
                     body: 9,
                 }],
             },
-            CoreFrame::LetRec {                                             // 11: root
+            CoreFrame::LetRec {
+                // 11: root
                 bindings: vec![(f, 3), (leaf, 5)],
                 body: 10,
             },
@@ -212,7 +235,11 @@ fn test_letrec_con_closure_is_callable() {
     };
     let result = compile_and_run(&tree);
     unsafe {
-        assert_eq!(read_lit_int(result.result_ptr), 42, "g(41) should be 41 + 1 = 42");
+        assert_eq!(
+            read_lit_int(result.result_ptr),
+            42,
+            "g(41) should be 41 + 1 = 42"
+        );
     }
 }
 
@@ -240,15 +267,21 @@ fn test_letrec_con_lam_captures_sibling() {
     let tree = RecursiveTree {
         nodes: vec![
             // base = Con_1(100#)
-            CoreFrame::Lit(Literal::LitInt(100)),                            // 0
-            CoreFrame::Con { tag: DataConId(1), fields: vec![0] },           // 1: base
-
+            CoreFrame::Lit(Literal::LitInt(100)), // 0
+            CoreFrame::Con {
+                tag: DataConId(1),
+                fields: vec![0],
+            }, // 1: base
             // f = λx. case base of Con_1 n -> x + n
-            CoreFrame::Var(base),                                            // 2: base ref
-            CoreFrame::Var(x),                                               // 3: x
-            CoreFrame::Var(n),                                               // 4: n
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![3, 4] },  // 5: x + n
-            CoreFrame::Case {                                                // 6: case base
+            CoreFrame::Var(base), // 2: base ref
+            CoreFrame::Var(x),    // 3: x
+            CoreFrame::Var(n),    // 4: n
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![3, 4],
+            }, // 5: x + n
+            CoreFrame::Case {
+                // 6: case base
                 scrutinee: 2,
                 binder: scrut1,
                 alts: vec![Alt {
@@ -257,18 +290,20 @@ fn test_letrec_con_lam_captures_sibling() {
                     body: 5,
                 }],
             },
-            CoreFrame::Lam { binder: x, body: 6 },                          // 7: f
-
+            CoreFrame::Lam { binder: x, body: 6 }, // 7: f
             // wrapper = Con_2(f)
-            CoreFrame::Var(f),                                               // 8
-            CoreFrame::Con { tag: DataConId(2), fields: vec![8] },           // 9: wrapper
-
+            CoreFrame::Var(f), // 8
+            CoreFrame::Con {
+                tag: DataConId(2),
+                fields: vec![8],
+            }, // 9: wrapper
             // body: case wrapper of Con_2 g -> g 5
-            CoreFrame::Var(wrapper),                                         // 10
-            CoreFrame::Var(g),                                               // 11
-            CoreFrame::Lit(Literal::LitInt(5)),                              // 12
-            CoreFrame::App { fun: 11, arg: 12 },                             // 13: g 5
-            CoreFrame::Case {                                                // 14
+            CoreFrame::Var(wrapper),             // 10
+            CoreFrame::Var(g),                   // 11
+            CoreFrame::Lit(Literal::LitInt(5)),  // 12
+            CoreFrame::App { fun: 11, arg: 12 }, // 13: g 5
+            CoreFrame::Case {
+                // 14
                 scrutinee: 10,
                 binder: scrut2,
                 alts: vec![Alt {
@@ -277,8 +312,8 @@ fn test_letrec_con_lam_captures_sibling() {
                     body: 13,
                 }],
             },
-
-            CoreFrame::LetRec {                                              // 15: root
+            CoreFrame::LetRec {
+                // 15: root
                 bindings: vec![(base, 1), (f, 7), (wrapper, 9)],
                 body: 14,
             },
@@ -318,41 +353,45 @@ fn test_letrec_continuation_chain_structure() {
     let tree = RecursiveTree {
         nodes: vec![
             // f = λx. x + 1
-            CoreFrame::Var(x),                                              // 0
-            CoreFrame::Lit(Literal::LitInt(1)),                             // 1
-            CoreFrame::PrimOp { op: PrimOpKind::IntAdd, args: vec![0, 1] }, // 2
-            CoreFrame::Lam { binder: x, body: 2 },                         // 3: f
-
+            CoreFrame::Var(x),                  // 0
+            CoreFrame::Lit(Literal::LitInt(1)), // 1
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![0, 1],
+            }, // 2
+            CoreFrame::Lam { binder: x, body: 2 }, // 3: f
             // g = λx. x * 2
-            CoreFrame::Var(x),                                              // 4
-            CoreFrame::Lit(Literal::LitInt(2)),                             // 5
-            CoreFrame::PrimOp { op: PrimOpKind::IntMul, args: vec![4, 5] }, // 6
-            CoreFrame::Lam { binder: x, body: 6 },                         // 7: g
-
+            CoreFrame::Var(x),                  // 4
+            CoreFrame::Lit(Literal::LitInt(2)), // 5
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntMul,
+                args: vec![4, 5],
+            }, // 6
+            CoreFrame::Lam { binder: x, body: 6 }, // 7: g
             // leaf1 = Con_LEAF(f)
-            CoreFrame::Var(f),                                              // 8
-            CoreFrame::Con { tag: leaf_tag, fields: vec![8] },              // 9: leaf1
-
+            CoreFrame::Var(f), // 8
+            CoreFrame::Con {
+                tag: leaf_tag,
+                fields: vec![8],
+            }, // 9: leaf1
             // leaf2 = Con_LEAF(g)
-            CoreFrame::Var(g),                                              // 10
-            CoreFrame::Con { tag: leaf_tag, fields: vec![10] },             // 11: leaf2
-
+            CoreFrame::Var(g), // 10
+            CoreFrame::Con {
+                tag: leaf_tag,
+                fields: vec![10],
+            }, // 11: leaf2
             // node = Con_NODE(leaf1, leaf2)
-            CoreFrame::Var(leaf1),                                          // 12
-            CoreFrame::Var(leaf2),                                          // 13
-            CoreFrame::Con { tag: node_tag, fields: vec![12, 13] },         // 14: node
-
+            CoreFrame::Var(leaf1), // 12
+            CoreFrame::Var(leaf2), // 13
+            CoreFrame::Con {
+                tag: node_tag,
+                fields: vec![12, 13],
+            }, // 14: node
             // body: node
-            CoreFrame::Var(node),                                           // 15
-
-            CoreFrame::LetRec {                                             // 16: root
-                bindings: vec![
-                    (f, 3),
-                    (g, 7),
-                    (leaf1, 9),
-                    (leaf2, 11),
-                    (node, 14),
-                ],
+            CoreFrame::Var(node), // 15
+            CoreFrame::LetRec {
+                // 16: root
+                bindings: vec![(f, 3), (g, 7), (leaf1, 9), (leaf2, 11), (node, 14)],
                 body: 15,
             },
         ],

@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Returns the platform-specific cache directory for Tidepool.
 /// Following XDG conventions: `$XDG_CACHE_HOME/tidepool` or `~/.cache/tidepool`.
@@ -35,7 +35,9 @@ pub(crate) fn cache_key(source: &str, target: &str, include: &[&Path]) -> String
 /// Recursively walks a directory to fingerprint its contents.
 /// Considers file paths, sizes, and modification times of `.hs` and `.hs-boot` files.
 fn fingerprint_dir(dir: &Path, hasher: &mut blake3::Hasher) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     let mut paths: Vec<_> = entries.filter_map(|e| e.ok()).collect();
     paths.sort_by_key(|e| e.path());
 
@@ -75,7 +77,9 @@ pub(crate) fn cache_load(key: &str) -> Option<(Vec<u8>, Vec<u8>)> {
 /// Stores the compilation results in the cache atomically.
 pub(crate) fn cache_store(key: &str, expr_bytes: &[u8], meta_bytes: &[u8]) {
     let Some(dir) = cache_dir() else { return };
-    if fs::create_dir_all(&dir).is_err() { return; }
+    if fs::create_dir_all(&dir).is_err() {
+        return;
+    }
 
     let expr_path = dir.join(format!("{}.cbor", key));
     let meta_path = dir.join(format!("{}.meta.cbor", key));
@@ -87,7 +91,9 @@ pub(crate) fn cache_store(key: &str, expr_bytes: &[u8], meta_bytes: &[u8]) {
 /// Writes data to a temporary file then renames it to the target path
 /// to ensure that readers never see partially written or corrupted files.
 fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().ok_or_else(|| std::io::Error::other("no parent dir"))?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("no parent dir"))?;
     let mut temp = tempfile::NamedTempFile::new_in(dir)?;
     use std::io::Write;
     temp.write_all(data)?;
@@ -106,7 +112,7 @@ mod tests {
         let k1 = cache_key(source, target, &[]);
         let k2 = cache_key(source, target, &[]);
         assert_eq!(k1, k2);
-        
+
         let k3 = cache_key("main = print 43", target, &[]);
         assert_ne!(k1, k3);
     }
@@ -137,12 +143,15 @@ mod tests {
         let includes = [include_dir.path()];
 
         let k1 = cache_key(source, target, &includes);
-        
+
         // Wait a bit to ensure mtime changes if we overwrite (though some filesystems have low precision)
         // or just write different content/size.
         fs::write(&hs_file, "module Lib where\nfoo = 1").unwrap();
         let k2 = cache_key(source, target, &includes);
-        
-        assert_ne!(k1, k2, "Cache key should change when dependency file changes");
+
+        assert_ne!(
+            k1, k2,
+            "Cache key should change when dependency file changes"
+        );
     }
 }

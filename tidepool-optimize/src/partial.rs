@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use tidepool_eval::{Changed, Pass};
 use tidepool_repr::{Alt, AltCon, CoreExpr, CoreFrame, DataConId, Literal, PrimOpKind, VarId};
-use std::collections::HashMap;
 
 /// A value that might be known during partial evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -23,8 +23,11 @@ pub fn expand(input: TokenStream) -> TokenStream {
     } else if raw_path.ends_with(".hs") || raw_path.contains(".hs::") {
         expand_hs(&path_lit, &raw_path)
     } else {
-        syn::Error::new(path_lit.span(), "haskell_eval! path must end in .cbor or .hs")
-            .to_compile_error()
+        syn::Error::new(
+            path_lit.span(),
+            "haskell_eval! path must end in .cbor or .hs",
+        )
+        .to_compile_error()
     }
 }
 
@@ -65,11 +68,7 @@ fn expand_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
         .to_compile_error();
     }
 
-    let basename = abs_hs_path
-        .file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let basename = abs_hs_path.file_stem().unwrap().to_str().unwrap();
     let output_dir = Path::new(&manifest_dir)
         .join("target")
         .join("tidepool-cbor")
@@ -92,10 +91,7 @@ fn expand_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
                 let available = list_bindings(&output_dir);
                 return syn::Error::new(
                     path_lit.span(),
-                    format!(
-                        "Binding '{}' not found. Available: {:?}",
-                        name, available
-                    ),
+                    format!("Binding '{}' not found. Available: {:?}", name, available),
                 )
                 .to_compile_error();
             }
@@ -143,8 +139,11 @@ pub fn expand_expr(input: TokenStream) -> TokenStream {
     } else if raw_path.ends_with(".hs") || raw_path.contains(".hs::") {
         expand_expr_hs(&path_lit, &raw_path)
     } else {
-        syn::Error::new(path_lit.span(), "haskell_expr! path must end in .cbor or .hs")
-            .to_compile_error()
+        syn::Error::new(
+            path_lit.span(),
+            "haskell_expr! path must end in .cbor or .hs",
+        )
+        .to_compile_error()
     }
 }
 
@@ -194,11 +193,7 @@ fn expand_expr_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
         .to_compile_error();
     }
 
-    let basename = abs_hs_path
-        .file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let basename = abs_hs_path.file_stem().unwrap().to_str().unwrap();
     let output_dir = Path::new(&manifest_dir)
         .join("target")
         .join("tidepool-cbor")
@@ -221,10 +216,7 @@ fn expand_expr_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
                 let available = list_bindings(&output_dir);
                 return syn::Error::new(
                     path_lit.span(),
-                    format!(
-                        "Binding '{}' not found. Available: {:?}",
-                        name, available
-                    ),
+                    format!("Binding '{}' not found. Available: {:?}", name, available),
                 )
                 .to_compile_error();
             }
@@ -548,10 +540,7 @@ fn run_tidepool_extract(
                 output.status, stderr
             ))
         }
-        Err(e) => Err(format!(
-            "Failed to run nix: {}. Is nix installed?",
-            e
-        )),
+        Err(e) => Err(format!("Failed to run nix: {}. Is nix installed?", e)),
     }
 }
 

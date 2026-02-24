@@ -3,17 +3,17 @@
 //! Provides `compile_haskell` (source to Core) and `compile_and_run` (source to
 //! evaluated result), with filesystem caching of compiled CBOR artifacts.
 
+use std::fmt;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use tempfile::TempDir;
 use tidepool_codegen::jit_machine::JitEffectMachine;
 pub use tidepool_codegen::jit_machine::JitError;
 pub use tidepool_effect::dispatch::DispatchEffect;
 pub use tidepool_eval::value::Value;
 use tidepool_repr::serial::{read_cbor, read_metadata, ReadError};
 use tidepool_repr::{CoreExpr, DataConTable};
-use std::fmt;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use tempfile::TempDir;
 
 mod cache;
 mod render;
@@ -111,7 +111,7 @@ impl From<JitError> for RuntimeError {
 /// Compiles Haskell source code to Tidepool Core at runtime.
 ///
 /// This function shells out to `tidepool-extract` (which must be available on the system `$PATH`)
-/// to perform GHC parsing, type-checking, and Core translation. It writes the source to a 
+/// to perform GHC parsing, type-checking, and Core translation. It writes the source to a
 /// temporary file, executes the extractor, and reads back the resulting CBOR and metadata.
 ///
 /// Compiled results are cached in the XDG cache directory (typically `~/.cache/tidepool`)
@@ -147,8 +147,8 @@ pub fn compile_haskell(
 
     // 2. Execute tidepool-extract
     // Arguments: <file.hs> --output-dir <dir> --target <name> [--include <dir> ...]
-    let extract_bin = std::env::var("TIDEPOOL_EXTRACT")
-        .unwrap_or_else(|_| "tidepool-extract".to_string());
+    let extract_bin =
+        std::env::var("TIDEPOOL_EXTRACT").unwrap_or_else(|_| "tidepool-extract".to_string());
     let mut cmd = Command::new(&extract_bin);
     cmd.arg(&input_path);
     cmd.arg("--output-dir").arg(temp_dir.path());
@@ -267,7 +267,14 @@ pub fn compile_and_run<U, H: DispatchEffect<U>>(
     handlers: &mut H,
     user: &U,
 ) -> Result<EvalResult, RuntimeError> {
-    compile_and_run_with_nursery_size(source, target, include, handlers, user, DEFAULT_NURSERY_SIZE)
+    compile_and_run_with_nursery_size(
+        source,
+        target,
+        include,
+        handlers,
+        user,
+        DEFAULT_NURSERY_SIZE,
+    )
 }
 
 #[cfg(test)]
@@ -278,8 +285,8 @@ mod tests {
     #[ignore] // Manual test: requires tidepool-extract on PATH
     fn test_compile_identity() {
         let source = "module Test where\nidentity x = x";
-        let (expr, _table) = compile_haskell(source, "identity", &[])
-            .expect("Failed to compile identity");
+        let (expr, _table) =
+            compile_haskell(source, "identity", &[]).expect("Failed to compile identity");
 
         // identity = \x -> x, should have 2 nodes: [Var(x), Lam(x, 0)]
         assert_eq!(expr.nodes.len(), 2);
@@ -292,7 +299,10 @@ mod tests {
         let res = compile_haskell(source, "foo", &[]);
         assert!(res.is_err());
         if let Err(CompileError::ExtractFailed(msg)) = res {
-            assert!(msg.contains("Variable not in scope: garbage") || msg.contains("not in scope: garbage"));
+            assert!(
+                msg.contains("Variable not in scope: garbage")
+                    || msg.contains("not in scope: garbage")
+            );
         } else {
             panic!("Expected ExtractFailed error, got {:?}", res);
         }

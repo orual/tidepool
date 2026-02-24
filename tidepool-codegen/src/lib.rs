@@ -4,9 +4,9 @@
 //! for yielding on algebraic effects and resuming with handler responses.
 
 pub mod alloc;
-pub mod debug;
 pub mod context;
 pub mod datacon_env;
+pub mod debug;
 pub mod effect_machine;
 pub mod emit;
 pub mod gc;

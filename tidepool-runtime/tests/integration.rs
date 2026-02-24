@@ -1,6 +1,6 @@
 use frunk::HNil;
-use tidepool_runtime::{compile_haskell, compile_and_run, Value};
 use tidepool_repr::Literal;
+use tidepool_runtime::{compile_and_run, compile_haskell, Value};
 
 #[test]
 #[ignore] // Manual test: requires tidepool-extract on PATH
@@ -15,7 +15,9 @@ fn test_compile_haskell_identity() {
 #[ignore] // Manual test: requires tidepool-extract on PATH
 fn test_compile_and_run_literal() {
     let src = "module Test where\nfortyTwo :: Int\nfortyTwo = 42";
-    let val = compile_and_run(src, "fortyTwo", &[], &mut HNil, &()).unwrap().into_value();
+    let val = compile_and_run(src, "fortyTwo", &[], &mut HNil, &())
+        .unwrap()
+        .into_value();
     match val {
         Value::Lit(Literal::LitInt(n)) => assert_eq!(n, 42),
         Value::Con(_, ref fields) => {
@@ -33,7 +35,9 @@ fn test_compile_and_run_literal() {
 #[ignore] // Manual test: requires tidepool-extract on PATH
 fn test_compile_and_run_arithmetic() {
     let src = "module Test where\nresult :: Int\nresult = 2 + 3";
-    let val = compile_and_run(src, "result", &[], &mut HNil, &()).unwrap().into_value();
+    let val = compile_and_run(src, "result", &[], &mut HNil, &())
+        .unwrap()
+        .into_value();
     // Result may be boxed I# 5 or literal 5
     match val {
         Value::Lit(Literal::LitInt(n)) => assert_eq!(n, 5),
@@ -122,33 +126,38 @@ deepList = [1..1000]
     assert_eq!(string_json, serde_json::json!("héllø 🌍"));
 
     // Lists: empty list and a small numeric list.
-    let empty_list_json =
-        compile_and_run(src, "emptyIntList", &[], &mut HNil, &()).unwrap().to_json();
+    let empty_list_json = compile_and_run(src, "emptyIntList", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
     assert_eq!(empty_list_json, serde_json::json!([]));
 
-    let int_list_json =
-        compile_and_run(src, "intList", &[], &mut HNil, &()).unwrap().to_json();
+    let int_list_json = compile_and_run(src, "intList", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
     assert_eq!(int_list_json, serde_json::json!([1, 2, 3]));
 
     // Character list: depending on implementation this might render as a string or an array.
-    let char_list_json =
-        compile_and_run(src, "charList", &[], &mut HNil, &()).unwrap().to_json();
+    let char_list_json = compile_and_run(src, "charList", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
     match char_list_json {
         serde_json::Value::String(_) | serde_json::Value::Array(_) => { /* acceptable */ }
         other => panic!("unexpected JSON for char list: {:?}", other),
     }
 
     // Tuples: commonly rendered as a JSON array of fixed length.
-    let tuple_json =
-        compile_and_run(src, "tupleVal", &[], &mut HNil, &()).unwrap().to_json();
+    let tuple_json = compile_and_run(src, "tupleVal", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
     match tuple_json {
         serde_json::Value::Array(ref arr) if arr.len() == 2 => { /* expected arity */ }
         other => panic!("unexpected JSON for tuple: {:?}", other),
     }
 
     // Booleans should render as JSON booleans.
-    let bool_json =
-        compile_and_run(src, "boolVal", &[], &mut HNil, &()).unwrap().to_json();
+    let bool_json = compile_and_run(src, "boolVal", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
     match bool_json {
         serde_json::Value::Bool(_) => { /* ok */ }
         other => panic!("unexpected JSON for Bool: {:?}", other),
@@ -157,18 +166,25 @@ deepList = [1..1000]
     // Unit, Maybe, custom data constructors, floats (NaN/Inf), and deep lists:
     // we don't assert a specific shape here, but we do ensure that JSON
     // rendering succeeds without panicking on these edge cases.
-    let _unit_json =
-        compile_and_run(src, "unitVal", &[], &mut HNil, &()).unwrap().to_json();
-    let _maybe_just_json =
-        compile_and_run(src, "maybeJust", &[], &mut HNil, &()).unwrap().to_json();
-    let _maybe_nothing_json =
-        compile_and_run(src, "maybeNothing", &[], &mut HNil, &()).unwrap().to_json();
-    let _nan_json =
-        compile_and_run(src, "nanVal", &[], &mut HNil, &()).unwrap().to_json();
-    let _inf_json =
-        compile_and_run(src, "infVal", &[], &mut HNil, &()).unwrap().to_json();
-    let _custom_json =
-        compile_and_run(src, "customData", &[], &mut HNil, &()).unwrap().to_json();
-    let _deep_json =
-        compile_and_run(src, "deepList", &[], &mut HNil, &()).unwrap().to_json();
+    let _unit_json = compile_and_run(src, "unitVal", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _maybe_just_json = compile_and_run(src, "maybeJust", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _maybe_nothing_json = compile_and_run(src, "maybeNothing", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _nan_json = compile_and_run(src, "nanVal", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _inf_json = compile_and_run(src, "infVal", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _custom_json = compile_and_run(src, "customData", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
+    let _deep_json = compile_and_run(src, "deepList", &[], &mut HNil, &())
+        .unwrap()
+        .to_json();
 }

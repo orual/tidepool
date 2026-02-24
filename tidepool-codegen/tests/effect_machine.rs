@@ -1,14 +1,14 @@
-use tidepool_codegen::context::VMContext;
-use tidepool_codegen::pipeline::CodegenPipeline;
-use tidepool_codegen::host_fns;
 use tidepool_codegen::alloc::emit_alloc_fast_path;
-use tidepool_codegen::yield_type::{Yield, YieldError};
+use tidepool_codegen::context::VMContext;
 use tidepool_codegen::effect_machine::{CompiledEffectMachine, ConTags};
 use tidepool_codegen::emit::expr::compile_expr;
-use tidepool_repr::{CoreExpr, CoreFrame, VarId, DataConId};
+use tidepool_codegen::host_fns;
+use tidepool_codegen::pipeline::CodegenPipeline;
+use tidepool_codegen::yield_type::{Yield, YieldError};
 use tidepool_heap::layout;
+use tidepool_repr::{CoreExpr, CoreFrame, DataConId, VarId};
 
-use cranelift_codegen::ir::{self, types, AbiParam, InstBuilder, UserFuncName, MemFlags};
+use cranelift_codegen::ir::{self, types, AbiParam, InstBuilder, MemFlags, UserFuncName};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 
@@ -22,7 +22,13 @@ const LEAF_CON_TAG: u64 = 4;
 const NODE_CON_TAG: u64 = 5;
 
 /// Helper to build a JIT function for testing.
-fn build_test_fn<F>(name: &str, build_body: F) -> (CodegenPipeline, unsafe extern "C" fn(*mut VMContext) -> *mut u8)
+fn build_test_fn<F>(
+    name: &str,
+    build_body: F,
+) -> (
+    CodegenPipeline,
+    unsafe extern "C" fn(*mut VMContext) -> *mut u8,
+)
 where
     F: FnOnce(&mut FunctionBuilder, ir::Value, ir::SigRef),
 {
@@ -30,7 +36,8 @@ where
     let func_id = pipeline.declare_function(name).expect("failed to declare");
 
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -51,11 +58,15 @@ where
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     let ptr = pipeline.get_function_ptr(func_id);
-    let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe { std::mem::transmute::<*const u8, unsafe extern "C" fn(*mut VMContext) -> *mut u8>(ptr) };
+    let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe {
+        std::mem::transmute::<*const u8, unsafe extern "C" fn(*mut VMContext) -> *mut u8>(ptr)
+    };
     (pipeline, func)
 }
 
@@ -225,11 +236,12 @@ fn test_yield_request_e() {
     let (_pipeline, func) = build_test_fn("test_e", |builder, vmctx, gc_sig| {
         let request_lit = emit_alloc_lit_int(builder, vmctx, gc_sig, 99);
         let tag_word = emit_alloc_lit_word(builder, vmctx, gc_sig, 7); // Tag value 7
-        let union_ptr = emit_alloc_con2(builder, vmctx, gc_sig, UNION_CON_TAG, tag_word, request_lit);
-        
+        let union_ptr =
+            emit_alloc_con2(builder, vmctx, gc_sig, UNION_CON_TAG, tag_word, request_lit);
+
         // Placeholder for continuation
         let cont_ptr = emit_alloc_lit_int(builder, vmctx, gc_sig, 0);
-        
+
         let e_ptr = emit_alloc_con2(builder, vmctx, gc_sig, E_CON_TAG, union_ptr, cont_ptr);
         builder.ins().return_(&[e_ptr]);
     });
@@ -253,15 +265,19 @@ fn test_yield_request_e() {
     let result = machine.step();
 
     match result {
-        Yield::Request { tag, request, continuation } => {
+        Yield::Request {
+            tag,
+            request,
+            continuation,
+        } => {
             assert_eq!(tag, 7);
-            
+
             // Verify request is Lit(99)
             let req_tag = unsafe { *request };
             assert_eq!(req_tag, TAG_LIT);
             let req_val = unsafe { *(request.add(16) as *const i64) };
             assert_eq!(req_val, 99);
-            
+
             // Verify continuation is there
             assert!(!continuation.is_null());
         }
@@ -315,7 +331,9 @@ fn test_runtime_error_div_zero() {
         err_sig.returns.push(AbiParam::new(types::I64));
         let err_sig_ref = builder.import_signature(err_sig);
 
-        let err_ptr = builder.ins().iconst(types::I64, host_fns::runtime_error as *const u8 as i64);
+        let err_ptr = builder
+            .ins()
+            .iconst(types::I64, host_fns::runtime_error as *const u8 as i64);
         let kind = builder.ins().iconst(types::I64, 0); // divZero
         let inst = builder.ins().call_indirect(err_sig_ref, err_ptr, &[kind]);
         let result = builder.inst_results(inst)[0];
@@ -352,7 +370,9 @@ fn test_runtime_error_overflow() {
         err_sig.returns.push(AbiParam::new(types::I64));
         let err_sig_ref = builder.import_signature(err_sig);
 
-        let err_ptr = builder.ins().iconst(types::I64, host_fns::runtime_error as *const u8 as i64);
+        let err_ptr = builder
+            .ins()
+            .iconst(types::I64, host_fns::runtime_error as *const u8 as i64);
         let kind = builder.ins().iconst(types::I64, 1); // overflow
         let inst = builder.ins().call_indirect(err_sig_ref, err_ptr, &[kind]);
         let result = builder.inst_results(inst)[0];
@@ -436,1058 +456,433 @@ fn test_unexpected_con_tag() {
     );
     let result = machine.step();
 
-            assert_eq!(result, Yield::Error(YieldError::UnexpectedConTag(999)));
+    assert_eq!(result, Yield::Error(YieldError::UnexpectedConTag(999)));
+}
 
-        }
+/// Dummy function for tests that only use machine.resume.
+unsafe extern "C" fn dummy_machine_func(_vmctx: *mut VMContext) -> *mut u8 {
+    std::ptr::null_mut()
+}
 
-        
+fn create_machine(vmctx: VMContext) -> CompiledEffectMachine {
+    CompiledEffectMachine::new(
+        dummy_machine_func,
+        vmctx,
+        ConTags {
+            val: VAL_CON_TAG,
 
-        /// Dummy function for tests that only use machine.resume.
-        unsafe extern "C" fn dummy_machine_func(_vmctx: *mut VMContext) -> *mut u8 {
-                    std::ptr::null_mut()
+            e: E_CON_TAG,
 
-        }
+            union: UNION_CON_TAG,
 
-        
+            leaf: LEAF_CON_TAG,
 
-        fn create_machine(vmctx: VMContext) -> CompiledEffectMachine {
+            node: NODE_CON_TAG,
+        },
+    )
+}
 
-            CompiledEffectMachine::new(
+/// Helper to allocate Con objects in tests since machine.alloc_con is private.
+unsafe fn alloc_con_heap(
+    machine: &mut CompiledEffectMachine,
+    con_tag: u64,
+    fields: &[*mut u8],
+) -> *mut u8 {
+    let size = 24 + 8 * fields.len();
 
-                dummy_machine_func,
+    let ptr = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
 
-                vmctx,
-
-                ConTags {
-
-                    val: VAL_CON_TAG,
-
-                    e: E_CON_TAG,
-
-                    union: UNION_CON_TAG,
-
-                    leaf: LEAF_CON_TAG,
-
-                    node: NODE_CON_TAG,
-
-                },
-
-            )
-
-        }
-
-        
-
-        /// Helper to allocate Con objects in tests since machine.alloc_con is private.
-        unsafe fn alloc_con_heap(machine: &mut CompiledEffectMachine, con_tag: u64, fields: &[*mut u8]) -> *mut u8 {
-                
-
-    
-
-        let size = 24 + 8 * fields.len();
-
-    
-
-        let ptr = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
-
-    
-
-        if ptr.is_null() {
-
-    
-
-            return std::ptr::null_mut();
-
-    
-
-        }
-
-    
-
-        layout::write_header(ptr, layout::TAG_CON, size as u16);
-
-    
-
-        *(ptr.add(layout::CON_TAG_OFFSET) as *mut u64) = con_tag;
-
-    
-
-        *(ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *mut u16) = fields.len() as u16;
-
-    
-
-        for (i, &fp) in fields.iter().enumerate() {
-
-    
-
-            *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *mut *mut u8) = fp;
-
-    
-
-        }
-
-    
-
-        ptr
-
-    
-
+    if ptr.is_null() {
+        return std::ptr::null_mut();
     }
 
-    
+    layout::write_header(ptr, layout::TAG_CON, size as u16);
 
-    
+    *(ptr.add(layout::CON_TAG_OFFSET) as *mut u64) = con_tag;
 
-    
+    *(ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *mut u16) = fields.len() as u16;
 
-    /// Test 9: resume(Leaf(f), x) -> f(x)
+    for (i, &fp) in fields.iter().enumerate() {
+        *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *mut *mut u8) = fp;
+    }
 
-    
+    ptr
+}
 
-    #[test]
+/// Test 9: resume(Leaf(f), x) -> f(x)
 
-    
+#[test]
 
-    fn test_resume_leaf_identity() {
+fn test_resume_leaf_identity() {
+    let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
 
-    
+    // Identity closure: \x -> Val(x)
 
-        let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
+    let x = VarId(1);
 
-    
+    let val_con_id = DataConId(VAL_CON_TAG);
 
-        
-
-    
-
-        // Identity closure: \x -> Val(x)
-
-    
-
-        let x = VarId(1);
-
-    
-
-        let val_con_id = DataConId(VAL_CON_TAG);
-
-    
-
-        let tree = CoreExpr { nodes: vec![
-
-    
-
+    let tree = CoreExpr {
+        nodes: vec![
             CoreFrame::Var(x), // 0
-
-    
-
-            CoreFrame::Con { tag: val_con_id, fields: vec![0] }, // 1: Val(x)
-
-    
-
+            CoreFrame::Con {
+                tag: val_con_id,
+                fields: vec![0],
+            }, // 1: Val(x)
             CoreFrame::Lam { binder: x, body: 1 }, // 2: \x -> Val(x)
+        ],
+    };
 
-    
+    let func_id = compile_expr(&mut pipeline, &tree, "identity").unwrap();
 
-        ]};
+    pipeline.finalize().unwrap();
 
-    
+    let func_ptr = pipeline.get_function_ptr(func_id);
 
-        let func_id = compile_expr(&mut pipeline, &tree, "identity").unwrap();
+    let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 =
+        unsafe { std::mem::transmute(func_ptr) };
 
-    
+    let mut nursery = vec![0u8; 4096];
 
-        pipeline.finalize().unwrap();
+    let start = nursery.as_mut_ptr();
 
-    
+    let end = unsafe { start.add(4096) };
 
-        let func_ptr = pipeline.get_function_ptr(func_id);
+    let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-    
+    let mut machine = create_machine(vmctx);
 
-        let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe { std::mem::transmute(func_ptr) };
+    // Get closure ptr by running identity func
 
-    
+    let closure_ptr = unsafe { func(machine.vmctx_mut()) };
 
-    
+    assert!(!closure_ptr.is_null());
 
-    
+    // Build Leaf(closure)
 
-        let mut nursery = vec![0u8; 4096];
+    let leaf_ptr = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
 
-    
+    // Build Lit(42) as argument
 
-        let start = nursery.as_mut_ptr();
+    // Actually let's use a real Lit if we can, but a Val(null) is fine for identity.
 
-    
+    // Wait, let's use a Lit to be sure.
 
-        let end = unsafe { start.add(4096) };
+    let lit_ptr = unsafe {
+        let size = 24;
 
-    
+        let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
 
-        let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
+        layout::write_header(p, layout::TAG_LIT, size as u16);
 
-    
+        *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
 
-        
+        *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 42;
 
-    
+        p
+    };
 
-        let mut machine = create_machine(vmctx);
+    let result = unsafe { machine.resume(leaf_ptr, lit_ptr) };
 
-    
+    match result {
+        Yield::Done(res_ptr) => {
+            assert_eq!(res_ptr, lit_ptr);
 
-        
+            let val = unsafe { *(res_ptr.add(16) as *const i64) };
 
-    
-
-        // Get closure ptr by running identity func
-
-    
-
-        let closure_ptr = unsafe { func(machine.vmctx_mut()) };
-
-    
-
-        assert!(!closure_ptr.is_null());
-
-    
-
-    
-
-    
-
-        // Build Leaf(closure)
-
-    
-
-        let leaf_ptr = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
-
-    
-
-        
-
-    
-
-        // Build Lit(42) as argument
-
-    
-
-        // Actually let's use a real Lit if we can, but a Val(null) is fine for identity.
-
-    
-
-        // Wait, let's use a Lit to be sure.
-
-    
-
-        let lit_ptr = unsafe {
-
-    
-
-            let size = 24;
-
-    
-
-            let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
-
-    
-
-            layout::write_header(p, layout::TAG_LIT, size as u16);
-
-    
-
-            *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
-
-    
-
-            *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 42;
-
-    
-
-            p
-
-    
-
-        };
-
-    
-
-    
-
-    
-
-        let result = unsafe { machine.resume(leaf_ptr, lit_ptr) };
-
-    
-
-        
-
-    
-
-        match result {
-
-    
-
-            Yield::Done(res_ptr) => {
-
-    
-
-                assert_eq!(res_ptr, lit_ptr);
-
-    
-
-                let val = unsafe { *(res_ptr.add(16) as *const i64) };
-
-    
-
-                assert_eq!(val, 42);
-
-    
-
-            }
-
-    
-
-            _ => panic!("Expected Yield::Done, got {:?}", result),
-
-    
-
+            assert_eq!(val, 42);
         }
 
-    
-
+        _ => panic!("Expected Yield::Done, got {:?}", result),
     }
+}
 
-    
+/// Test 10: resume(Node(Leaf(f), Leaf(g)), x) -> g(f(x))
 
-    
+#[test]
 
-    
+fn test_resume_node_identity() {
+    let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
 
-    /// Test 10: resume(Node(Leaf(f), Leaf(g)), x) -> g(f(x))
+    // Identity closure: \x -> Val(x)
 
-    
+    let x = VarId(1);
 
-    #[test]
+    let val_con_id = DataConId(VAL_CON_TAG);
 
-    
-
-    fn test_resume_node_identity() {
-
-    
-
-        let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
-
-    
-
-        
-
-    
-
-        // Identity closure: \x -> Val(x)
-
-    
-
-        let x = VarId(1);
-
-    
-
-        let val_con_id = DataConId(VAL_CON_TAG);
-
-    
-
-        let tree = CoreExpr { nodes: vec![
-
-    
-
+    let tree = CoreExpr {
+        nodes: vec![
             CoreFrame::Var(x), // 0
-
-    
-
-            CoreFrame::Con { tag: val_con_id, fields: vec![0] }, // 1: Val(x)
-
-    
-
+            CoreFrame::Con {
+                tag: val_con_id,
+                fields: vec![0],
+            }, // 1: Val(x)
             CoreFrame::Lam { binder: x, body: 1 }, // 2: \x -> Val(x)
+        ],
+    };
 
-    
+    let func_id = compile_expr(&mut pipeline, &tree, "identity").unwrap();
 
-        ]};
+    pipeline.finalize().unwrap();
 
-    
+    let func_ptr = pipeline.get_function_ptr(func_id);
 
-        let func_id = compile_expr(&mut pipeline, &tree, "identity").unwrap();
+    let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 =
+        unsafe { std::mem::transmute(func_ptr) };
 
-    
+    let mut nursery = vec![0u8; 8192]; // Bigger nursery for more allocs
 
-        pipeline.finalize().unwrap();
+    let start = nursery.as_mut_ptr();
 
-    
+    let end = unsafe { start.add(8192) };
 
-        let func_ptr = pipeline.get_function_ptr(func_id);
+    let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-    
+    let mut machine = create_machine(vmctx);
 
-        let func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe { std::mem::transmute(func_ptr) };
+    let closure_ptr = unsafe { func(machine.vmctx_mut()) };
 
-    
+    // Leaf(f) and Leaf(g)
 
-    
+    let leaf_f = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
 
-    
+    let leaf_g = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
 
-        let mut nursery = vec![0u8; 8192]; // Bigger nursery for more allocs
+    // Node(Leaf(f), Leaf(g))
 
-    
+    let node_ptr = unsafe { alloc_con_heap(&mut machine, NODE_CON_TAG, &[leaf_f, leaf_g]) };
 
-        let start = nursery.as_mut_ptr();
+    let lit_ptr = unsafe {
+        let size = 24;
 
-    
+        let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
 
-        let end = unsafe { start.add(8192) };
+        layout::write_header(p, layout::TAG_LIT, size as u16);
 
-    
+        *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
 
-        let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
+        *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 100;
 
-    
+        p
+    };
 
-        
+    let result = unsafe { machine.resume(node_ptr, lit_ptr) };
 
-    
+    match result {
+        Yield::Done(res_ptr) => {
+            assert_eq!(res_ptr, lit_ptr);
 
-        let mut machine = create_machine(vmctx);
+            let val = unsafe { *(res_ptr.add(16) as *const i64) };
 
-    
-
-        
-
-    
-
-        let closure_ptr = unsafe { func(machine.vmctx_mut()) };
-
-    
-
-        
-
-    
-
-        // Leaf(f) and Leaf(g)
-
-    
-
-        let leaf_f = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
-
-    
-
-        let leaf_g = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[closure_ptr]) };
-
-    
-
-        
-
-    
-
-        // Node(Leaf(f), Leaf(g))
-
-    
-
-        let node_ptr = unsafe { alloc_con_heap(&mut machine, NODE_CON_TAG, &[leaf_f, leaf_g]) };
-
-    
-
-        
-
-    
-
-        let lit_ptr = unsafe {
-
-    
-
-            let size = 24;
-
-    
-
-            let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
-
-    
-
-            layout::write_header(p, layout::TAG_LIT, size as u16);
-
-    
-
-            *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
-
-    
-
-            *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 100;
-
-    
-
-            p
-
-    
-
-        };
-
-    
-
-    
-
-    
-
-        let result = unsafe { machine.resume(node_ptr, lit_ptr) };
-
-    
-
-        
-
-    
-
-        match result {
-
-    
-
-            Yield::Done(res_ptr) => {
-
-    
-
-                assert_eq!(res_ptr, lit_ptr);
-
-    
-
-                let val = unsafe { *(res_ptr.add(16) as *const i64) };
-
-    
-
-                assert_eq!(val, 100);
-
-    
-
-            }
-
-    
-
-            _ => panic!("Expected Yield::Done, got {:?}", result),
-
-    
-
+            assert_eq!(val, 100);
         }
 
-    
-
+        _ => panic!("Expected Yield::Done, got {:?}", result),
     }
+}
 
-    
+/// Test 11: resume(null, x) -> Error(NullPointer)
 
-    
+#[test]
 
-    
+fn test_resume_null_continuation() {
+    let mut nursery = vec![0u8; 1024];
 
-    /// Test 11: resume(null, x) -> Error(NullPointer)
+    let vmctx = VMContext::new(
+        nursery.as_mut_ptr(),
+        unsafe { nursery.as_mut_ptr().add(1024) },
+        host_fns::gc_trigger,
+    );
 
-    
+    let mut machine = create_machine(vmctx);
 
-    #[test]
+    let result = unsafe { machine.resume(std::ptr::null_mut(), std::ptr::null_mut()) };
 
-    
+    assert_eq!(result, Yield::Error(YieldError::NullPointer));
+}
 
-    fn test_resume_null_continuation() {
+/// Test 12: resume(Lit(0), x) -> Error(NullPointer) (because apply_cont returns null on unknown tag)
 
-    
+#[test]
 
-        let mut nursery = vec![0u8; 1024];
+fn test_resume_unknown_tag() {
+    let mut nursery = vec![0u8; 1024];
 
-    
+    let vmctx = VMContext::new(
+        nursery.as_mut_ptr(),
+        unsafe { nursery.as_mut_ptr().add(1024) },
+        host_fns::gc_trigger,
+    );
 
-        let vmctx = VMContext::new(nursery.as_mut_ptr(), unsafe { nursery.as_mut_ptr().add(1024) }, host_fns::gc_trigger);
+    let mut machine = create_machine(vmctx);
 
-    
+    let lit_ptr = unsafe {
+        let size = 24;
 
-        let mut machine = create_machine(vmctx);
+        let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
 
-    
+        layout::write_header(p, layout::TAG_LIT, size as u16);
 
-        
+        p
+    };
 
-    
+    let result = unsafe { machine.resume(lit_ptr, std::ptr::null_mut()) };
 
-        let result = unsafe { machine.resume(std::ptr::null_mut(), std::ptr::null_mut()) };
+    assert_eq!(result, Yield::Error(YieldError::NullPointer));
+}
 
-    
+/// Test 13: Node(Leaf(f), Leaf(g)) where f(x) returns Request E
 
-        assert_eq!(result, Yield::Error(YieldError::NullPointer));
+#[test]
 
-    
+fn test_resume_node_with_effect_result() {
+    let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
 
-    }
+    // f = \x -> E(Union(7, x), Leaf(identity))
 
-    
+    let x = VarId(1);
 
-    
+    let val_con_id = DataConId(VAL_CON_TAG);
 
-    
+    let e_con_id = DataConId(E_CON_TAG);
 
-    /// Test 12: resume(Lit(0), x) -> Error(NullPointer) (because apply_cont returns null on unknown tag)
+    let union_con_id = DataConId(UNION_CON_TAG);
 
-    
+    let leaf_con_id = DataConId(LEAF_CON_TAG);
 
-    #[test]
-
-    
-
-    fn test_resume_unknown_tag() {
-
-    
-
-        let mut nursery = vec![0u8; 1024];
-
-    
-
-        let vmctx = VMContext::new(nursery.as_mut_ptr(), unsafe { nursery.as_mut_ptr().add(1024) }, host_fns::gc_trigger);
-
-    
-
-        let mut machine = create_machine(vmctx);
-
-    
-
-        
-
-    
-
-        let lit_ptr = unsafe {
-
-    
-
-            let size = 24;
-
-    
-
-            let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
-
-    
-
-            layout::write_header(p, layout::TAG_LIT, size as u16);
-
-    
-
-            p
-
-    
-
-        };
-
-    
-
-        
-
-    
-
-        let result = unsafe { machine.resume(lit_ptr, std::ptr::null_mut()) };
-
-    
-
-        assert_eq!(result, Yield::Error(YieldError::NullPointer));
-
-    
-
-    }
-
-    
-
-    
-
-    
-
-    /// Test 13: Node(Leaf(f), Leaf(g)) where f(x) returns Request E
-
-    
-
-    #[test]
-
-    
-
-    fn test_resume_node_with_effect_result() {
-
-    
-
-        let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
-
-    
-
-        
-
-    
-
-        // f = \x -> E(Union(7, x), Leaf(identity))
-
-    
-
-        let x = VarId(1);
-
-    
-
-        let val_con_id = DataConId(VAL_CON_TAG);
-
-    
-
-        let e_con_id = DataConId(E_CON_TAG);
-
-    
-
-        let union_con_id = DataConId(UNION_CON_TAG);
-
-    
-
-        let leaf_con_id = DataConId(LEAF_CON_TAG);
-
-    
-
-        
-
-    
-
-        let tree_identity = CoreExpr { nodes: vec![
-
-    
-
+    let tree_identity = CoreExpr {
+        nodes: vec![
             CoreFrame::Var(x), // 0
-
-    
-
-            CoreFrame::Con { tag: val_con_id, fields: vec![0] }, // 1: Val(x)
-
-    
-
+            CoreFrame::Con {
+                tag: val_con_id,
+                fields: vec![0],
+            }, // 1: Val(x)
             CoreFrame::Lam { binder: x, body: 1 }, // 2: \x -> Val(x)
+        ],
+    };
 
-    
+    // Identity to use as g
 
-        ]};
+    let func_id_identity = compile_expr(&mut pipeline, &tree_identity, "identity").unwrap();
 
-    
+    pipeline.finalize().unwrap();
 
-        
+    let id_func_ptr = pipeline.get_function_ptr(func_id_identity);
 
-    
+    let id_func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 =
+        unsafe { std::mem::transmute(id_func_ptr) };
 
-        // Identity to use as g
+    let mut nursery = vec![0u8; 8192];
 
-    
+    let start = nursery.as_mut_ptr();
 
-        let func_id_identity = compile_expr(&mut pipeline, &tree_identity, "identity").unwrap();
+    let end = unsafe { start.add(8192) };
 
-    
+    let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-        
+    let mut machine = create_machine(vmctx);
 
-    
+    let id_closure_ptr = unsafe { id_func(machine.vmctx_mut()) };
 
-        pipeline.finalize().unwrap();
+    let leaf_id = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[id_closure_ptr]) };
 
-    
+    // Closure g: identity
 
-        let id_func_ptr = pipeline.get_function_ptr(func_id_identity);
+    let leaf_g = leaf_id;
 
-    
+    // k1 = identity, but we'll cheat and make resume call it.
 
-        let id_func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe { std::mem::transmute(id_func_ptr) };
+    // If k1(x) returns E(union, k_prime), then Node(k1, k2) returns E(union, Node(k_prime, k2))
 
-    
+    // To test this, we need k1 to return E.
 
-    
+    // We can compile a function that returns E.
 
-    
-
-        let mut nursery = vec![0u8; 8192];
-
-    
-
-        let start = nursery.as_mut_ptr();
-
-    
-
-        let end = unsafe { start.add(8192) };
-
-    
-
-        let vmctx = VMContext::new(start, end, host_fns::gc_trigger);
-
-    
-
-        
-
-    
-
-        let mut machine = create_machine(vmctx);
-
-    
-
-        
-
-    
-
-        let id_closure_ptr = unsafe { id_func(machine.vmctx_mut()) };
-
-    
-
-        let leaf_id = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[id_closure_ptr]) };
-
-    
-
-        
-
-    
-
-        // Closure g: identity
-
-    
-
-        let leaf_g = leaf_id;
-
-    
-
-        
-
-    
-
-        // k1 = identity, but we'll cheat and make resume call it.
-
-    
-
-        // If k1(x) returns E(union, k_prime), then Node(k1, k2) returns E(union, Node(k_prime, k2))
-
-    
-
-        
-
-    
-
-        // To test this, we need k1 to return E.
-
-    
-
-        // We can compile a function that returns E.
-
-    
-
-        
-
-    
-
-        let tree_returns_e = CoreExpr { nodes: vec![
-
-    
-
+    let tree_returns_e = CoreExpr {
+        nodes: vec![
             CoreFrame::Var(x), // 0
-
-    
-
             CoreFrame::Lit(tidepool_repr::Literal::LitInt(0)), // 1
-
-    
-
-            CoreFrame::Con { tag: leaf_con_id, fields: vec![1] }, // 2: Leaf(0)
-
-    
-
+            CoreFrame::Con {
+                tag: leaf_con_id,
+                fields: vec![1],
+            }, // 2: Leaf(0)
             CoreFrame::Lit(tidepool_repr::Literal::LitWord(7)), // 3
-
-    
-
-            CoreFrame::Con { tag: union_con_id, fields: vec![3, 0] }, // 4: Union(7, x)
-
-    
-
-            CoreFrame::Con { tag: e_con_id, fields: vec![4, 2] }, // 5: E(...)
-
-    
-
+            CoreFrame::Con {
+                tag: union_con_id,
+                fields: vec![3, 0],
+            }, // 4: Union(7, x)
+            CoreFrame::Con {
+                tag: e_con_id,
+                fields: vec![4, 2],
+            }, // 5: E(...)
             CoreFrame::Lam { binder: x, body: 5 }, // 6
+        ],
+    };
 
-    
+    let mut pipeline2 = CodegenPipeline::new(&host_fns::host_fn_symbols());
 
-        ]};
+    let f_id = compile_expr(&mut pipeline2, &tree_returns_e, "returns_e").unwrap();
 
-    
+    pipeline2.finalize().unwrap();
 
-        
+    let f_func_ptr = pipeline2.get_function_ptr(f_id);
 
-    
+    let f_func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 =
+        unsafe { std::mem::transmute(f_func_ptr) };
 
-        let mut pipeline2 = CodegenPipeline::new(&host_fns::host_fn_symbols());
+    let f_closure = unsafe { f_func(machine.vmctx_mut()) };
 
-    
+    let leaf_f = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[f_closure]) };
 
-        let f_id = compile_expr(&mut pipeline2, &tree_returns_e, "returns_e").unwrap();
+    let node_ptr = unsafe { alloc_con_heap(&mut machine, NODE_CON_TAG, &[leaf_f, leaf_g]) };
 
-    
+    let lit_ptr = unsafe {
+        let size = 24;
 
-        pipeline2.finalize().unwrap();
+        let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
 
-    
+        layout::write_header(p, layout::TAG_LIT, size as u16);
 
-        let f_func_ptr = pipeline2.get_function_ptr(f_id);
+        *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
 
-    
+        *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 123;
 
-        let f_func: unsafe extern "C" fn(*mut VMContext) -> *mut u8 = unsafe { std::mem::transmute(f_func_ptr) };
+        p
+    };
 
-    
+    let result = unsafe { machine.resume(node_ptr, lit_ptr) };
 
-        
+    match result {
+        Yield::Request {
+            tag,
+            request,
+            continuation,
+        } => {
+            assert_eq!(tag, 7);
 
-    
+            assert_eq!(request, lit_ptr);
 
-        let f_closure = unsafe { f_func(machine.vmctx_mut()) };
+            // continuation should be Node(k_prime, leaf_g)
 
-    
+            let tag = unsafe { *continuation };
 
-        let leaf_f = unsafe { alloc_con_heap(&mut machine, LEAF_CON_TAG, &[f_closure]) };
+            assert_eq!(tag, layout::TAG_CON);
 
-    
+            let con_tag = unsafe { *(continuation.add(layout::CON_TAG_OFFSET) as *const u64) };
 
-        
+            assert_eq!(con_tag, NODE_CON_TAG);
 
-    
+            let k_prime =
+                unsafe { *(continuation.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
 
-        let node_ptr = unsafe { alloc_con_heap(&mut machine, NODE_CON_TAG, &[leaf_f, leaf_g]) };
+            let k2 =
+                unsafe { *(continuation.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8) };
 
-    
+            assert_eq!(k2, leaf_g);
 
-        
-
-    
-
-        let lit_ptr = unsafe {
-
-    
-
-            let size = 24;
-
-    
-
-            let p = tidepool_codegen::heap_bridge::bump_alloc_from_vmctx(machine.vmctx_mut(), size);
-
-    
-
-            layout::write_header(p, layout::TAG_LIT, size as u16);
-
-    
-
-            *p.add(layout::LIT_TAG_OFFSET) = 0; // Int
-
-    
-
-            *(p.add(layout::LIT_VALUE_OFFSET) as *mut i64) = 123;
-
-    
-
-            p
-
-    
-
-        };
-
-    
-
-    
-
-    
-
-        let result = unsafe { machine.resume(node_ptr, lit_ptr) };
-
-    
-
-        
-
-    
-
-        match result {
-
-    
-
-            Yield::Request { tag, request, continuation } => {
-
-    
-
-                assert_eq!(tag, 7);
-
-    
-
-                assert_eq!(request, lit_ptr);
-
-    
-
-                
-
-    
-
-                // continuation should be Node(k_prime, leaf_g)
-
-    
-
-                let tag = unsafe { *continuation };
-
-    
-
-                assert_eq!(tag, layout::TAG_CON);
-
-    
-
-                let con_tag = unsafe { *(continuation.add(layout::CON_TAG_OFFSET) as *const u64) };
-
-    
-
-                assert_eq!(con_tag, NODE_CON_TAG);
-
-    
-
-                
-
-    
-
-                let k_prime = unsafe { *(continuation.add(layout::CON_FIELDS_OFFSET) as *const *mut u8) };
-
-    
-
-                let k2 = unsafe { *(continuation.add(layout::CON_FIELDS_OFFSET + 8) as *const *mut u8) };
-
-    
-
-                
-
-    
-
-                assert_eq!(k2, leaf_g);
-
-    
-
-                assert!(!k_prime.is_null());
-
-    
-
-            }
-
-    
-
-            _ => panic!("Expected Yield::Request, got {:?}", result),
-
-    
-
+            assert!(!k_prime.is_null());
         }
 
-    
-
+        _ => panic!("Expected Yield::Request, got {:?}", result),
     }
-
-    
-
-    
-
-    
-
-    
-
-    
+}

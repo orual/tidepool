@@ -16,9 +16,9 @@ tidepool-eval = { path = "../../tidepool-eval" }
 tidepool-bridge = { path = "../../tidepool-bridge" }
 tidepool-bridge-derive = { path = "../../tidepool-bridge-derive" }
 tidepool-repr = { path = "../../tidepool-repr" }
+ast-grep-core = "0.41"
+ast-grep-language = "0.41"
 frunk = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

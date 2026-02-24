@@ -2,7 +2,9 @@ use crate::env::Env;
 use crate::error::EvalError;
 use crate::heap::{Heap, ThunkState};
 use crate::value::Value;
-use tidepool_repr::{AltCon, CoreExpr, CoreFrame, DataConId, DataConTable, Literal, PrimOpKind, VarId};
+use tidepool_repr::{
+    AltCon, CoreExpr, CoreFrame, DataConId, DataConTable, Literal, PrimOpKind, VarId,
+};
 
 /// Create an environment pre-populated with data constructor functions.
 /// Each constructor with arity N becomes a `ConFun(tag, N, [])` value
@@ -102,8 +104,14 @@ fn eval_at(
                 // 'E' = error tag: synthetic error VarIds from Translate.hs
                 let kind = v.0 & 0xFF;
                 return Err(match kind {
-                    0 => EvalError::TypeMismatch { expected: "non-zero divisor", got: crate::error::ValueKind::Other("division by zero".into()) },
-                    1 => EvalError::TypeMismatch { expected: "no overflow", got: crate::error::ValueKind::Other("arithmetic overflow".into()) },
+                    0 => EvalError::TypeMismatch {
+                        expected: "non-zero divisor",
+                        got: crate::error::ValueKind::Other("division by zero".into()),
+                    },
+                    1 => EvalError::TypeMismatch {
+                        expected: "no overflow",
+                        got: crate::error::ValueKind::Other("arithmetic overflow".into()),
+                    },
                     2 => EvalError::UserError,
                     3 => EvalError::Undefined,
                     _ => EvalError::UserError,
@@ -757,7 +765,9 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
         // --- ByteArray# / MutableByteArray# ---
         PrimOpKind::NewByteArray => {
             let size = expect_int(&args[0])? as usize;
-            Ok(Value::ByteArray(std::sync::Arc::new(std::sync::Mutex::new(vec![0u8; size]))))
+            Ok(Value::ByteArray(std::sync::Arc::new(
+                std::sync::Mutex::new(vec![0u8; size]),
+            )))
         }
         PrimOpKind::ReadWord8Array => {
             let ba = expect_byte_array(&args[0])?;
@@ -839,7 +849,9 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
         }
         PrimOpKind::Clz8 => {
             let w = expect_word(&args[0])?;
-            Ok(Value::Lit(Literal::LitWord((w as u8).leading_zeros() as u64)))
+            Ok(Value::Lit(Literal::LitWord(
+                (w as u8).leading_zeros() as u64
+            )))
         }
         PrimOpKind::IntToInt64 => {
             // Identity on 64-bit: Int# == Int64#
@@ -858,12 +870,8 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
                     let overflowed = result > i64::MAX as i128 || result < i64::MIN as i128;
                     Ok(Value::Lit(Literal::LitInt(if overflowed { 1 } else { 0 })))
                 }
-                PrimOpKind::TimesInt2Hi => {
-                    Ok(Value::Lit(Literal::LitInt((result >> 64) as i64)))
-                }
-                PrimOpKind::TimesInt2Lo => {
-                    Ok(Value::Lit(Literal::LitInt(result as i64)))
-                }
+                PrimOpKind::TimesInt2Hi => Ok(Value::Lit(Literal::LitInt((result >> 64) as i64))),
+                PrimOpKind::TimesInt2Lo => Ok(Value::Lit(Literal::LitInt(result as i64))),
                 _ => unreachable!(),
             }
         }
@@ -931,10 +939,12 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let w = match &args[0] {
                 Value::Lit(Literal::LitWord(w)) => *w,
                 Value::Lit(Literal::LitInt(i)) => *i as u64,
-                other => return Err(EvalError::TypeMismatch {
-                    expected: "Word64#",
-                    got: crate::error::ValueKind::Other(format!("{:?}", other)),
-                }),
+                other => {
+                    return Err(EvalError::TypeMismatch {
+                        expected: "Word64#",
+                        got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                    })
+                }
             };
             Ok(Value::Lit(Literal::LitInt(w as i64)))
         }
@@ -985,10 +995,14 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             if offset + 8 > bytes.len() {
                 return Err(EvalError::TypeMismatch {
                     expected: "valid IndexWordArray index",
-                    got: crate::error::ValueKind::Other(format!("index {} out of bounds (len={})", idx, bytes.len())),
+                    got: crate::error::ValueKind::Other(format!(
+                        "index {} out of bounds (len={})",
+                        idx,
+                        bytes.len()
+                    )),
                 });
             }
-            let word = u64::from_ne_bytes(bytes[offset..offset+8].try_into().unwrap());
+            let word = u64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
             Ok(Value::Lit(Literal::LitWord(word)))
         }
         PrimOpKind::Int64Mul => {
@@ -1039,7 +1053,7 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let offset = idx * 8;
             let mut bytes = ba.lock().unwrap();
             if offset + 8 <= bytes.len() {
-                bytes[offset..offset+8].copy_from_slice(&val.to_ne_bytes());
+                bytes[offset..offset + 8].copy_from_slice(&val.to_ne_bytes());
             }
             Ok(Value::ByteArray(ba.clone()))
         }
@@ -1052,10 +1066,14 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             if offset + 8 > bytes.len() {
                 return Err(EvalError::TypeMismatch {
                     expected: "valid ReadWordArray index",
-                    got: crate::error::ValueKind::Other(format!("index {} out of bounds (len={})", idx, bytes.len())),
+                    got: crate::error::ValueKind::Other(format!(
+                        "index {} out of bounds (len={})",
+                        idx,
+                        bytes.len()
+                    )),
                 });
             }
-            let word = u64::from_ne_bytes(bytes[offset..offset+8].try_into().unwrap());
+            let word = u64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
             Ok(Value::Lit(Literal::LitWord(word)))
         }
         PrimOpKind::SetByteArray => {
@@ -1151,10 +1169,15 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let mut chars_counted = 0usize;
             while chars_counted < n_chars && byte_count < slice.len() {
                 let b = slice[byte_count];
-                let char_len = if b < 0x80 { 1 }
-                    else if b < 0xE0 { 2 }
-                    else if b < 0xF0 { 3 }
-                    else { 4 };
+                let char_len = if b < 0x80 {
+                    1
+                } else if b < 0xE0 {
+                    2
+                } else if b < 0xF0 {
+                    3
+                } else {
+                    4
+                };
                 byte_count += char_len;
                 chars_counted += 1;
             }
@@ -1192,10 +1215,15 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let mut i = 0;
             while i < src_slice.len() {
                 let b = src_slice[i];
-                let char_len = if b < 0x80 { 1 }
-                    else if b < 0xE0 { 2 }
-                    else if b < 0xF0 { 3 }
-                    else { 4 };
+                let char_len = if b < 0x80 {
+                    1
+                } else if b < 0xE0 {
+                    2
+                } else if b < 0xF0 {
+                    3
+                } else {
+                    4
+                };
                 let end = std::cmp::min(i + char_len, src_slice.len());
                 chars.push(&src_slice[i..end]);
                 i = end;
@@ -2041,12 +2069,10 @@ mod tests {
 
     #[test]
     fn test_eval_empty_con() {
-        let nodes = vec![
-            CoreFrame::Con {
-                tag: DataConId(1),
-                fields: vec![],
-            },
-        ];
+        let nodes = vec![CoreFrame::Con {
+            tag: DataConId(1),
+            fields: vec![],
+        }];
         let expr = CoreExpr { nodes };
         let mut heap = crate::heap::VecHeap::new();
         let res = eval(&expr, &Env::new(), &mut heap).unwrap();
@@ -2063,8 +2089,8 @@ mod tests {
         // let x = 1 in let y = unbound in x
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
-            CoreFrame::Var(VarId(999)),          // 1: unbound
-            CoreFrame::Var(VarId(1)),            // 2: x
+            CoreFrame::Var(VarId(999)),         // 1: unbound
+            CoreFrame::Var(VarId(1)),           // 2: x
             CoreFrame::LetNonRec {
                 binder: VarId(2),
                 rhs: 1,
@@ -2092,8 +2118,8 @@ mod tests {
         // let x = 1 in let y = unbound in y
         let nodes = vec![
             CoreFrame::Lit(Literal::LitInt(1)), // 0
-            CoreFrame::Var(VarId(999)),          // 1: unbound
-            CoreFrame::Var(VarId(2)),            // 2: y
+            CoreFrame::Var(VarId(999)),         // 1: unbound
+            CoreFrame::Var(VarId(2)),           // 2: y
             CoreFrame::LetNonRec {
                 binder: VarId(2),
                 rhs: 1,

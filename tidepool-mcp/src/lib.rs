@@ -6,9 +6,7 @@
 
 use dyn_clone::{clone_trait_object, DynClone};
 use rmcp::{
-    model::*,
-    service::RequestContext,
-    ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
+    model::*, service::RequestContext, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -85,7 +83,8 @@ pub fn console_decl() -> EffectDecl {
 pub fn kv_decl() -> EffectDecl {
     EffectDecl {
         type_name: "KV",
-        description: "Persistent key-value store. State survives across calls within one server session.",
+        description:
+            "Persistent key-value store. State survives across calls within one server session.",
         constructors: &[
             "KvGet :: Text -> KV (Maybe Text)",
             "KvSet :: Text -> Text -> KV ()",
@@ -325,10 +324,16 @@ impl CapturedOutput {
 // ---------------------------------------------------------------------------
 
 /// Trait combining effect dispatch with cloning for the MCP server.
-pub trait McpEffectHandler: DispatchEffect<CapturedOutput> + DynClone + Send + Sync + 'static {}
+pub trait McpEffectHandler:
+    DispatchEffect<CapturedOutput> + DynClone + Send + Sync + 'static
+{
+}
 clone_trait_object!(McpEffectHandler);
 
-impl<T> McpEffectHandler for T where T: DispatchEffect<CapturedOutput> + Clone + Send + Sync + 'static {}
+impl<T> McpEffectHandler for T where
+    T: DispatchEffect<CapturedOutput> + Clone + Send + Sync + 'static
+{
+}
 
 /// Generic MCP server wrapper that compiles and runs Haskell via Tidepool.
 #[derive(Clone)]
@@ -451,8 +456,8 @@ impl ServerHandler for TidepoolMcpServerImpl {
         let args = request.arguments.unwrap_or_default();
         match request.name.as_ref() {
             "eval" => {
-                let req: EvalRequest =
-                    serde_json::from_value(serde_json::Value::Object(args)).map_err(|e| {
+                let req: EvalRequest = serde_json::from_value(serde_json::Value::Object(args))
+                    .map_err(|e| {
                         McpError::invalid_params(format!("invalid params: {}", e), None)
                     })?;
                 self.eval(req).await
@@ -482,19 +487,17 @@ impl ServerHandler for TidepoolMcpServerImpl {
             }
         }
 
-        let tools = vec![
-            Tool {
-                name: "eval".into(),
-                title: None,
-                description: Some(self.eval_tool_description.clone().into()),
-                input_schema: schema_to_map(schemars::schema_for!(EvalRequest))?,
-                output_schema: None,
-                annotations: None,
-                icons: None,
-                meta: None,
-                execution: None,
-            },
-        ];
+        let tools = vec![Tool {
+            name: "eval".into(),
+            title: None,
+            description: Some(self.eval_tool_description.clone().into()),
+            input_schema: schema_to_map(schemars::schema_for!(EvalRequest))?,
+            output_schema: None,
+            annotations: None,
+            icons: None,
+            meta: None,
+            execution: None,
+        }];
 
         Ok(ListToolsResult {
             tools,
@@ -609,9 +612,24 @@ mod tests {
     #[test]
     fn test_build_effect_stack_type() {
         let effects = vec![
-            EffectDecl { type_name: "Console", description: "", constructors: &[], type_defs: &[] },
-            EffectDecl { type_name: "KV", description: "", constructors: &[], type_defs: &[] },
-            EffectDecl { type_name: "Fs", description: "", constructors: &[], type_defs: &[] },
+            EffectDecl {
+                type_name: "Console",
+                description: "",
+                constructors: &[],
+                type_defs: &[],
+            },
+            EffectDecl {
+                type_name: "KV",
+                description: "",
+                constructors: &[],
+                type_defs: &[],
+            },
+            EffectDecl {
+                type_name: "Fs",
+                description: "",
+                constructors: &[],
+                type_defs: &[],
+            },
         ];
         assert_eq!(build_effect_stack_type(&effects), "'[Console, KV, Fs]");
         assert_eq!(build_effect_stack_type(&[]), "'[]");

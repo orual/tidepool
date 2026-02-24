@@ -1,7 +1,7 @@
 use crate::occ::{get_occ, occ_analysis, Occ};
+use std::collections::HashMap;
 use tidepool_eval::{Changed, Pass};
 use tidepool_repr::{CoreExpr, CoreFrame, MapLayer};
-use std::collections::HashMap;
 
 /// Inlining pass: eliminates single-use `LetNonRec` bindings by substituting the RHS directly at the use site.
 pub struct Inline;

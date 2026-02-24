@@ -1,3 +1,5 @@
+use proptest::prelude::*;
+use proptest::test_runner::{Config, TestRunner};
 use tidepool_eval::pass::Pass;
 use tidepool_eval::{eval, Env, Value, VecHeap};
 use tidepool_optimize::beta::BetaReduce;
@@ -7,8 +9,6 @@ use tidepool_optimize::inline::Inline;
 use tidepool_optimize::pipeline::run_pipeline;
 use tidepool_repr::CoreExpr;
 use tidepool_testing::gen::arb_core_expr;
-use proptest::prelude::*;
-use proptest::test_runner::{Config, TestRunner};
 
 /// Recursive structural comparison of values.
 /// Skips closures, thunks, and join points by returning true.

@@ -86,7 +86,8 @@ impl<T: ToCore> ToCore for Box<T> {
 
 impl ToCore for () {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let id = table.get_by_name("()")
+        let id = table
+            .get_by_name("()")
             .ok_or_else(|| BridgeError::UnknownDataConName("()".into()))?;
         Ok(Value::Con(id, vec![]))
     }
@@ -123,7 +124,8 @@ impl FromCore for i64 {
 
 impl ToCore for i64 {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let id = table.get_by_name("I#")
+        let id = table
+            .get_by_name("I#")
             .ok_or_else(|| BridgeError::UnknownDataConName("I#".into()))?;
         Ok(Value::Con(id, vec![Value::Lit(Literal::LitInt(*self))]))
     }
@@ -149,7 +151,8 @@ impl FromCore for u64 {
 
 impl ToCore for u64 {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let id = table.get_by_name("W#")
+        let id = table
+            .get_by_name("W#")
             .ok_or_else(|| BridgeError::UnknownDataConName("W#".into()))?;
         Ok(Value::Con(id, vec![Value::Lit(Literal::LitWord(*self))]))
     }
@@ -175,9 +178,13 @@ impl FromCore for f64 {
 
 impl ToCore for f64 {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let id = table.get_by_name("D#")
+        let id = table
+            .get_by_name("D#")
             .ok_or_else(|| BridgeError::UnknownDataConName("D#".into()))?;
-        Ok(Value::Con(id, vec![Value::Lit(Literal::LitDouble(self.to_bits()))]))
+        Ok(Value::Con(
+            id,
+            vec![Value::Lit(Literal::LitDouble(self.to_bits()))],
+        ))
     }
 }
 
@@ -272,7 +279,8 @@ impl FromCore for char {
 
 impl ToCore for char {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let id = table.get_by_name("C#")
+        let id = table
+            .get_by_name("C#")
             .ok_or_else(|| BridgeError::UnknownDataConName("C#".into()))?;
         Ok(Value::Con(id, vec![Value::Lit(Literal::LitChar(*self))]))
     }
@@ -294,7 +302,9 @@ impl FromCore for String {
                     {
                         match &ba_fields[0] {
                             Value::ByteArray(bs) => bs.lock().unwrap().clone(),
-                            _ => return Err(type_mismatch("ByteArray# in ByteArray", &ba_fields[0])),
+                            _ => {
+                                return Err(type_mismatch("ByteArray# in ByteArray", &ba_fields[0]))
+                            }
                         }
                     }
                     _ => return Err(type_mismatch("ByteArray or ByteArray# in Text", &fields[0])),
@@ -922,7 +932,7 @@ mod tests {
         let table = test_table();
         let s = "hello".to_string();
         let value = s.to_value(&table).expect("ToValue failed");
-        
+
         if let Value::Con(id, fields) = &value {
             assert_eq!(table.name_of(*id), Some("Text"));
             assert_eq!(fields.len(), 3);

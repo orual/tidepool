@@ -447,11 +447,7 @@ mod tests {
         struct TestHandler;
         impl EffectHandler for TestHandler {
             type Request = TestReq;
-            fn handle(
-                &mut self,
-                req: TestReq,
-                _cx: &EffectContext,
-            ) -> Result<Value, EffectError> {
+            fn handle(&mut self, req: TestReq, _cx: &EffectContext) -> Result<Value, EffectError> {
                 // Echo back the request + 1
                 Ok(Value::Lit(Literal::LitInt(req.0 + 1)))
             }
@@ -718,7 +714,8 @@ mod async_tests {
                 &mut self,
                 req: TestReq,
                 cx: &EffectContext<'_, UserData>,
-            ) -> impl std::future::Future<Output = Result<Value, EffectError>> + Send + '_ {
+            ) -> impl std::future::Future<Output = Result<Value, EffectError>> + Send + '_
+            {
                 let result = req.0 * cx.user().multiplier;
                 async move { Ok(Value::Lit(Literal::LitInt(result))) }
             }

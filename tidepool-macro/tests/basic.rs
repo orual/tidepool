@@ -1,5 +1,5 @@
-use tidepool_macro::haskell_eval;
 use tidepool_eval::Value;
+use tidepool_macro::haskell_eval;
 
 #[test]
 fn test_haskell_eval_identity() {

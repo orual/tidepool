@@ -1,10 +1,10 @@
 use super::builder::TreeBuilder;
 use super::types::SimpleType;
-use tidepool_repr::*;
 use proptest::prelude::*;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use tidepool_repr::*;
 
 /// Generate a random well-typed CoreExpr.
 pub fn arb_core_expr() -> impl Strategy<Value = RecursiveTree<CoreFrame<usize>>> {

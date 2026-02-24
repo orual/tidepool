@@ -16,8 +16,9 @@ fn main() -> Result<()> {
     // Initialize tracing for observability. Try `RUST_LOG=debug cargo run`.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("tidepool_tide=info,codegen=info,warn")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("tidepool_tide=info,codegen=info,warn")
+            }),
         )
         .init();
 
@@ -27,10 +28,12 @@ fn main() -> Result<()> {
         .name("tide-runtime".into())
         .stack_size(16 * 1024 * 1024);
 
-    let handler = builder.spawn(|| {
-        let args = Args::parse();
-        run(args)
-    }).context("Failed to spawn runtime thread")?;
+    let handler = builder
+        .spawn(|| {
+            let args = Args::parse();
+            run(args)
+        })
+        .context("Failed to spawn runtime thread")?;
 
     handler.join().expect("Runtime thread panicked")
 }
@@ -50,8 +53,8 @@ fn run(args: Args) -> Result<()> {
 
     // JIT-compile the CoreExpr to native code.
     println!("Compiling with Cranelift...");
-    let mut vm = JitEffectMachine::compile(&expr, &table, 4 << 20)
-        .context("JIT compilation failed")?;
+    let mut vm =
+        JitEffectMachine::compile(&expr, &table, 4 << 20).context("JIT compilation failed")?;
 
     // Each handler in the HList corresponds to one effect in the Haskell stack:
     //   '[Repl, Console, Env, Net, Fs]

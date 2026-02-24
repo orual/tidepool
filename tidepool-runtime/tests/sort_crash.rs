@@ -1,14 +1,14 @@
+use frunk::HNil;
 /// Reproducer for MCP `pure (sort [3,1,2 :: Int])` crash and broader
 /// freer-simple integration tests matching the exact source templates
 /// the MCP server generates.
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use frunk::HNil;
 use tidepool_bridge_derive::FromCore;
 use tidepool_effect::dispatch::{EffectContext, EffectHandler};
-use tidepool_eval::value::Value;
 use tidepool_effect::error::EffectError;
+use tidepool_eval::value::Value;
 use tidepool_runtime::{compile_and_run, compile_and_run_pure, compile_haskell};
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,11 @@ fn prelude_path() -> std::path::PathBuf {
 
 /// Effect decls for tests — Console + KV + Fs (no SG, since tests don't have an SG handler).
 fn test_decls() -> Vec<tidepool_mcp::EffectDecl> {
-    vec![tidepool_mcp::console_decl(), tidepool_mcp::kv_decl(), tidepool_mcp::fs_decl()]
+    vec![
+        tidepool_mcp::console_decl(),
+        tidepool_mcp::kv_decl(),
+        tidepool_mcp::fs_decl(),
+    ]
 }
 
 /// Build the exact Haskell source the MCP server generates for a given
@@ -69,7 +73,7 @@ fn run_mcp_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> s
 /// Build a plain (non-effect) Haskell module with the prelude.
 fn plain_source(body: &str) -> String {
     format!(
-r#"{{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, PartialTypeSignatures #-}}
+        r#"{{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, PartialTypeSignatures #-}}
 module Test where
 import Tidepool.Prelude
 import qualified Data.Text as T
@@ -77,7 +81,8 @@ import Control.Monad.Freer
 
 result :: _
 result = {body}
-"#)
+"#
+    )
 }
 
 /// Run a test on a thread with 8MB stack. Returns the JSON result.
@@ -107,8 +112,8 @@ fn compile_only(src: &str) -> Result<usize, String> {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp.as_path()];
-            let (expr, table) = compile_haskell(&src, "result", &include)
-                .map_err(|e| format!("{:?}", e))?;
+            let (expr, table) =
+                compile_haskell(&src, "result", &include).map_err(|e| format!("{:?}", e))?;
             // Also test JIT compilation
             let _machine = JitEffectMachine::compile(&expr, &table, 1 << 20)
                 .map_err(|e| format!("{:?}", e))?;
@@ -154,7 +159,12 @@ struct TestConsole {
 impl TestConsole {
     fn new() -> (Self, Arc<Mutex<Vec<String>>>) {
         let lines = Arc::new(Mutex::new(Vec::new()));
-        (TestConsole { lines: lines.clone() }, lines)
+        (
+            TestConsole {
+                lines: lines.clone(),
+            },
+            lines,
+        )
     }
 }
 
@@ -189,7 +199,9 @@ struct TestKv {
 
 impl TestKv {
     fn new() -> Self {
-        TestKv { store: HashMap::new() }
+        TestKv {
+            store: HashMap::new(),
+        }
     }
 }
 
@@ -244,7 +256,10 @@ fn run_mcp_effectful(lines: &[&str]) -> (serde_json::Value, Vec<String>) {
     run_mcp_effectful_with_helpers(lines, &[])
 }
 
-fn run_mcp_effectful_with_helpers(lines: &[&str], helpers: &[&str]) -> (serde_json::Value, Vec<String>) {
+fn run_mcp_effectful_with_helpers(
+    lines: &[&str],
+    helpers: &[&str],
+) -> (serde_json::Value, Vec<String>) {
     let src = mcp_source_with_helpers(lines, helpers);
     let pp = prelude_path();
     std::thread::Builder::new()
@@ -500,10 +515,7 @@ fn test_mcp_pure_pair() {
 #[test]
 
 fn test_mcp_let_binding() {
-    let json = run_mcp(&[
-        "let x = 10 :: Int",
-        "pure (x + 5)",
-    ]);
+    let json = run_mcp(&["let x = 10 :: Int", "pure (x + 5)"]);
     assert_eq!(json, serde_json::json!(15));
 }
 
@@ -559,11 +571,7 @@ fn test_mcp_string_append() {
 #[test]
 
 fn test_mcp_multi_line_do() {
-    let json = run_mcp(&[
-        "let xs = [1,2,3 :: Int]",
-        "let ys = map (*2) xs",
-        "pure ys",
-    ]);
+    let json = run_mcp(&["let xs = [1,2,3 :: Int]", "let ys = map (*2) xs", "pure ys"]);
     assert_eq!(json, serde_json::json!([2, 4, 6]));
 }
 
@@ -596,19 +604,14 @@ fn test_mcp_inline_sort() {
 
 fn test_effect_kv_set_get() {
     // The original bug: () return from KvSet must be TAG_CON
-    let (json, _) = run_mcp_effectful(&[
-        "send (KvSet \"k\" \"v\")",
-        "send (KvGet \"k\")",
-    ]);
+    let (json, _) = run_mcp_effectful(&["send (KvSet \"k\" \"v\")", "send (KvGet \"k\")"]);
     assert_eq!(json, serde_json::json!("v")); // Just "v" → unwrapped
 }
 
 #[test]
 
 fn test_effect_kv_get_missing() {
-    let (json, _) = run_mcp_effectful(&[
-        "send (KvGet \"nope\")",
-    ]);
+    let (json, _) = run_mcp_effectful(&["send (KvGet \"nope\")"]);
     assert_eq!(json, serde_json::json!(null)); // Nothing → null
 }
 
@@ -635,7 +638,10 @@ fn test_effect_kv_keys() {
     // Keys come back as a list, order may vary
     let arr = json.as_array().expect("expected array");
     assert_eq!(arr.len(), 3);
-    let mut keys: Vec<String> = arr.iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    let mut keys: Vec<String> = arr
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
     keys.sort();
     assert_eq!(keys, vec!["a", "b", "c"]);
 }
@@ -643,10 +649,7 @@ fn test_effect_kv_keys() {
 #[test]
 
 fn test_effect_console_print() {
-    let (json, lines) = run_mcp_effectful(&[
-        "send (Print \"hello\")",
-        "pure (42 :: Int)",
-    ]);
+    let (json, lines) = run_mcp_effectful(&["send (Print \"hello\")", "pure (42 :: Int)"]);
     assert_eq!(json, serde_json::json!(42));
     assert_eq!(lines, vec!["hello"]);
 }
@@ -704,19 +707,14 @@ fn test_effect_kv_overwrite() {
 #[test]
 fn test_effect_words() {
     // FsRead returns "stub" by default in our mock
-    let (json, _) = run_mcp_effectful(&[
-        "s <- send (FsRead \"file.txt\")",
-        "pure (words s)",
-    ]);
+    let (json, _) = run_mcp_effectful(&["s <- send (FsRead \"file.txt\")", "pure (words s)"]);
     assert_eq!(json, serde_json::json!(["stub"]));
 }
 
 #[test]
 
 fn test_effect_words_custom() {
-    let (json, _) = run_mcp_effectful(&[
-        "pure (words \"  hello   world  \")",
-    ]);
+    let (json, _) = run_mcp_effectful(&["pure (words \"  hello   world  \")"]);
     assert_eq!(json, serde_json::json!(["hello", "world"]));
 }
 
@@ -734,14 +732,12 @@ fn test_effect_helper_two_args() {
             "persist \"a\" \"out.txt\"",
             "pure \"done\"",
         ],
-        &[
-r#"persist :: Text -> Text -> Eff '[Console, KV, Fs] ()
+        &[r#"persist :: Text -> Text -> Eff '[Console, KV, Fs] ()
 persist key filename = do
   val <- send (KvGet key)
   case val of
     Nothing -> send (Print "nothing")
-    Just content -> send (FsWrite filename content)"#,
-        ],
+    Just content -> send (FsWrite filename content)"#],
     );
     assert_eq!(json, serde_json::json!("done"));
 }
@@ -920,9 +916,7 @@ fn test_map_filter_with_key() {
 
 #[test]
 fn test_map_over_string_literal() {
-    let json = run_mcp(&[
-        "pure (map (\\c -> chr (ord c + 1)) \"Hello\")",
-    ]);
+    let json = run_mcp(&["pure (map (\\c -> chr (ord c + 1)) \"Hello\")"]);
     assert_eq!(json, serde_json::json!("Ifmmp"));
 }
 
@@ -1031,13 +1025,21 @@ fn test_diag_simple_run_twice() {
 fn test_diag_map_run_twice() {
     // Regression test: two sequential map runs in separate JIT machines.
     let json1 = run_mcp_with_imports(
-        &["let m = Map.fromList [(1::Int,10::Int)]", "pure (Map.toList m)"],
-        &[], &["qualified Data.Map.Strict as Map"],
+        &[
+            "let m = Map.fromList [(1::Int,10::Int)]",
+            "pure (Map.toList m)",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
     );
     assert_eq!(json1, serde_json::json!([[1, 10]]));
     let json2 = run_mcp_with_imports(
-        &["let m = Map.fromList [(2::Int,20::Int)]", "pure (Map.toList m)"],
-        &[], &["qualified Data.Map.Strict as Map"],
+        &[
+            "let m = Map.fromList [(2::Int,20::Int)]",
+            "pure (Map.toList m)",
+        ],
+        &[],
+        &["qualified Data.Map.Strict as Map"],
     );
     assert_eq!(json2, serde_json::json!([[2, 20]]));
 }
@@ -1068,8 +1070,15 @@ fn test_diag_map_run_twice_big_nursery() {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp.as_path()];
-            let val = compile_and_run_with_nursery_size(&src1, "result", &include, &mut HNil, &(), 1 << 29)
-                .expect("first run failed");
+            let val = compile_and_run_with_nursery_size(
+                &src1,
+                "result",
+                &include,
+                &mut HNil,
+                &(),
+                1 << 29,
+            )
+            .expect("first run failed");
             val.to_json()
         })
         .unwrap()
@@ -1081,8 +1090,15 @@ fn test_diag_map_run_twice_big_nursery() {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp2.as_path()];
-            let val = compile_and_run_with_nursery_size(&src2, "result", &include, &mut HNil, &(), 1 << 29)
-                .expect("second run failed");
+            let val = compile_and_run_with_nursery_size(
+                &src2,
+                "result",
+                &include,
+                &mut HNil,
+                &(),
+                1 << 29,
+            )
+            .expect("second run failed");
             val.to_json()
         })
         .unwrap()

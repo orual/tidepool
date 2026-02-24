@@ -1,7 +1,10 @@
 {
   "mcpServers": {
     "tidepool": {
-      "command": "/home/inanna/dev/tidepool/target/debug/mcp-server-example"
+      "command": "tidepool",
+      "env": {
+        "TIDEPOOL_EXTRACT": "/home/inanna/.local/bin/tidepool-extract-wrapper"
+      }
     }
   }
 }

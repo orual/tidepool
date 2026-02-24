@@ -93,9 +93,7 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                 ("Pure", [x]) => value_to_json(x, table, d),
 
                 // Boxing constructors: I#, W#, C#, D#, F#
-                ("I#", [x]) | ("W#", [x]) | ("D#", [x]) | ("F#", [x]) => {
-                    value_to_json(x, table, d)
-                }
+                ("I#", [x]) | ("W#", [x]) | ("D#", [x]) | ("F#", [x]) => value_to_json(x, table, d),
                 ("C#", [x]) => value_to_json(x, table, d),
 
                 // Text constructor: Text ByteArray off len → JSON string
@@ -103,7 +101,9 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                 ("Text", [ba_val, off_val, len_val]) => {
                     let raw_ba = match ba_val {
                         Value::ByteArray(bs) => Some(bs.clone()),
-                        Value::Con(id, fields) if con_name(*id, table) == "ByteArray" && fields.len() == 1 => {
+                        Value::Con(id, fields)
+                            if con_name(*id, table) == "ByteArray" && fields.len() == 1 =>
+                        {
                             if let Value::ByteArray(bs) = &fields[0] {
                                 Some(bs.clone())
                             } else {
@@ -115,14 +115,16 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                     if let Some(bs) = raw_ba {
                         let borrowed = bs.lock().unwrap();
                         let off = extract_boxed_int(off_val, table).unwrap_or(0) as usize;
-                        let len = extract_boxed_int(len_val, table).unwrap_or(borrowed.len() as i64) as usize;
+                        let len = extract_boxed_int(len_val, table).unwrap_or(borrowed.len() as i64)
+                            as usize;
                         let end = (off + len).min(borrowed.len());
                         match std::str::from_utf8(&borrowed[off..end]) {
                             Ok(s) => json!(s),
                             Err(_) => json!(format!("<Text invalid UTF-8 len={}>", len)),
                         }
                     } else {
-                        let field_jsons: Vec<serde_json::Value> = fields.iter().map(|f| value_to_json(f, table, d)).collect();
+                        let field_jsons: Vec<serde_json::Value> =
+                            fields.iter().map(|f| value_to_json(f, table, d)).collect();
                         json!({"constructor": "Text", "fields": field_jsons})
                     }
                 }
@@ -132,13 +134,17 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                     // Empty list
                     json!([])
                 }
-                (":", [head, tail]) => {
-                    collect_list(head, tail, table, d)
-                }
+                (":", [head, tail]) => collect_list(head, tail, table, d),
 
                 // Tuples: (,), (,,), (,,,), etc.
-                (n, fields) if n.starts_with('(') && n.ends_with(')') && n.chars().all(|c| c == '(' || c == ')' || c == ',') && fields.len() >= 2 => {
-                    let elems: Vec<serde_json::Value> = fields.iter().map(|f| value_to_json(f, table, d)).collect();
+                (n, fields)
+                    if n.starts_with('(')
+                        && n.ends_with(')')
+                        && n.chars().all(|c| c == '(' || c == ')' || c == ',')
+                        && fields.len() >= 2 =>
+                {
+                    let elems: Vec<serde_json::Value> =
+                        fields.iter().map(|f| value_to_json(f, table, d)).collect();
                     json!(elems)
                 }
 
@@ -147,7 +153,8 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                     if fields.is_empty() {
                         json!(name)
                     } else {
-                        let field_jsons: Vec<serde_json::Value> = fields.iter().map(|f| value_to_json(f, table, d)).collect();
+                        let field_jsons: Vec<serde_json::Value> =
+                            fields.iter().map(|f| value_to_json(f, table, d)).collect();
                         json!({
                             "constructor": name,
                             "fields": field_jsons
@@ -196,25 +203,32 @@ fn literal_to_json(lit: &Literal) -> serde_json::Value {
         Literal::LitInt(n) => json!(n),
         Literal::LitWord(n) => json!(n),
         Literal::LitChar(c) => json!(c.to_string()),
-        Literal::LitString(bytes) => {
-            match std::str::from_utf8(bytes) {
-                Ok(s) => json!(s),
-                Err(_) => json!(format!("<binary:{} bytes>", bytes.len())),
-            }
-        }
+        Literal::LitString(bytes) => match std::str::from_utf8(bytes) {
+            Ok(s) => json!(s),
+            Err(_) => json!(format!("<binary:{} bytes>", bytes.len())),
+        },
         Literal::LitFloat(bits) => {
             let f = f32::from_bits(*bits as u32) as f64;
-            serde_json::Number::from_f64(f).map(serde_json::Value::Number).unwrap_or(json!(null))
+            serde_json::Number::from_f64(f)
+                .map(serde_json::Value::Number)
+                .unwrap_or(json!(null))
         }
         Literal::LitDouble(bits) => {
             let f = f64::from_bits(*bits);
-            serde_json::Number::from_f64(f).map(serde_json::Value::Number).unwrap_or(json!(null))
+            serde_json::Number::from_f64(f)
+                .map(serde_json::Value::Number)
+                .unwrap_or(json!(null))
         }
     }
 }
 
 /// Collect a cons-chain into a JSON array, or a JSON string if all elements are chars.
-fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) -> serde_json::Value {
+fn collect_list(
+    head: &Value,
+    tail: &Value,
+    table: &DataConTable,
+    depth: usize,
+) -> serde_json::Value {
     let mut elems = vec![head];
     let mut current = tail;
     let mut count = 1usize;
@@ -222,7 +236,10 @@ fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) 
     loop {
         if count >= MAX_LIST_LEN {
             // Truncate
-            let mut arr: Vec<serde_json::Value> = elems.iter().map(|e| value_to_json(e, table, depth)).collect();
+            let mut arr: Vec<serde_json::Value> = elems
+                .iter()
+                .map(|e| value_to_json(e, table, depth))
+                .collect();
             arr.push(json!("..."));
             return json!(arr);
         }
@@ -238,7 +255,10 @@ fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) 
                     }
                     _ => {
                         // Malformed list tail
-                        let mut arr: Vec<serde_json::Value> = elems.iter().map(|e| value_to_json(e, table, depth)).collect();
+                        let mut arr: Vec<serde_json::Value> = elems
+                            .iter()
+                            .map(|e| value_to_json(e, table, depth))
+                            .collect();
                         arr.push(value_to_json(current, table, depth));
                         return json!(arr);
                     }
@@ -246,7 +266,10 @@ fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) 
             }
             _ => {
                 // Non-constructor tail (thunk, etc)
-                let mut arr: Vec<serde_json::Value> = elems.iter().map(|e| value_to_json(e, table, depth)).collect();
+                let mut arr: Vec<serde_json::Value> = elems
+                    .iter()
+                    .map(|e| value_to_json(e, table, depth))
+                    .collect();
                 arr.push(value_to_json(current, table, depth));
                 return json!(arr);
             }
@@ -277,7 +300,10 @@ fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) 
     if all_chars && !char_buf.is_empty() {
         json!(char_buf)
     } else {
-        let arr: Vec<serde_json::Value> = elems.iter().map(|e| value_to_json(e, table, depth)).collect();
+        let arr: Vec<serde_json::Value> = elems
+            .iter()
+            .map(|e| value_to_json(e, table, depth))
+            .collect();
         json!(arr)
     }
 }
@@ -285,9 +311,9 @@ fn collect_list(head: &Value, tail: &Value, table: &DataConTable, depth: usize) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
     use tidepool_repr::datacon::DataCon;
     use tidepool_repr::types::DataConId;
-    use std::sync::{Arc, Mutex};
 
     fn test_table() -> DataConTable {
         let mut t = DataConTable::new();
@@ -345,7 +371,10 @@ mod tests {
     fn test_render_option() {
         let table = test_table();
         let nothing = Value::Con(table.get_by_name("Nothing").unwrap(), vec![]);
-        let just = Value::Con(table.get_by_name("Just").unwrap(), vec![Value::Lit(Literal::LitInt(42))]);
+        let just = Value::Con(
+            table.get_by_name("Just").unwrap(),
+            vec![Value::Lit(Literal::LitInt(42))],
+        );
         assert_eq!(value_to_json(&nothing, &table, 0), json!(null));
         assert_eq!(value_to_json(&just, &table, 0), json!(42));
     }
@@ -362,15 +391,18 @@ mod tests {
         let table = test_table();
         let nil_id = table.get_by_name("[]").unwrap();
         let cons_id = table.get_by_name(":").unwrap();
-        
+
         // [1, 2]
-        let list = Value::Con(cons_id, vec![
-            Value::Lit(Literal::LitInt(1)),
-            Value::Con(cons_id, vec![
-                Value::Lit(Literal::LitInt(2)),
-                Value::Con(nil_id, vec![])
-            ])
-        ]);
+        let list = Value::Con(
+            cons_id,
+            vec![
+                Value::Lit(Literal::LitInt(1)),
+                Value::Con(
+                    cons_id,
+                    vec![Value::Lit(Literal::LitInt(2)), Value::Con(nil_id, vec![])],
+                ),
+            ],
+        );
         assert_eq!(value_to_json(&list, &table, 0), json!([1, 2]));
     }
 
@@ -379,11 +411,14 @@ mod tests {
         let table = test_table();
         let text_id = table.get_by_name("Text").unwrap();
         let ba = Value::ByteArray(Arc::new(Mutex::new(b"hello".to_vec())));
-        let val = Value::Con(text_id, vec![
-            ba,
-            Value::Lit(Literal::LitInt(0)),
-            Value::Lit(Literal::LitInt(5))
-        ]);
+        let val = Value::Con(
+            text_id,
+            vec![
+                ba,
+                Value::Lit(Literal::LitInt(0)),
+                Value::Lit(Literal::LitInt(5)),
+            ],
+        );
         assert_eq!(value_to_json(&val, &table, 0), json!("hello"));
     }
 
@@ -392,15 +427,21 @@ mod tests {
         let table = test_table();
         let nil_id = table.get_by_name("[]").unwrap();
         let cons_id = table.get_by_name(":").unwrap();
-        
+
         // ["a", "b"]
-        let list = Value::Con(cons_id, vec![
-            Value::Lit(Literal::LitString(b"a".to_vec())),
-            Value::Con(cons_id, vec![
-                Value::Lit(Literal::LitString(b"b".to_vec())),
-                Value::Con(nil_id, vec![])
-            ])
-        ]);
+        let list = Value::Con(
+            cons_id,
+            vec![
+                Value::Lit(Literal::LitString(b"a".to_vec())),
+                Value::Con(
+                    cons_id,
+                    vec![
+                        Value::Lit(Literal::LitString(b"b".to_vec())),
+                        Value::Con(nil_id, vec![]),
+                    ],
+                ),
+            ],
+        );
         assert_eq!(value_to_json(&list, &table, 0), json!(["a", "b"]));
     }
 
@@ -409,17 +450,23 @@ mod tests {
         let table = test_table();
         let pair_id = table.get_by_name("(,)").unwrap();
         let triple_id = table.get_by_name("(,,)").unwrap();
-        
-        let pair = Value::Con(pair_id, vec![
-            Value::Lit(Literal::LitInt(1)),
-            Value::Lit(Literal::LitInt(2))
-        ]);
-        let triple = Value::Con(triple_id, vec![
-            Value::Lit(Literal::LitInt(1)),
-            Value::Lit(Literal::LitInt(2)),
-            Value::Lit(Literal::LitInt(3))
-        ]);
-        
+
+        let pair = Value::Con(
+            pair_id,
+            vec![
+                Value::Lit(Literal::LitInt(1)),
+                Value::Lit(Literal::LitInt(2)),
+            ],
+        );
+        let triple = Value::Con(
+            triple_id,
+            vec![
+                Value::Lit(Literal::LitInt(1)),
+                Value::Lit(Literal::LitInt(2)),
+                Value::Lit(Literal::LitInt(3)),
+            ],
+        );
+
         assert_eq!(value_to_json(&pair, &table, 0), json!([1, 2]));
         assert_eq!(value_to_json(&triple, &table, 0), json!([1, 2, 3]));
     }
@@ -430,15 +477,21 @@ mod tests {
         let nil_id = table.get_by_name("[]").unwrap();
         let cons_id = table.get_by_name(":").unwrap();
         let c_hash_id = table.get_by_name("C#").unwrap();
-        
+
         // ['h', 'i']
-        let list = Value::Con(cons_id, vec![
-            Value::Con(c_hash_id, vec![Value::Lit(Literal::LitChar('h'))]),
-            Value::Con(cons_id, vec![
-                Value::Con(c_hash_id, vec![Value::Lit(Literal::LitChar('i'))]),
-                Value::Con(nil_id, vec![])
-            ])
-        ]);
+        let list = Value::Con(
+            cons_id,
+            vec![
+                Value::Con(c_hash_id, vec![Value::Lit(Literal::LitChar('h'))]),
+                Value::Con(
+                    cons_id,
+                    vec![
+                        Value::Con(c_hash_id, vec![Value::Lit(Literal::LitChar('i'))]),
+                        Value::Con(nil_id, vec![]),
+                    ],
+                ),
+            ],
+        );
         assert_eq!(value_to_json(&list, &table, 0), json!("hi"));
     }
 }

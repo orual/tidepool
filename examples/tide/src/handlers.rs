@@ -31,7 +31,8 @@ impl From<TideError> for EffectError {
 
 /// Parse a user-provided string into a URL, prepending `https://` if no scheme is given.
 fn parse_url(raw: &str) -> Result<Url, TideError> {
-    Url::parse(raw).or_else(|_| Url::parse(&format!("https://{}", raw)))
+    Url::parse(raw)
+        .or_else(|_| Url::parse(&format!("https://{}", raw)))
         .map_err(|e| TideError::Http(format!("invalid URL '{}': {}", raw, e)))
 }
 
@@ -52,12 +53,14 @@ enum InputSource {
 
 pub struct ReplHandler {
     source: InputSource,
+    greeted: bool,
 }
 
 impl ReplHandler {
     pub fn new() -> anyhow::Result<Self> {
         Ok(ReplHandler {
             source: InputSource::Interactive(rustyline::DefaultEditor::new()?),
+            greeted: false,
         })
     }
 
@@ -70,15 +73,20 @@ impl ReplHandler {
             .collect();
         Ok(ReplHandler {
             source: InputSource::File { lines, pos: 0 },
+            greeted: true, // skip welcome for file mode
         })
     }
 }
 
 fn parse_and_serialize(input: &str, cx: &EffectContext) -> Result<Value, TideError> {
-    let expr = crate::parser::parse(input)
-        .map_err(|e| TideError::Parse(format!("{:?}", e)))?;
+    let expr = crate::parser::parse(input).map_err(|e| TideError::Parse(format!("{:?}", e)))?;
     expr.to_value(cx.table())
         .map_err(|e| TideError::Internal(format!("ToCore failed: {:?}", e)))
+}
+
+fn print_welcome() {
+    println!("Tide - the Tidepool interactive shell");
+    println!("Type an expression to evaluate, /help for commands, /exit to quit.\n");
 }
 
 fn read_interactive(
@@ -95,7 +103,8 @@ fn read_interactive(
                 if t.starts_with('/') {
                     match t.as_str() {
                         "/help" => {
-                            println!("\
+                            println!(
+                                "\
 Tide expression language
 
   Literals:     42  \"hello\"  true  false  [1, 2, 3]
@@ -112,7 +121,8 @@ Tide expression language
                 read_file(path)  write_file(path, s)
 
   /help   Show this message
-  /exit   Quit the REPL");
+  /exit   Quit the REPL"
+                            );
                             continue;
                         }
                         "/exit" => return Ok(None),
@@ -123,15 +133,15 @@ Tide expression language
                     }
                 }
                 editor.add_history_entry(&t).ok();
-                
+
                 // Try parsing with miette for fancy errors
                 match crate::parser::parse(&t) {
-                    Ok(expr) => {
-                        match expr.to_value(cx.table()) {
-                            Ok(val) => return Ok(Some(val)),
-                            Err(e) => return Err(TideError::Internal(format!("ToCore failed: {:?}", e))),
+                    Ok(expr) => match expr.to_value(cx.table()) {
+                        Ok(val) => return Ok(Some(val)),
+                        Err(e) => {
+                            return Err(TideError::Internal(format!("ToCore failed: {:?}", e)))
                         }
-                    }
+                    },
                     Err(e) => {
                         // Display fancy miette error
                         eprintln!("{:?}", e);
@@ -154,12 +164,10 @@ fn read_file_line(
         *pos += 1;
         debug!("Processing file line {}: {}", pos, text);
         match crate::parser::parse(&text) {
-            Ok(expr) => {
-                match expr.to_value(cx.table()) {
-                    Ok(val) => Ok(Some(val)),
-                    Err(e) => Err(TideError::Internal(format!("ToCore failed: {:?}", e))),
-                }
-            }
+            Ok(expr) => match expr.to_value(cx.table()) {
+                Ok(val) => Ok(Some(val)),
+                Err(e) => Err(TideError::Internal(format!("ToCore failed: {:?}", e))),
+            },
             Err(e) => {
                 error!("{:?}", e);
                 Ok(None)
@@ -176,6 +184,10 @@ impl EffectHandler for ReplHandler {
     fn handle(&mut self, req: ReplReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             ReplReq::ReadLine => {
+                if !self.greeted {
+                    self.greeted = true;
+                    print_welcome();
+                }
                 let result = match &mut self.source {
                     InputSource::Interactive(editor) => read_interactive(editor, cx)?,
                     InputSource::File { lines, pos } => read_file_line(lines, pos, cx)?,
@@ -263,7 +275,9 @@ impl EffectHandler for EnvHandler {
             }
             EnvReq::EnvSnapshot => {
                 debug!("Snapshot: {} bindings", self.env.len());
-                let pairs: Vec<(String, Value)> = self.env.iter()
+                let pairs: Vec<(String, Value)> = self
+                    .env
+                    .iter()
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
                 cx.respond(pairs)

@@ -1,7 +1,7 @@
-use tidepool_eval::{env::Env, error::EvalError, eval::eval, heap::VecHeap, value::Value};
-use tidepool_repr::{CoreFrame, RecursiveTree};
 use std::error::Error;
 use std::path::PathBuf;
+use tidepool_eval::{env::Env, error::EvalError, eval::eval, heap::VecHeap, value::Value};
+use tidepool_repr::{CoreFrame, RecursiveTree};
 
 /// Helper function to evaluate a CoreExpr tree.
 pub fn eval_expr(nodes: Vec<CoreFrame<usize>>) -> Result<Value, EvalError> {

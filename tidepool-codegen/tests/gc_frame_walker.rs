@@ -1,9 +1,9 @@
 use tidepool_codegen::context::VMContext;
-use tidepool_codegen::pipeline::CodegenPipeline;
-use tidepool_codegen::host_fns;
 use tidepool_codegen::gc::frame_walker;
+use tidepool_codegen::host_fns;
+use tidepool_codegen::pipeline::CodegenPipeline;
 
-use cranelift_codegen::ir::{self, types, UserFuncName, InstBuilder};
+use cranelift_codegen::ir::{self, types, InstBuilder, UserFuncName};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::Module;
@@ -18,11 +18,17 @@ fn test_frame_walker_finds_roots() {
         sig.params.push(ir::AbiParam::new(types::I64));
         sig
     };
-    let gc_id = pipeline.module.declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext).unwrap();
+    let gc_id = pipeline
+        .module
+        .declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext)
+        .unwrap();
 
-    let func_id = pipeline.declare_function("test_find_roots").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_find_roots")
+        .expect("failed to declare");
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -52,7 +58,9 @@ fn test_frame_walker_finds_roots() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     host_fns::reset_test_counters();
@@ -68,7 +76,7 @@ fn test_frame_walker_finds_roots() {
     let _result = unsafe { f(&mut vmctx as *mut VMContext) };
 
     assert_eq!(host_fns::gc_trigger_call_count(), 1);
-    
+
     let roots = host_fns::last_gc_roots();
     assert_eq!(roots.len(), 2, "Should have found 2 roots");
 
@@ -89,11 +97,17 @@ fn test_frame_walker_rewrite_roots() {
         sig.params.push(ir::AbiParam::new(types::I64));
         sig
     };
-    let gc_id = pipeline.module.declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext).unwrap();
+    let gc_id = pipeline
+        .module
+        .declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext)
+        .unwrap();
 
-    let func_id = pipeline.declare_function("test_rewrite_roots").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_rewrite_roots")
+        .expect("failed to declare");
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -118,21 +132,21 @@ fn test_frame_walker_rewrite_roots() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     host_fns::reset_test_counters();
     host_fns::set_stack_map_registry(&pipeline.stack_maps);
-    host_fns::set_gc_test_hook(|roots| {
-        unsafe {
-            frame_walker::rewrite_roots(roots, &|ptr| {
-                if ptr as u64 == 0x1234_5678_9ABC_DEF0u64 {
-                    0xFEED_FACE_CAFE_BEEFu64 as *mut u8
-                } else {
-                    ptr
-                }
-            });
-        }
+    host_fns::set_gc_test_hook(|roots| unsafe {
+        frame_walker::rewrite_roots(roots, &|ptr| {
+            if ptr as u64 == 0x1234_5678_9ABC_DEF0u64 {
+                0xFEED_FACE_CAFE_BEEFu64 as *mut u8
+            } else {
+                ptr
+            }
+        });
     });
 
     let mut nursery = vec![0u8; 4096];
@@ -140,10 +154,14 @@ fn test_frame_walker_rewrite_roots() {
     let end = unsafe { start.add(4096) };
     let mut vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-    let f: unsafe extern "C" fn(*mut VMContext) -> i64 = unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
+    let f: unsafe extern "C" fn(*mut VMContext) -> i64 =
+        unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
     let result = unsafe { f(&mut vmctx as *mut VMContext) };
 
-    assert_eq!(result as u64, 0xFEED_FACE_CAFE_BEEFu64, "Root should have been rewritten");
+    assert_eq!(
+        result as u64, 0xFEED_FACE_CAFE_BEEFu64,
+        "Root should have been rewritten"
+    );
 
     host_fns::clear_gc_test_hook();
     host_fns::clear_stack_map_registry();
@@ -152,10 +170,13 @@ fn test_frame_walker_rewrite_roots() {
 #[test]
 fn test_frame_walker_terminates_at_jit_boundary() {
     let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
-    let func_id = pipeline.declare_function("test_boundary").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_boundary")
+        .expect("failed to declare");
 
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -169,7 +190,10 @@ fn test_frame_walker_terminates_at_jit_boundary() {
         // Declare gc_trigger signature
         let mut gc_sig = ir::Signature::new(pipeline.isa.default_call_conv());
         gc_sig.params.push(ir::AbiParam::new(types::I64));
-        let gc_id = pipeline.module.declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig).unwrap();
+        let gc_id = pipeline
+            .module
+            .declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig)
+            .unwrap();
         let gc_ref = pipeline.module.declare_func_in_func(gc_id, builder.func);
 
         builder.ins().call(gc_ref, &[vmctx]);
@@ -179,7 +203,9 @@ fn test_frame_walker_terminates_at_jit_boundary() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     host_fns::reset_test_counters();
@@ -190,14 +216,15 @@ fn test_frame_walker_terminates_at_jit_boundary() {
     let end = unsafe { start.add(4096) };
     let mut vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-    let f: unsafe extern "C" fn(*mut VMContext) -> i64 = unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
-    
+    let f: unsafe extern "C" fn(*mut VMContext) -> i64 =
+        unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
+
     // This call goes Rust -> JIT -> Rust (gc_trigger)
     // The frame walker should see the JIT frame but stop at the Rust frame.
     unsafe { f(&mut vmctx as *mut VMContext) };
 
     assert_eq!(host_fns::gc_trigger_call_count(), 1);
-    
+
     // If it didn't terminate, it would likely crash or return many bogus roots.
     // The current JIT frame doesn't have any roots declared.
     let roots = host_fns::last_gc_roots();

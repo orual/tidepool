@@ -1,8 +1,8 @@
 use crate::error::EffectError;
+use frunk::{HCons, HNil};
 use tidepool_bridge::{FromCore, ToCore};
 use tidepool_eval::value::Value;
 use tidepool_repr::DataConTable;
-use frunk::{HCons, HNil};
 
 pub struct EffectContext<'a, U = ()> {
     table: &'a DataConTable,

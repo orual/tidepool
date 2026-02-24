@@ -1,9 +1,9 @@
-use crate::pipeline::CodegenPipeline;
-use crate::emit::*;
 use crate::emit::expr::ensure_heap_ptr;
-use tidepool_repr::*;
+use crate::emit::*;
+use crate::pipeline::CodegenPipeline;
 use cranelift_codegen::ir::{self, types, InstBuilder, Value};
 use cranelift_frontend::FunctionBuilder;
+use tidepool_repr::*;
 
 /// Emits a Join expression.
 /// Join { label, params, rhs, body } creates a join point (a parameterized block)
@@ -36,10 +36,13 @@ pub fn emit_join(
     // 4. Register the join point in ctx
     // We use a dummy Value(0) for param_types since Jump just needs to know they are heap pointers.
     let dummy_val = Value::from_u32(0);
-    ctx.join_blocks.insert(*label, JoinInfo {
-        block: join_block,
-        param_types: params.iter().map(|_| SsaVal::HeapPtr(dummy_val)).collect(),
-    });
+    ctx.join_blocks.insert(
+        *label,
+        JoinInfo {
+            block: join_block,
+            param_types: params.iter().map(|_| SsaVal::HeapPtr(dummy_val)).collect(),
+        },
+    );
 
     // 5. Emit body (the continuation that may contain Jumps)
     let body_result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, tree, body_idx)?;
@@ -49,13 +52,13 @@ pub fn emit_join(
     // 6. Switch to join block, emit rhs
     builder.switch_to_block(join_block);
     ctx.declare_env(builder);
-    
+
     // Bind params to block params
     let block_params = builder.block_params(join_block).to_vec();
     let mut old_env_vals = Vec::new();
     for (i, param_var) in params.iter().enumerate() {
         let val = block_params[i];
-        builder.declare_value_needs_stack_map(val);  // CRITICAL
+        builder.declare_value_needs_stack_map(val); // CRITICAL
         let old_val = ctx.env.insert(*param_var, SsaVal::HeapPtr(val));
         old_env_vals.push((*param_var, old_val));
     }
@@ -73,7 +76,7 @@ pub fn emit_join(
     // 8. Switch to merge block, get result
     builder.switch_to_block(merge_block);
     let result = builder.block_params(merge_block)[0];
-    builder.declare_value_needs_stack_map(result);  // CRITICAL
+    builder.declare_value_needs_stack_map(result); // CRITICAL
     ctx.declare_env(builder);
 
     // 9. Clean up
@@ -107,8 +110,11 @@ pub fn emit_jump(
     // Note: JoinInfo must be cloned or copied out because we'll be using the builder.
     // However, JoinInfo doesn't implement Clone. But Block and Value are Copy.
     // Actually, JoinInfo is not needed, just the block.
-    let join_block = ctx.join_blocks.get(label)
-        .ok_or_else(|| EmitError::NotYetImplemented(format!("Jump to unknown label {:?}", label)))?.block;
+    let join_block = ctx
+        .join_blocks
+        .get(label)
+        .ok_or_else(|| EmitError::NotYetImplemented(format!("Jump to unknown label {:?}", label)))?
+        .block;
 
     // 2. Emit each arg
     let mut arg_values = Vec::new();
@@ -128,5 +134,8 @@ pub fn emit_jump(
     builder.seal_block(unreachable_block);
 
     // 6. Return a dummy SsaVal (dead code)
-    Ok(SsaVal::Raw(builder.ins().iconst(types::I64, 0), LIT_TAG_INT))
+    Ok(SsaVal::Raw(
+        builder.ins().iconst(types::I64, 0),
+        LIT_TAG_INT,
+    ))
 }

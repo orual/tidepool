@@ -1,7 +1,7 @@
+use std::collections::VecDeque;
 use tidepool_eval::env::Env;
 use tidepool_eval::heap::{Heap, ThunkState};
 use tidepool_eval::value::{ThunkId, Value};
-use std::collections::VecDeque;
 
 /// Maps old ThunkIds to new ThunkIds.
 pub struct ForwardingTable {

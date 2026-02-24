@@ -1,11 +1,11 @@
-pub mod expr;
-pub mod primop;
 pub mod case;
+pub mod expr;
 pub mod join;
+pub mod primop;
 
 use cranelift_codegen::ir::Value;
-use tidepool_repr::{VarId, JoinId, PrimOpKind};
 use std::collections::HashMap;
+use tidepool_repr::{JoinId, PrimOpKind, VarId};
 
 // HeapObject layout constants
 pub const HEAP_HEADER_SIZE: u64 = 8;
@@ -76,7 +76,11 @@ impl std::fmt::Display for EmitError {
             EmitError::CraneliftError(s) => write!(f, "cranelift error: {}", s),
             EmitError::Pipeline(e) => write!(f, "pipeline error: {}", e),
             EmitError::InvalidArity(op, expected, got) => {
-                write!(f, "invalid arity for {:?}: expected {}, got {}", op, expected, got)
+                write!(
+                    f,
+                    "invalid arity for {:?}: expected {}, got {}",
+                    op, expected, got
+                )
             }
         }
     }

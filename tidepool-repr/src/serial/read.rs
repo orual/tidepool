@@ -106,11 +106,7 @@ pub fn read_metadata(bytes: &[u8]) -> Result<crate::DataConTable, ReadError> {
         for b in bangs_arr {
             let bang_str = match b {
                 Value::Text(t) => t.as_str(),
-                _ => {
-                    return Err(ReadError::InvalidStructure(
-                        "Bang must be text".to_string(),
-                    ))
-                }
+                _ => return Err(ReadError::InvalidStructure("Bang must be text".to_string())),
             };
             bangs.push(match bang_str {
                 "SrcBang" => SrcBang::SrcBang,

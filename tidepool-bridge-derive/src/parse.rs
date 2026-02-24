@@ -28,8 +28,7 @@ pub fn parse_input(input: &DeriveInput) -> Result<DataInfo, syn::Error> {
     match &input.data {
         Data::Enum(_) => parse_enum(input).map(DataInfo::Enum),
         Data::Struct(s) => {
-            let core_name = get_core_name(&input.attrs)?
-                .unwrap_or_else(|| input.ident.to_string());
+            let core_name = get_core_name(&input.attrs)?.unwrap_or_else(|| input.ident.to_string());
             let fields = match &s.fields {
                 Fields::Named(f) => f
                     .named
@@ -58,12 +57,7 @@ pub fn parse_input(input: &DeriveInput) -> Result<DataInfo, syn::Error> {
 pub fn parse_enum(input: &DeriveInput) -> Result<EnumInfo, syn::Error> {
     let data_enum = match &input.data {
         Data::Enum(e) => e,
-        _ => {
-            return Err(syn::Error::new_spanned(
-                input,
-                "Only enums are supported",
-            ))
-        }
+        _ => return Err(syn::Error::new_spanned(input, "Only enums are supported")),
     };
 
     let mut variants = Vec::new();

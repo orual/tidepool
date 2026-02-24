@@ -1,8 +1,8 @@
 use bumpalo::Bump;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tidepool_eval::value::Value;
 use tidepool_eval::{Heap, ThunkId, ThunkState};
 use tidepool_repr::CoreExpr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Arena-based heap for Tidepool.
 ///

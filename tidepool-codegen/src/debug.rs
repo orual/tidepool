@@ -10,9 +10,9 @@
 //! - `TIDEPOOL_TRACE=calls` — log each closure call (name, arg, result)
 //! - `TIDEPOOL_TRACE=heap` — also validate heap objects before use
 
-use tidepool_heap::layout;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use tidepool_heap::layout;
 
 // ── Lambda Registry ──────────────────────────────────────────
 
@@ -142,11 +142,19 @@ pub enum HeapError {
     /// Closure has null code pointer
     NullCodePtr,
     /// Size field doesn't match expected size for the object type
-    SizeMismatch { expected_min: u16, actual: u16 },
+    SizeMismatch {
+        expected_min: u16,
+        actual: u16,
+    },
     /// A field pointer is null
-    NullField { index: usize },
+    NullField {
+        index: usize,
+    },
     /// A field pointer has an invalid heap tag
-    InvalidFieldTag { index: usize, tag: u8 },
+    InvalidFieldTag {
+        index: usize,
+        tag: u8,
+    },
 }
 
 impl std::fmt::Display for HeapError {
@@ -156,8 +164,15 @@ impl std::fmt::Display for HeapError {
             HeapError::InvalidTag(t) => write!(f, "invalid heap tag: {}", t),
             HeapError::ZeroSize => write!(f, "zero size"),
             HeapError::NullCodePtr => write!(f, "null code pointer in closure"),
-            HeapError::SizeMismatch { expected_min, actual } => {
-                write!(f, "size mismatch: expected >= {}, got {}", expected_min, actual)
+            HeapError::SizeMismatch {
+                expected_min,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "size mismatch: expected >= {}, got {}",
+                    expected_min, actual
+                )
             }
             HeapError::NullField { index } => write!(f, "null pointer in field {}", index),
             HeapError::InvalidFieldTag { index, tag } => {
@@ -254,8 +269,7 @@ pub unsafe fn heap_validate_deep(ptr: *const u8) -> Result<(), HeapError> {
         Some(layout::HeapTag::Con) => {
             let num_fields = *(ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *const u16);
             for i in 0..num_fields as usize {
-                let field =
-                    *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *const *const u8);
+                let field = *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *const *const u8);
                 if field.is_null() {
                     return Err(HeapError::NullField { index: i });
                 }
@@ -271,8 +285,7 @@ pub unsafe fn heap_validate_deep(ptr: *const u8) -> Result<(), HeapError> {
         Some(layout::HeapTag::Closure) => {
             let num_captured = *(ptr.add(layout::CLOSURE_NUM_CAPTURED_OFFSET) as *const u16);
             for i in 0..num_captured as usize {
-                let cap =
-                    *(ptr.add(layout::CLOSURE_CAPTURED_OFFSET + 8 * i) as *const *const u8);
+                let cap = *(ptr.add(layout::CLOSURE_CAPTURED_OFFSET + 8 * i) as *const *const u8);
                 if cap.is_null() {
                     return Err(HeapError::NullField { index: i });
                 }

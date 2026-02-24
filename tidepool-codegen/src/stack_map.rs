@@ -43,14 +43,17 @@ impl StackMapRegistry {
     /// (the return point), so `base_ptr + code_offset` IS the absolute return address.
     pub fn register(&mut self, base_ptr: usize, size: u32, raw_entries: &[RawStackMap]) {
         self.ranges.push((base_ptr, base_ptr + size as usize));
-        
+
         for (code_offset, frame_size, slot_entries) in raw_entries {
             let return_addr = base_ptr + *code_offset as usize;
             let offsets: Vec<u32> = slot_entries.iter().map(|(_, offset)| *offset).collect();
-            self.entries.insert(return_addr, StackMapInfo {
-                frame_size: *frame_size,
-                offsets,
-            });
+            self.entries.insert(
+                return_addr,
+                StackMapInfo {
+                    frame_size: *frame_size,
+                    offsets,
+                },
+            );
         }
     }
 
@@ -72,6 +75,8 @@ impl StackMapRegistry {
     /// Check if an address falls within the known JIT code region.
     /// Used by the frame walker to determine when to stop walking.
     pub fn contains_address(&self, addr: usize) -> bool {
-        self.ranges.iter().any(|(start, end)| addr >= *start && addr < *end)
+        self.ranges
+            .iter()
+            .any(|(start, end)| addr >= *start && addr < *end)
     }
 }

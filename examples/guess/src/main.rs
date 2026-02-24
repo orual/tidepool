@@ -4,11 +4,11 @@
 //! at build time via `haskell_inline!`, JIT-compiled to native code via Cranelift,
 //! and driven by Rust-side effect handlers for console IO and random number generation.
 
-use tidepool_codegen::jit_machine::JitEffectMachine;
+use rand::Rng;
 use tidepool_bridge_derive::FromCore;
+use tidepool_codegen::jit_machine::JitEffectMachine;
 use tidepool_effect::{EffectContext, EffectError, EffectHandler};
 use tidepool_eval::value::Value;
-use rand::Rng;
 use tidepool_macro::haskell_inline;
 
 #[derive(FromCore)]
@@ -84,8 +84,7 @@ guessLoop target = do
         "#
     };
 
-    let mut vm =
-        JitEffectMachine::compile(&expr, &table, 1 << 20).expect("JIT compilation failed");
+    let mut vm = JitEffectMachine::compile(&expr, &table, 1 << 20).expect("JIT compilation failed");
 
     let mut handlers = frunk::hlist![ConsoleHandler, RngHandler(rand::thread_rng())];
 

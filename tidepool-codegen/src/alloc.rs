@@ -1,4 +1,4 @@
-use cranelift_codegen::ir::{self, types, InstBuilder, Value, MemFlags};
+use cranelift_codegen::ir::{self, types, InstBuilder, MemFlags, Value};
 use cranelift_frontend::FunctionBuilder;
 
 /// Offset of alloc_ptr within VMContext (byte 0).
@@ -41,57 +41,85 @@ pub fn emit_alloc_fast_path(
     let flags = MemFlags::trusted();
 
     // Load current alloc_ptr
-    let alloc_ptr = builder.ins().load(types::I64, flags, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
+    let alloc_ptr = builder
+        .ins()
+        .load(types::I64, flags, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
 
     // Compute new_ptr = alloc_ptr + aligned_size
     let size_val = builder.ins().iconst(types::I64, aligned_size as i64);
     let new_ptr = builder.ins().iadd(alloc_ptr, size_val);
 
     // Load alloc_limit
-    let alloc_limit = builder.ins().load(types::I64, flags, vmctx_val, VMCTX_ALLOC_LIMIT_OFFSET);
+    let alloc_limit = builder
+        .ins()
+        .load(types::I64, flags, vmctx_val, VMCTX_ALLOC_LIMIT_OFFSET);
 
     // Compare: new_ptr > alloc_limit
-    let overflow = builder.ins().icmp(ir::condcodes::IntCC::UnsignedGreaterThan, new_ptr, alloc_limit);
+    let overflow = builder.ins().icmp(
+        ir::condcodes::IntCC::UnsignedGreaterThan,
+        new_ptr,
+        alloc_limit,
+    );
 
     let slow_block = builder.create_block();
     let fast_store_block = builder.create_block();
     let continue_block = builder.create_block();
     builder.append_block_param(continue_block, types::I64); // result ptr
 
-    builder.ins().brif(overflow, slow_block, &[], fast_store_block, &[]);
+    builder
+        .ins()
+        .brif(overflow, slow_block, &[], fast_store_block, &[]);
 
     // --- Fast path: store new_ptr, jump to continue with old alloc_ptr ---
     builder.switch_to_block(fast_store_block);
     builder.seal_block(fast_store_block);
-    builder.ins().store(flags, new_ptr, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
+    builder
+        .ins()
+        .store(flags, new_ptr, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
     builder.ins().jump(continue_block, &[alloc_ptr]);
 
     // --- Slow path: call gc_trigger, retry alloc ---
     builder.switch_to_block(slow_block);
     builder.seal_block(slow_block);
 
-    let gc_trigger_ptr = builder.ins().load(types::I64, flags, vmctx_val, VMCTX_GC_TRIGGER_OFFSET);
-    builder.ins().call_indirect(gc_trigger_sig, gc_trigger_ptr, &[vmctx_val]);
+    let gc_trigger_ptr = builder
+        .ins()
+        .load(types::I64, flags, vmctx_val, VMCTX_GC_TRIGGER_OFFSET);
+    builder
+        .ins()
+        .call_indirect(gc_trigger_sig, gc_trigger_ptr, &[vmctx_val]);
 
     // After GC: reload alloc_ptr and alloc_limit, bump, check, then store or trap.
-    let post_gc_ptr = builder.ins().load(types::I64, flags, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
-    let post_gc_limit = builder.ins().load(types::I64, flags, vmctx_val, VMCTX_ALLOC_LIMIT_OFFSET);
-    let post_gc_new = builder.ins().iadd(post_gc_ptr, size_val);
-    let post_gc_overflow = builder
+    let post_gc_ptr = builder
         .ins()
-        .icmp(ir::condcodes::IntCC::UnsignedGreaterThan, post_gc_new, post_gc_limit);
+        .load(types::I64, flags, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
+    let post_gc_limit = builder
+        .ins()
+        .load(types::I64, flags, vmctx_val, VMCTX_ALLOC_LIMIT_OFFSET);
+    let post_gc_new = builder.ins().iadd(post_gc_ptr, size_val);
+    let post_gc_overflow = builder.ins().icmp(
+        ir::condcodes::IntCC::UnsignedGreaterThan,
+        post_gc_new,
+        post_gc_limit,
+    );
 
     let slow_fail_block = builder.create_block();
     let slow_store_block = builder.create_block();
 
-    builder
-        .ins()
-        .brif(post_gc_overflow, slow_fail_block, &[], slow_store_block, &[]);
+    builder.ins().brif(
+        post_gc_overflow,
+        slow_fail_block,
+        &[],
+        slow_store_block,
+        &[],
+    );
 
     // Slow path success: store new alloc_ptr and continue.
     builder.switch_to_block(slow_store_block);
     builder.seal_block(slow_store_block);
-    builder.ins().store(flags, post_gc_new, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
+    builder
+        .ins()
+        .store(flags, post_gc_new, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
     builder.ins().jump(continue_block, &[post_gc_ptr]);
 
     // Slow path failure: allocation still does not fit, trap.

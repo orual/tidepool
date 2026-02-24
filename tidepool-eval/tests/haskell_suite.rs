@@ -40,7 +40,9 @@ fn unbox(val: &Value, table: &DataConTable) -> Value {
 fn assert_int(val: &Value, expected: i64, table: &DataConTable) {
     let inner = unbox(val, table);
     match inner {
-        Value::Lit(Literal::LitInt(n)) => assert_eq!(n, expected, "expected Int {expected}, got {n}"),
+        Value::Lit(Literal::LitInt(n)) => {
+            assert_eq!(n, expected, "expected Int {expected}, got {n}")
+        }
         ref other => panic!("expected Int {expected}, got {other:?}"),
     }
 }

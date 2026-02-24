@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
+
+use ast_grep_core::{Language as _, Pattern};
+use ast_grep_language::{LanguageExt, SupportLang};
 use tidepool_bridge_derive::{FromCore, ToCore};
 use tidepool_effect::dispatch::{EffectContext, EffectHandler};
 use tidepool_effect::error::EffectError;
@@ -20,12 +22,18 @@ enum ConsoleReq {
 struct ConsoleHandler;
 
 impl DescribeEffect for ConsoleHandler {
-    fn effect_decl() -> EffectDecl { tidepool_mcp::console_decl() }
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::console_decl()
+    }
 }
 
 impl EffectHandler<CapturedOutput> for ConsoleHandler {
     type Request = ConsoleReq;
-    fn handle(&mut self, req: ConsoleReq, cx: &EffectContext<'_, CapturedOutput>) -> Result<Value, EffectError> {
+    fn handle(
+        &mut self,
+        req: ConsoleReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
         match req {
             ConsoleReq::Print(s) => {
                 cx.user().push(s);
@@ -63,12 +71,18 @@ impl KvHandler {
 }
 
 impl DescribeEffect for KvHandler {
-    fn effect_decl() -> EffectDecl { tidepool_mcp::kv_decl() }
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::kv_decl()
+    }
 }
 
 impl EffectHandler<CapturedOutput> for KvHandler {
     type Request = KvReq;
-    fn handle(&mut self, req: KvReq, cx: &EffectContext<'_, CapturedOutput>) -> Result<Value, EffectError> {
+    fn handle(
+        &mut self,
+        req: KvReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
         let mut store = self
             .store
             .lock()
@@ -148,12 +162,18 @@ impl FsHandler {
 }
 
 impl DescribeEffect for FsHandler {
-    fn effect_decl() -> EffectDecl { tidepool_mcp::fs_decl() }
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::fs_decl()
+    }
 }
 
 impl EffectHandler<CapturedOutput> for FsHandler {
     type Request = FsReq;
-    fn handle(&mut self, req: FsReq, cx: &EffectContext<'_, CapturedOutput>) -> Result<Value, EffectError> {
+    fn handle(
+        &mut self,
+        req: FsReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
         match req {
             FsReq::Read(path) => {
                 let resolved = self.resolve(&path)?;
@@ -175,41 +195,58 @@ impl EffectHandler<CapturedOutput> for FsHandler {
 
 #[derive(Clone, Copy, FromCore)]
 enum Lang {
-    #[core(name = "Rust")]       Rust,
-    #[core(name = "Python")]     Python,
-    #[core(name = "TypeScript")] TypeScript,
-    #[core(name = "JavaScript")] JavaScript,
-    #[core(name = "Go")]         Go,
-    #[core(name = "Java")]       Java,
-    #[core(name = "C")]          C,
-    #[core(name = "Cpp")]        Cpp,
-    #[core(name = "Haskell")]    Haskell,
-    #[core(name = "Nix")]        Nix,
-    #[core(name = "Html")]       Html,
-    #[core(name = "Css")]        Css,
-    #[core(name = "Json")]       Json,
-    #[core(name = "Yaml")]       Yaml,
-    #[core(name = "Toml")]       Toml,
+    #[core(name = "Rust")]
+    Rust,
+    #[core(name = "Python")]
+    Python,
+    #[core(name = "TypeScript")]
+    TypeScript,
+    #[core(name = "JavaScript")]
+    JavaScript,
+    #[core(name = "Go")]
+    Go,
+    #[core(name = "Java")]
+    Java,
+    #[core(name = "C")]
+    C,
+    #[core(name = "Cpp")]
+    Cpp,
+    #[core(name = "Haskell")]
+    Haskell,
+    #[core(name = "Nix")]
+    Nix,
+    #[core(name = "Html")]
+    Html,
+    #[core(name = "Css")]
+    Css,
+    #[core(name = "Json")]
+    Json,
+    #[core(name = "Yaml")]
+    Yaml,
+    #[core(name = "Toml")]
+    Toml,
 }
 
 impl Lang {
-    fn as_str(&self) -> &'static str {
+    fn to_support_lang(self) -> Result<SupportLang, EffectError> {
         match self {
-            Lang::Rust => "rust",
-            Lang::Python => "python",
-            Lang::TypeScript => "typescript",
-            Lang::JavaScript => "javascript",
-            Lang::Go => "go",
-            Lang::Java => "java",
-            Lang::C => "c",
-            Lang::Cpp => "cpp",
-            Lang::Haskell => "haskell",
-            Lang::Nix => "nix",
-            Lang::Html => "html",
-            Lang::Css => "css",
-            Lang::Json => "json",
-            Lang::Yaml => "yaml",
-            Lang::Toml => "toml",
+            Lang::Rust => Ok(SupportLang::Rust),
+            Lang::Python => Ok(SupportLang::Python),
+            Lang::TypeScript => Ok(SupportLang::TypeScript),
+            Lang::JavaScript => Ok(SupportLang::JavaScript),
+            Lang::Go => Ok(SupportLang::Go),
+            Lang::Java => Ok(SupportLang::Java),
+            Lang::C => Ok(SupportLang::C),
+            Lang::Cpp => Ok(SupportLang::Cpp),
+            Lang::Haskell => Ok(SupportLang::Haskell),
+            Lang::Nix => Ok(SupportLang::Nix),
+            Lang::Html => Ok(SupportLang::Html),
+            Lang::Css => Ok(SupportLang::Css),
+            Lang::Json => Ok(SupportLang::Json),
+            Lang::Yaml => Ok(SupportLang::Yaml),
+            Lang::Toml => Err(EffectError::Handler(
+                "Toml is not supported by ast-grep".into(),
+            )),
         }
     }
 }
@@ -237,42 +274,6 @@ struct SgMatch {
     replacement: String,
 }
 
-// ast-grep JSON output structures
-
-#[derive(serde::Deserialize)]
-struct AstGrepMatch {
-    text: String,
-    file: String,
-    range: AstGrepRange,
-    #[serde(default)]
-    replacement: Option<String>,
-    #[serde(default, rename = "metaVariables")]
-    meta_variables: AstGrepMetaVars,
-}
-
-#[derive(serde::Deserialize, Default)]
-struct AstGrepMetaVars {
-    #[serde(default)]
-    single: HashMap<String, AstGrepCapture>,
-    #[serde(default)]
-    multi: HashMap<String, Vec<AstGrepCapture>>,
-}
-
-#[derive(serde::Deserialize)]
-struct AstGrepCapture {
-    text: String,
-}
-
-#[derive(serde::Deserialize)]
-struct AstGrepRange {
-    start: AstGrepPos,
-}
-
-#[derive(serde::Deserialize)]
-struct AstGrepPos {
-    line: i64,
-}
-
 #[derive(Clone)]
 struct SgHandler {
     root: PathBuf,
@@ -283,6 +284,53 @@ impl SgHandler {
         Self { root }
     }
 
+    fn collect_files(
+        &self,
+        lang: SupportLang,
+        paths: &[String],
+    ) -> Result<Vec<PathBuf>, EffectError> {
+        let mut files = Vec::new();
+        if paths.is_empty() {
+            self.walk_dir(&self.root, lang, &mut files)?;
+        } else {
+            for p in paths {
+                let full = self.root.join(p);
+                if full.is_file() {
+                    files.push(full);
+                } else if full.is_dir() {
+                    self.walk_dir(&full, lang, &mut files)?;
+                }
+            }
+        }
+        Ok(files)
+    }
+
+    fn walk_dir(
+        &self,
+        dir: &std::path::Path,
+        lang: SupportLang,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<(), EffectError> {
+        let entries = std::fs::read_dir(dir)
+            .map_err(|e| EffectError::Handler(format!("read_dir {}: {}", dir.display(), e)))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| EffectError::Handler(e.to_string()))?;
+            let path = entry.path();
+            if path.is_dir() {
+                if path
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                {
+                    continue;
+                }
+                self.walk_dir(&path, lang, files)?;
+            } else if SupportLang::from_path(&path) == Some(lang) {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+
     fn run_find(
         &self,
         lang: Lang,
@@ -290,59 +338,46 @@ impl SgHandler {
         paths: &[String],
         rewrite: Option<&str>,
     ) -> Result<Vec<SgMatch>, EffectError> {
-        let mut cmd = Command::new("ast-grep");
-        cmd.arg("run")
-            .arg("--pattern").arg(pattern)
-            .arg("--lang").arg(lang.as_str())
-            .arg("--json=compact");
-        if let Some(rw) = rewrite {
-            cmd.arg("--rewrite").arg(rw);
-        }
-        for p in paths {
-            cmd.arg(self.root.join(p));
-        }
-        cmd.current_dir(&self.root);
+        let sl = lang.to_support_lang()?;
+        let pat = Pattern::try_new(pattern, sl)
+            .map_err(|e| EffectError::Handler(format!("invalid pattern: {}", e)))?;
+        let files = self.collect_files(sl, paths)?;
+        let mut results = Vec::new();
 
-        let output = cmd.output()
-            .map_err(|e| EffectError::Handler(format!("ast-grep exec failed: {}", e)))?;
-
-        // exit code 1 = no matches
-        if !output.status.success() && output.status.code() != Some(1) {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(EffectError::Handler(format!("ast-grep error: {}", stderr)));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.trim().is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let raw: Vec<AstGrepMatch> = serde_json::from_str(&stdout)
-            .map_err(|e| EffectError::Handler(format!("ast-grep JSON parse: {}", e)))?;
-
-        Ok(raw.into_iter().map(|m| {
-            let mut vars: Vec<(String, String)> = m.meta_variables.single.into_iter()
-                .map(|(k, v)| (k, v.text))
-                .collect();
-            // Include multi-captures ($$$ vars) as joined text
-            for (k, captures) in m.meta_variables.multi {
-                let joined: String = captures.into_iter().map(|c| c.text).collect::<Vec<_>>().join("\n");
-                vars.push((k, joined));
-            }
-            vars.sort_by(|a, b| a.0.cmp(&b.0));
-            // Make file path relative to root
-            let file = m.file.strip_prefix(self.root.to_str().unwrap_or(""))
-                .unwrap_or(&m.file)
-                .trim_start_matches('/')
+        for file_path in files {
+            let source = std::fs::read_to_string(&file_path)
+                .map_err(|e| EffectError::Handler(e.to_string()))?;
+            let grep = sl.ast_grep(&source);
+            let relative = file_path
+                .strip_prefix(&self.root)
+                .unwrap_or(&file_path)
+                .to_string_lossy()
                 .to_string();
-            SgMatch {
-                text: m.text,
-                file,
-                line: m.range.start.line + 1, // ast-grep is 0-indexed, Haskell convention is 1-indexed
-                vars,
-                replacement: m.replacement.unwrap_or_default(),
+
+            for m in grep.root().find_all(&pat) {
+                let text = m.text().to_string();
+                let line = m.start_pos().line() as i64 + 1;
+                let env: HashMap<String, String> = m.get_env().clone().into();
+                let mut vars: Vec<(String, String)> = env.into_iter().collect();
+                vars.sort_by(|a, b| a.0.cmp(&b.0));
+
+                let replacement = if let Some(rw) = rewrite {
+                    let edit = m.replace_by(rw);
+                    String::from_utf8_lossy(&edit.inserted_text).to_string()
+                } else {
+                    String::new()
+                };
+
+                results.push(SgMatch {
+                    text,
+                    file: relative.clone(),
+                    line,
+                    vars,
+                    replacement,
+                });
             }
-        }).collect())
+        }
+        Ok(results)
     }
 
     fn run_replace(
@@ -352,44 +387,50 @@ impl SgHandler {
         rewrite: &str,
         paths: &[String],
     ) -> Result<i64, EffectError> {
-        // First do a find to count matches
-        let matches = self.run_find(lang.clone(), pattern, paths, Some(rewrite))?;
-        let count = matches.len() as i64;
-        if count == 0 {
-            return Ok(0);
+        let sl = lang.to_support_lang()?;
+        let files = self.collect_files(sl, paths)?;
+        let mut total = 0i64;
+
+        for file_path in files {
+            let source = std::fs::read_to_string(&file_path)
+                .map_err(|e| EffectError::Handler(e.to_string()))?;
+            let mut grep = sl.ast_grep(&source);
+            let mut file_count = 0i64;
+
+            loop {
+                let pat = Pattern::try_new(pattern, sl)
+                    .map_err(|e| EffectError::Handler(format!("invalid pattern: {}", e)))?;
+                match grep.replace(pat, rewrite) {
+                    Ok(true) => file_count += 1,
+                    Ok(false) => break,
+                    Err(e) => return Err(EffectError::Handler(e)),
+                }
+            }
+
+            if file_count > 0 {
+                let modified = grep.generate();
+                std::fs::write(&file_path, &modified)
+                    .map_err(|e| EffectError::Handler(e.to_string()))?;
+                total += file_count;
+            }
         }
-
-        // Now apply with --update-all
-        let mut cmd = Command::new("ast-grep");
-        cmd.arg("run")
-            .arg("--pattern").arg(pattern)
-            .arg("--rewrite").arg(rewrite)
-            .arg("--lang").arg(lang.as_str())
-            .arg("--update-all");
-        for p in paths {
-            cmd.arg(self.root.join(p));
-        }
-        cmd.current_dir(&self.root);
-
-        let output = cmd.output()
-            .map_err(|e| EffectError::Handler(format!("ast-grep exec failed: {}", e)))?;
-
-        if !output.status.success() && output.status.code() != Some(1) {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(EffectError::Handler(format!("ast-grep replace error: {}", stderr)));
-        }
-
-        Ok(count)
+        Ok(total)
     }
 }
 
 impl DescribeEffect for SgHandler {
-    fn effect_decl() -> EffectDecl { tidepool_mcp::sg_decl() }
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::sg_decl()
+    }
 }
 
 impl EffectHandler<CapturedOutput> for SgHandler {
     type Request = SgReq;
-    fn handle(&mut self, req: SgReq, cx: &EffectContext<'_, CapturedOutput>) -> Result<Value, EffectError> {
+    fn handle(
+        &mut self,
+        req: SgReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
         match req {
             SgReq::Find(lang, pattern, paths) => {
                 let matches = self.run_find(lang, &pattern, &paths, None)?;
@@ -418,7 +459,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let cwd = std::env::current_dir()?;
-    let handlers = frunk::hlist![ConsoleHandler, KvHandler::new(), FsHandler::new(cwd.clone()), SgHandler::new(cwd.clone())];
+    let handlers = frunk::hlist![
+        ConsoleHandler,
+        KvHandler::new(),
+        FsHandler::new(cwd.clone()),
+        SgHandler::new(cwd.clone())
+    ];
 
     // Prelude lives at haskell/lib/ relative to repo root, or via TIDEPOOL_PRELUDE_DIR.
     // Try haskell/lib first (running from repo root), fall back to lib/ (running from haskell/).

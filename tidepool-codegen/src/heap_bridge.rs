@@ -1,8 +1,8 @@
 use crate::context::VMContext;
+use std::fmt;
 use tidepool_eval::value::Value;
 use tidepool_heap::layout;
 use tidepool_repr::{DataConId, Literal};
-use std::fmt;
 
 #[derive(Debug)]
 pub enum BridgeError {
@@ -70,12 +70,16 @@ pub unsafe fn heap_to_value(ptr: *const u8) -> Result<Value, BridgeError> {
                     // ByteArray# — raw pointer to [len: u64][bytes...]
                     let ba_ptr = raw_value as *const u8;
                     if ba_ptr.is_null() {
-                        return Ok(Value::ByteArray(std::sync::Arc::new(std::sync::Mutex::new(vec![]))));
+                        return Ok(Value::ByteArray(std::sync::Arc::new(
+                            std::sync::Mutex::new(vec![]),
+                        )));
                     }
                     let len = std::ptr::read_unaligned(ba_ptr as *const u64) as usize;
                     let bytes_ptr = ba_ptr.add(8);
                     let bytes = std::slice::from_raw_parts(bytes_ptr, len).to_vec();
-                    Ok(Value::ByteArray(std::sync::Arc::new(std::sync::Mutex::new(bytes))))
+                    Ok(Value::ByteArray(std::sync::Arc::new(
+                        std::sync::Mutex::new(bytes),
+                    )))
                 }
                 other => Err(BridgeError::UnexpectedLitTag(other as u8)),
             }
@@ -85,8 +89,7 @@ pub unsafe fn heap_to_value(ptr: *const u8) -> Result<Value, BridgeError> {
             let num_fields = *(ptr.add(layout::CON_NUM_FIELDS_OFFSET) as *const u16) as usize;
             let mut fields = Vec::with_capacity(num_fields);
             for i in 0..num_fields {
-                let field_ptr =
-                    *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *const *const u8);
+                let field_ptr = *(ptr.add(layout::CON_FIELDS_OFFSET + 8 * i) as *const *const u8);
                 fields.push(heap_to_value(field_ptr)?);
             }
             Ok(Value::Con(DataConId(con_tag), fields))
@@ -144,12 +147,8 @@ pub unsafe fn value_to_heap(val: &Value, vmctx: &mut VMContext) -> Result<*mut u
                         return Err(BridgeError::NurseryExhausted);
                     }
                     *(data_ptr as *mut u64) = bytes.len() as u64;
-                    std::ptr::copy_nonoverlapping(
-                        bytes.as_ptr(),
-                        data_ptr.add(8),
-                        bytes.len(),
-                    );
-                    
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr.add(8), bytes.len());
+
                     // Only write the header once we're sure all allocations succeeded
                     layout::write_header(ptr, layout::TAG_LIT, layout::LIT_SIZE as u16);
                     *ptr.add(layout::LIT_TAG_OFFSET) = 5;
@@ -225,8 +224,8 @@ pub unsafe fn bump_alloc_from_vmctx(vmctx: &mut VMContext, size: usize) -> *mut 
 mod tests {
     use super::*;
     use crate::nursery::Nursery;
-    use tidepool_repr::{DataConId, Literal};
     use std::sync::{Arc, Mutex};
+    use tidepool_repr::{DataConId, Literal};
 
     extern "C" fn mock_gc_trigger(_vmctx: *mut VMContext) {}
 
@@ -331,10 +330,13 @@ mod tests {
     #[test]
     fn test_con_lit_fields() {
         let (_nursery, mut vmctx) = setup_vmctx(1024);
-        let val = Value::Con(DataConId(1), vec![
-            Value::Lit(Literal::LitInt(10)),
-            Value::Lit(Literal::LitChar('a')),
-        ]);
+        let val = Value::Con(
+            DataConId(1),
+            vec![
+                Value::Lit(Literal::LitInt(10)),
+                Value::Lit(Literal::LitChar('a')),
+            ],
+        );
         unsafe {
             let ptr = value_to_heap(&val, &mut vmctx).expect("value_to_heap failed");
             let back = heap_to_value(ptr).expect("heap_to_value failed");
@@ -360,7 +362,7 @@ mod tests {
         unsafe {
             let ptr = value_to_heap(&val, &mut vmctx).expect("value_to_heap failed");
             let back = heap_to_value(ptr).expect("heap_to_value failed");
-            
+
             if let Value::Con(id, fields) = back {
                 assert_eq!(id.0, 1);
                 assert_eq!(fields.len(), 1);

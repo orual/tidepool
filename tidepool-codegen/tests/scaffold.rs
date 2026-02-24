@@ -1,7 +1,7 @@
-use tidepool_codegen::context::VMContext;
-use tidepool_codegen::pipeline::CodegenPipeline;
-use tidepool_codegen::host_fns;
 use tidepool_codegen::alloc::emit_alloc_fast_path;
+use tidepool_codegen::context::VMContext;
+use tidepool_codegen::host_fns;
+use tidepool_codegen::pipeline::CodegenPipeline;
 
 use cranelift_codegen::ir::{self, types, AbiParam, InstBuilder, UserFuncName};
 use cranelift_codegen::Context;
@@ -12,10 +12,13 @@ use cranelift_module::Module;
 #[test]
 fn test_jit_boot_empty_fn() {
     let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
-    let func_id = pipeline.declare_function("test_empty").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_empty")
+        .expect("failed to declare");
 
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -30,7 +33,9 @@ fn test_jit_boot_empty_fn() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     let ptr = pipeline.get_function_ptr(func_id);
@@ -55,7 +60,9 @@ fn test_vmcontext_offsets() {
 /// Test 3: Stack map registry populates after compiling fn with declared heap-ptr values.
 #[test]
 fn test_stack_map_registry_populates() {
-    extern "C" fn dummy_callee(_vmctx: i64) -> i64 { 0 }
+    extern "C" fn dummy_callee(_vmctx: i64) -> i64 {
+        0
+    }
     let mut symbols = host_fns::host_fn_symbols();
     symbols.push(("callee", dummy_callee as *const u8));
     let mut pipeline = CodegenPipeline::new(&symbols);
@@ -67,11 +74,17 @@ fn test_stack_map_registry_populates() {
         sig.returns.push(AbiParam::new(types::I64));
         sig
     };
-    let callee_id = pipeline.module.declare_function("callee", cranelift_module::Linkage::Import, &callee_sig).unwrap();
+    let callee_id = pipeline
+        .module
+        .declare_function("callee", cranelift_module::Linkage::Import, &callee_sig)
+        .unwrap();
 
-    let func_id = pipeline.declare_function("test_stack_maps").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_stack_maps")
+        .expect("failed to declare");
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -89,7 +102,9 @@ fn test_stack_map_registry_populates() {
         builder.declare_value_needs_stack_map(heap_ptr2);
 
         // Call callee (creates a safepoint)
-        let callee_func_ref = pipeline.module.declare_func_in_func(callee_id, builder.func);
+        let callee_func_ref = pipeline
+            .module
+            .declare_func_in_func(callee_id, builder.func);
         builder.ins().call(callee_func_ref, &[vmctx]);
 
         // Use the heap ptrs after the call (to keep them live)
@@ -98,12 +113,20 @@ fn test_stack_map_registry_populates() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     // Stack maps should have been populated
-    assert!(!pipeline.stack_maps.is_empty(), "Stack map registry should have entries");
-    assert!(pipeline.stack_maps.len() >= 1, "Should have at least one safepoint");
+    assert!(
+        !pipeline.stack_maps.is_empty(),
+        "Stack map registry should have entries"
+    );
+    assert!(
+        pipeline.stack_maps.len() >= 1,
+        "Should have at least one safepoint"
+    );
 }
 
 /// Test 4: gc_trigger can be called from JIT code with the correct VMContext.
@@ -119,11 +142,17 @@ fn test_gc_trigger_called_from_jit() {
         sig.params.push(AbiParam::new(types::I64)); // vmctx ptr
         sig
     };
-    let gc_id = pipeline.module.declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig).unwrap();
+    let gc_id = pipeline
+        .module
+        .declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig)
+        .unwrap();
 
-    let func_id = pipeline.declare_function("test_rbp").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_rbp")
+        .expect("failed to declare");
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -143,7 +172,9 @@ fn test_gc_trigger_called_from_jit() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     host_fns::reset_test_counters();
@@ -160,17 +191,23 @@ fn test_gc_trigger_called_from_jit() {
 
     assert_eq!(result, 99);
     assert_eq!(host_fns::gc_trigger_call_count(), 1);
-    assert_eq!(host_fns::gc_trigger_last_vmctx(), &vmctx as *const VMContext as usize);
+    assert_eq!(
+        host_fns::gc_trigger_last_vmctx(),
+        &vmctx as *const VMContext as usize
+    );
 }
 
 /// Test 5: Alloc fast-path IR: allocates object, bumps pointer.
 #[test]
 fn test_alloc_fast_path() {
     let mut pipeline = CodegenPipeline::new(&host_fns::host_fn_symbols());
-    let func_id = pipeline.declare_function("test_alloc").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_alloc")
+        .expect("failed to declare");
 
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -193,7 +230,9 @@ fn test_alloc_fast_path() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     // Set up VMContext with nursery
@@ -225,11 +264,17 @@ fn test_stack_map_end_to_end() {
         sig.params.push(AbiParam::new(types::I64));
         sig
     };
-    let gc_id = pipeline.module.declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext).unwrap();
+    let gc_id = pipeline
+        .module
+        .declare_function("gc_trigger", cranelift_module::Linkage::Import, &gc_sig_ext)
+        .unwrap();
 
-    let func_id = pipeline.declare_function("test_e2e").expect("failed to declare");
+    let func_id = pipeline
+        .declare_function("test_e2e")
+        .expect("failed to declare");
     let mut ctx = Context::new();
-    ctx.func = ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
+    ctx.func =
+        ir::Function::with_name_signature(UserFuncName::default(), pipeline.make_func_signature());
     let mut fb_ctx = FunctionBuilderContext::new();
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -256,7 +301,9 @@ fn test_stack_map_end_to_end() {
         builder.finalize();
     }
 
-    pipeline.define_function(func_id, &mut ctx).expect("failed to define");
+    pipeline
+        .define_function(func_id, &mut ctx)
+        .expect("failed to define");
     pipeline.finalize().expect("failed to finalize");
 
     // Verify stack maps have entries with 2 offsets at the safepoint
@@ -267,7 +314,7 @@ fn test_stack_map_end_to_end() {
     // Note: We don't have a public iterator for entries, but we know there's one.
     // In Wave 2 we will verify the exact pointer values via frame walking.
     assert!(pipeline.stack_maps.len() >= 1);
-    
+
     // Actually call the function to verify ptrs survive
     host_fns::reset_test_counters();
     let mut nursery = vec![0u8; 4096];
@@ -275,7 +322,8 @@ fn test_stack_map_end_to_end() {
     let end = unsafe { start.add(4096) };
     let mut vmctx = VMContext::new(start, end, host_fns::gc_trigger);
 
-    let f: unsafe extern "C" fn(*mut VMContext) -> i64 = unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
+    let f: unsafe extern "C" fn(*mut VMContext) -> i64 =
+        unsafe { std::mem::transmute(pipeline.get_function_ptr(func_id)) };
     let result = unsafe { f(&mut vmctx as *mut VMContext) };
 
     // 0x1000 + 0x2000 = 0x3000

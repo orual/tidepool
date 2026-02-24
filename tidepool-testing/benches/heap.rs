@@ -1,7 +1,7 @@
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use tidepool_eval::{env::Env, heap::Heap, heap::VecHeap};
 use tidepool_heap::arena::ArenaHeap;
 use tidepool_repr::{CoreExpr, CoreFrame, RecursiveTree, VarId};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn dummy_expr() -> CoreExpr {
     RecursiveTree {

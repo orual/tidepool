@@ -62,7 +62,9 @@ fn unbox(val: &Value, table: &DataConTable) -> Value {
 fn assert_int(val: &Value, expected: i64, table: &DataConTable) {
     let inner = unbox(val, table);
     match inner {
-        Value::Lit(Literal::LitInt(n)) => assert_eq!(n, expected, "expected Int {expected}, got {n}"),
+        Value::Lit(Literal::LitInt(n)) => {
+            assert_eq!(n, expected, "expected Int {expected}, got {n}")
+        }
         ref other => panic!("expected Int {expected}, got {other:?}"),
     }
 }
@@ -345,7 +347,11 @@ fn text_append() {
 fn text_intercalate() {
     static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_intercalate.cbor");
     let result = try_eval_fixture(CBOR);
-    assert!(result.is_ok(), "text_intercalate failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "text_intercalate failed: {:?}",
+        result.err()
+    );
 }
 
 // =============================================================================
@@ -575,15 +581,34 @@ text_bool!(text_all, true);
 fn scan_sentinels() {
     use tidepool_repr::frame::CoreFrame;
     let fixtures: &[(&str, &[u8])] = &[
-        ("text_null_nonempty", include_bytes!("../../haskell/test/TextSuite_cbor/text_null_nonempty.cbor")),
-        ("text_pack", include_bytes!("../../haskell/test/TextSuite_cbor/text_pack.cbor")),
-        ("text_singleton", include_bytes!("../../haskell/test/TextSuite_cbor/text_singleton.cbor")),
-        ("text_head", include_bytes!("../../haskell/test/TextSuite_cbor/text_head.cbor")),
-        ("text_empty", include_bytes!("../../haskell/test/TextSuite_cbor/text_empty.cbor")),
-        ("text_length", include_bytes!("../../haskell/test/TextSuite_cbor/text_length.cbor")),
+        (
+            "text_null_nonempty",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_null_nonempty.cbor"),
+        ),
+        (
+            "text_pack",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_pack.cbor"),
+        ),
+        (
+            "text_singleton",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_singleton.cbor"),
+        ),
+        (
+            "text_head",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_head.cbor"),
+        ),
+        (
+            "text_empty",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_empty.cbor"),
+        ),
+        (
+            "text_length",
+            include_bytes!("../../haskell/test/TextSuite_cbor/text_length.cbor"),
+        ),
     ];
     // Dump all nodes of text_singleton
-    let singleton_cbor: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_singleton.cbor");
+    let singleton_cbor: &[u8] =
+        include_bytes!("../../haskell/test/TextSuite_cbor/text_singleton.cbor");
     let expr = read_cbor(singleton_cbor).unwrap();
     for i in 30..80.min(expr.nodes.len()) {
         println!("  [{}] {:?}", i, expr.nodes[i]);

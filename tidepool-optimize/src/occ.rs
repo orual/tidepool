@@ -1,5 +1,5 @@
-use tidepool_repr::{CoreExpr, CoreFrame, VarId};
 use std::collections::HashMap;
+use tidepool_repr::{CoreExpr, CoreFrame, VarId};
 
 /// Occurrence count for a variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

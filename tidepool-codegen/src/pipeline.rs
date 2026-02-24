@@ -1,14 +1,14 @@
-use cranelift_codegen::ir::{self, AbiParam, types};
+use cranelift_codegen::control::ControlPlane;
+use cranelift_codegen::ir::{self, types, AbiParam};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::Context;
-use cranelift_codegen::control::ControlPlane;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Module, Linkage, FuncId};
+use cranelift_module::{FuncId, Linkage, Module};
 use std::sync::Arc;
 
 use crate::debug::LambdaRegistry;
-use crate::stack_map::{StackMapRegistry, RawStackMap};
+use crate::stack_map::{RawStackMap, StackMapRegistry};
 
 /// Errors from the Cranelift compilation pipeline.
 #[derive(Debug)]
@@ -72,12 +72,12 @@ impl CodegenPipeline {
         flag_builder.set("opt_level", "speed").unwrap();
 
         let isa_builder = cranelift_native::builder().expect("host machine not supported");
-        let isa = isa_builder.finish(settings::Flags::new(flag_builder.clone())).unwrap();
+        let isa = isa_builder
+            .finish(settings::Flags::new(flag_builder.clone()))
+            .unwrap();
 
-        let mut jit_builder = JITBuilder::with_isa(
-            isa.clone(),
-            cranelift_module::default_libcall_names(),
-        );
+        let mut jit_builder =
+            JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
 
         for (name, ptr) in symbols {
             jit_builder.symbol(*name, *ptr);
@@ -120,10 +120,15 @@ impl CodegenPipeline {
     /// 3. Calls `module.define_function()` which recompiles for execution
     ///
     /// After calling this for all functions, call `finalize()` to make them callable.
-    pub fn define_function(&mut self, func_id: FuncId, ctx: &mut Context) -> Result<(), PipelineError> {
+    pub fn define_function(
+        &mut self,
+        func_id: FuncId,
+        ctx: &mut Context,
+    ) -> Result<(), PipelineError> {
         // First compile: extract stack maps
         let mut ctrl_plane = ControlPlane::default();
-        let compiled = ctx.compile(self.isa.as_ref(), &mut ctrl_plane)
+        let compiled = ctx
+            .compile(self.isa.as_ref(), &mut ctrl_plane)
             .map_err(|e| PipelineError::Compilation(format!("{:?}", e)))?;
 
         let func_size = compiled.buffer.data().len() as u32;
@@ -152,7 +157,8 @@ impl CodegenPipeline {
     /// Finalize all defined functions, making them callable.
     /// Also registers stack maps now that we have function base pointers.
     pub fn finalize(&mut self) -> Result<(), PipelineError> {
-        self.module.finalize_definitions()
+        self.module
+            .finalize_definitions()
             .map_err(|e| PipelineError::Finalization(format!("{}", e)))?;
 
         // Now register stack maps with actual base pointers
@@ -189,8 +195,8 @@ impl CodegenPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
     use cranelift_codegen::ir::InstBuilder;
+    use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 
     #[test]
     fn test_empty_pipeline() {
@@ -205,7 +211,7 @@ mod tests {
 
         let mut ctx = pipeline.module.make_context();
         ctx.func.signature = pipeline.make_func_signature();
-        
+
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
 
@@ -235,7 +241,7 @@ mod tests {
         let id1 = pipeline.declare_function("f1").unwrap();
         let id2 = pipeline.declare_function("f2").unwrap();
         assert_ne!(id1, id2);
-        
+
         let id3 = pipeline.declare_function("f1").unwrap();
         assert_eq!(id1, id3);
     }
@@ -244,7 +250,7 @@ mod tests {
     fn test_get_function_ptr_after_finalize() {
         let mut pipeline = CodegenPipeline::new(&[]);
         let func_id = pipeline.declare_function("f1").unwrap();
-        
+
         let mut ctx = pipeline.module.make_context();
         ctx.func.signature = pipeline.make_func_signature();
         let mut builder_context = FunctionBuilderContext::new();
@@ -268,7 +274,7 @@ mod tests {
     fn test_build_lambda_registry() {
         let mut pipeline = CodegenPipeline::new(&[]);
         let func_id = pipeline.declare_function("f1").unwrap();
-        
+
         let mut ctx = pipeline.module.make_context();
         ctx.func.signature = pipeline.make_func_signature();
         let mut builder_context = FunctionBuilderContext::new();
@@ -292,17 +298,19 @@ mod tests {
 
     #[test]
     fn test_host_fn_symbols_integration() {
-        extern "C" fn my_host_fn() -> i64 { 123 }
+        extern "C" fn my_host_fn() -> i64 {
+            123
+        }
         let symbols = [("my_host_fn", my_host_fn as *const u8)];
         let mut pipeline = CodegenPipeline::new(&symbols);
-        
+
         let func_id = pipeline.declare_function("call_host").unwrap();
         let mut ctx = pipeline.module.make_context();
         ctx.func.signature = pipeline.make_func_signature();
-        
+
         let mut builder_context = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
-        
+
         let block = builder.create_block();
         builder.append_block_params_for_function_params(block);
         builder.switch_to_block(block);
@@ -310,9 +318,14 @@ mod tests {
 
         let mut sig = ir::Signature::new(pipeline.isa.default_call_conv());
         sig.returns.push(AbiParam::new(types::I64));
-        let callee = pipeline.module.declare_function("my_host_fn", Linkage::Import, &sig).unwrap();
-        let local_callee = pipeline.module.declare_func_in_func(callee, &mut builder.func);
-        
+        let callee = pipeline
+            .module
+            .declare_function("my_host_fn", Linkage::Import, &sig)
+            .unwrap();
+        let local_callee = pipeline
+            .module
+            .declare_func_in_func(callee, &mut builder.func);
+
         let call = builder.ins().call(local_callee, &[]);
         let res = builder.inst_results(call)[0];
         builder.ins().return_(&[res]);

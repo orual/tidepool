@@ -24,32 +24,32 @@
 //! | [`runtime`] | High-level API: [`compile_haskell`], [`compile_and_run`], caching |
 //! | [`mcp`] | MCP server library, generic over effect handlers |
 
-/// Core intermediate representation: expression trees, data constructor tables, CBOR serialization.
-pub use tidepool_repr as repr;
-/// Tree-walking interpreter with lazy thunks and environment-based evaluation.
-pub use tidepool_eval as eval;
-/// Manual heap layout, object headers, and copying garbage collector.
-pub use tidepool_heap as heap;
-/// Optimization passes operating on the Core IR.
-pub use tidepool_optimize as optimize;
 /// Traits for converting between Rust types and Core values.
 pub use tidepool_bridge as bridge;
 /// Derive macro for automatic `FromCore` implementations.
 pub use tidepool_bridge_derive as bridge_derive;
-/// Effect system: handler trait, context, HList-based dispatch.
-pub use tidepool_effect as effect;
 /// Cranelift JIT compiler and effect machine.
 pub use tidepool_codegen as codegen;
+/// Effect system: handler trait, context, HList-based dispatch.
+pub use tidepool_effect as effect;
+/// Tree-walking interpreter with lazy thunks and environment-based evaluation.
+pub use tidepool_eval as eval;
+/// Manual heap layout, object headers, and copying garbage collector.
+pub use tidepool_heap as heap;
 /// `haskell_inline!` proc-macro for build-time Haskell compilation.
 pub use tidepool_macro as macro_impl; // 'macro' is a keyword
-/// High-level compilation and execution API with caching.
-pub use tidepool_runtime as runtime;
 /// MCP (Model Context Protocol) server library.
 pub use tidepool_mcp as mcp;
+/// Optimization passes operating on the Core IR.
+pub use tidepool_optimize as optimize;
+/// Core intermediate representation: expression trees, data constructor tables, CBOR serialization.
+pub use tidepool_repr as repr;
+/// High-level compilation and execution API with caching.
+pub use tidepool_runtime as runtime;
 
 // Convenience re-exports
-pub use tidepool_repr::{CoreExpr, DataConTable};
-pub use tidepool_eval::Value;
 pub use tidepool_bridge::{FromCore, ToCore};
 pub use tidepool_effect::dispatch::DispatchEffect;
+pub use tidepool_eval::Value;
+pub use tidepool_repr::{CoreExpr, DataConTable};
 pub use tidepool_runtime::{compile_and_run, compile_haskell, EvalResult, RuntimeError};

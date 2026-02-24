@@ -1,6 +1,6 @@
 use crate::value::Value;
-use tidepool_repr::VarId;
 use im::HashMap;
+use tidepool_repr::VarId;
 
 /// Evaluation environment: variable bindings.
 /// Uses im::HashMap for O(1) clone (structural sharing).

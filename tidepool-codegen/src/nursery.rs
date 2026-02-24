@@ -48,8 +48,13 @@ mod tests {
         let vmctx = nursery.make_vmctx(dummy_gc_trigger);
 
         assert_eq!(vmctx.alloc_ptr, nursery.buffer.as_mut_ptr());
-        assert_eq!(vmctx.alloc_limit, unsafe { nursery.buffer.as_ptr().add(size) });
-        assert_eq!(vmctx.gc_trigger as usize, dummy_gc_trigger as *const () as usize);
+        assert_eq!(vmctx.alloc_limit, unsafe {
+            nursery.buffer.as_ptr().add(size)
+        });
+        assert_eq!(
+            vmctx.gc_trigger as usize,
+            dummy_gc_trigger as *const () as usize
+        );
     }
 
     #[test]
@@ -58,7 +63,7 @@ mod tests {
         let mut nursery = Nursery::new(size);
         let vmctx = nursery.make_vmctx(dummy_gc_trigger);
 
-        // alloc_ptr should be 8-byte aligned (Vec's default alignment for u8 is likely 1, 
+        // alloc_ptr should be 8-byte aligned (Vec's default alignment for u8 is likely 1,
         // but it should be 8-byte aligned on most platforms for this size)
         assert_eq!(vmctx.alloc_ptr as usize % 8, 0);
     }
@@ -67,7 +72,7 @@ mod tests {
     fn test_multiple_vmctx() {
         let size = 1024;
         let mut nursery = Nursery::new(size);
-        
+
         let vmctx1 = nursery.make_vmctx(dummy_gc_trigger);
         let vmctx2 = nursery.make_vmctx(dummy_gc_trigger);
 
