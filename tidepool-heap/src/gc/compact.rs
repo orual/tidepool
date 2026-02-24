@@ -75,6 +75,7 @@ fn rewrite_value(val: &Value, table: &ForwardingTable) -> Value {
         Value::JoinCont(binders, expr, env) => {
             Value::JoinCont(binders.clone(), expr.clone(), rewrite_env(env, table))
         }
+        Value::ByteArray(ba) => Value::ByteArray(ba.clone()),
     }
 }
 

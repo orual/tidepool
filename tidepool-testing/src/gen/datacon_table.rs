@@ -86,5 +86,13 @@ pub fn standard_datacon_table() -> DataConTable {
         rep_arity: 1,
         field_bangs: vec![SrcBang::NoSrcBang],
     });
+    // Text (Data.Text.Internal.Text)
+    table.insert(DataCon {
+        id: DataConId(11),
+        name: "Text".to_string(),
+        tag: 1,
+        rep_arity: 3,
+        field_bangs: vec![SrcBang::NoSrcBang, SrcBang::NoSrcBang, SrcBang::NoSrcBang],
+    });
     table
 }

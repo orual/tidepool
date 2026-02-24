@@ -753,6 +753,485 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
         PrimOpKind::ReallyUnsafePtrEquality => Ok(Value::Lit(Literal::LitInt(0))),
         PrimOpKind::Raise => Err(EvalError::UserError),
         PrimOpKind::IndexArray | PrimOpKind::TagToEnum => Err(EvalError::UnsupportedPrimOp(op)),
+
+        // --- ByteArray# / MutableByteArray# ---
+        PrimOpKind::NewByteArray => {
+            let size = expect_int(&args[0])? as usize;
+            Ok(Value::ByteArray(std::sync::Arc::new(std::sync::Mutex::new(vec![0u8; size]))))
+        }
+        PrimOpKind::ReadWord8Array => {
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int(&args[1])? as usize;
+            let bytes = ba.lock().unwrap();
+            let val = *bytes.get(idx).unwrap_or(&0);
+            Ok(Value::Lit(Literal::LitWord(val as u64)))
+        }
+        PrimOpKind::WriteWord8Array => {
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int(&args[1])? as usize;
+            let val = expect_int_like(&args[2])? as u8;
+            let mut bytes = ba.lock().unwrap();
+            if idx < bytes.len() {
+                bytes[idx] = val;
+            }
+            Ok(Value::ByteArray(ba.clone()))
+        }
+        PrimOpKind::SizeofMutableByteArray => {
+            let ba = expect_byte_array(&args[0])?;
+            let len = ba.lock().unwrap().len();
+            Ok(Value::Lit(Literal::LitInt(len as i64)))
+        }
+        PrimOpKind::UnsafeFreezeByteArray => {
+            // Freeze = identity (same Arc, just typed differently)
+            Ok(args[0].clone())
+        }
+        PrimOpKind::CopyByteArray | PrimOpKind::CopyMutableByteArray => {
+            // copyByteArray# src src_off dst dst_off len
+            let src_ba = expect_byte_array(&args[0])?;
+            let src_off = expect_int(&args[1])? as usize;
+            let dst_ba = expect_byte_array(&args[2])?;
+            let dst_off = expect_int(&args[3])? as usize;
+            let len = expect_int(&args[4])? as usize;
+            // Clone src data first to avoid double-lock deadlock when src == dst
+            let src_data: Vec<u8> = {
+                let src = src_ba.lock().unwrap();
+                src[src_off..src_off + len].to_vec()
+            };
+            {
+                let mut dst = dst_ba.lock().unwrap();
+                dst[dst_off..dst_off + len].copy_from_slice(&src_data);
+            }
+            Ok(Value::ByteArray(dst_ba.clone()))
+        }
+        PrimOpKind::CopyAddrToByteArray => {
+            // copyAddrToByteArray# src dst dst_off len
+            let src_bytes = match &args[0] {
+                Value::Lit(Literal::LitString(bs)) => bs,
+                other => {
+                    return Err(EvalError::TypeMismatch {
+                        expected: "Addr# (LitString)",
+                        got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                    })
+                }
+            };
+            let dst_ba = expect_byte_array(&args[1])?;
+            let dst_off = expect_int(&args[2])? as usize;
+            let len = expect_int(&args[3])? as usize;
+            let mut dst = dst_ba.lock().unwrap();
+            let src_end = std::cmp::min(src_bytes.len(), len);
+            dst[dst_off..dst_off + src_end].copy_from_slice(&src_bytes[..src_end]);
+            drop(dst);
+            Ok(Value::ByteArray(dst_ba.clone()))
+        }
+        PrimOpKind::ShrinkMutableByteArray => {
+            let ba = expect_byte_array(&args[0])?;
+            let new_size = expect_int(&args[1])? as usize;
+            ba.lock().unwrap().truncate(new_size);
+            Ok(Value::ByteArray(ba.clone()))
+        }
+        PrimOpKind::ResizeMutableByteArray => {
+            let ba = expect_byte_array(&args[0])?;
+            let new_size = expect_int(&args[1])? as usize;
+            let mut bytes = ba.lock().unwrap();
+            bytes.resize(new_size, 0);
+            drop(bytes);
+            Ok(Value::ByteArray(ba.clone()))
+        }
+        PrimOpKind::Clz8 => {
+            let w = expect_word(&args[0])?;
+            Ok(Value::Lit(Literal::LitWord((w as u8).leading_zeros() as u64)))
+        }
+        PrimOpKind::IntToInt64 => {
+            // Identity on 64-bit: Int# == Int64#
+            Ok(args[0].clone())
+        }
+        PrimOpKind::Int64ToWord64 => {
+            let n = expect_int(&args[0])?;
+            Ok(Value::Lit(Literal::LitWord(n as u64)))
+        }
+        PrimOpKind::TimesInt2Hi | PrimOpKind::TimesInt2Lo | PrimOpKind::TimesInt2Overflow => {
+            let a = expect_int(&args[0])? as i128;
+            let b = expect_int(&args[1])? as i128;
+            let result = a * b;
+            match op {
+                PrimOpKind::TimesInt2Overflow => {
+                    let overflowed = result > i64::MAX as i128 || result < i64::MIN as i128;
+                    Ok(Value::Lit(Literal::LitInt(if overflowed { 1 } else { 0 })))
+                }
+                PrimOpKind::TimesInt2Hi => {
+                    Ok(Value::Lit(Literal::LitInt((result >> 64) as i64)))
+                }
+                PrimOpKind::TimesInt2Lo => {
+                    Ok(Value::Lit(Literal::LitInt(result as i64)))
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        PrimOpKind::IndexWord8Array => {
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int(&args[1])? as usize;
+            let bytes = ba.lock().unwrap();
+            let val = *bytes.get(idx).unwrap_or(&0);
+            Ok(Value::Lit(Literal::LitWord(val as u64)))
+        }
+        PrimOpKind::IndexWord8OffAddr => {
+            // indexWord8OffAddr# :: Addr# -> Int# -> Word8#
+            let bytes = match &args[0] {
+                Value::Lit(Literal::LitString(bs)) => bs,
+                other => {
+                    return Err(EvalError::TypeMismatch {
+                        expected: "Addr# (LitString)",
+                        got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                    })
+                }
+            };
+            let idx = expect_int(&args[1])? as usize;
+            let val = bytes.get(idx).copied().unwrap_or(0);
+            Ok(Value::Lit(Literal::LitWord(val as u64)))
+        }
+        PrimOpKind::CompareByteArrays => {
+            // compareByteArrays# ba1 off1 ba2 off2 len -> Int#
+            let ba1 = expect_byte_array(&args[0])?;
+            let off1 = expect_int(&args[1])? as usize;
+            let ba2 = expect_byte_array(&args[2])?;
+            let off2 = expect_int(&args[3])? as usize;
+            let len = expect_int(&args[4])? as usize;
+            // Clone to avoid potential double-lock if ba1 == ba2
+            let slice1: Vec<u8> = {
+                let b = ba1.lock().unwrap();
+                b[off1..off1 + len].to_vec()
+            };
+            let slice2: Vec<u8> = {
+                let b = ba2.lock().unwrap();
+                b[off2..off2 + len].to_vec()
+            };
+            let result = slice1.cmp(&slice2);
+            Ok(Value::Lit(Literal::LitInt(match result {
+                std::cmp::Ordering::Less => -1,
+                std::cmp::Ordering::Equal => 0,
+                std::cmp::Ordering::Greater => 1,
+            })))
+        }
+        PrimOpKind::WordToWord8 => {
+            // Narrow Word# to Word8# (mask to 8 bits)
+            let w = expect_word(&args[0])?;
+            Ok(Value::Lit(Literal::LitWord(w & 0xFF)))
+        }
+        PrimOpKind::Word64And => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a & b)))
+        }
+        PrimOpKind::Int64ToInt => {
+            // Identity on 64-bit
+            Ok(args[0].clone())
+        }
+        PrimOpKind::Word64ToInt64 => {
+            // Identity on 64-bit (reinterpret Word64 as Int64)
+            let w = match &args[0] {
+                Value::Lit(Literal::LitWord(w)) => *w,
+                Value::Lit(Literal::LitInt(i)) => *i as u64,
+                other => return Err(EvalError::TypeMismatch {
+                    expected: "Word64#",
+                    got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                }),
+            };
+            Ok(Value::Lit(Literal::LitInt(w as i64)))
+        }
+        PrimOpKind::Word8ToWord => {
+            // Widen Word8 to Word (identity, already fits)
+            Ok(args[0].clone())
+        }
+        PrimOpKind::Word8Lt => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a < b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Ge => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a >= b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Negate => {
+            let a = expect_int_like(&args[0])?;
+            Ok(Value::Lit(Literal::LitInt(-a)))
+        }
+        PrimOpKind::Int64Shra => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a >> (b as u32))))
+        }
+        PrimOpKind::Word64Shl => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a << (b as u32))))
+        }
+        PrimOpKind::Word8Ge => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a >= b { 1 } else { 0 })))
+        }
+        PrimOpKind::Word8Sub => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a.wrapping_sub(b) & 0xFF)))
+        }
+        PrimOpKind::SizeofByteArray => {
+            let ba = expect_byte_array(&args[0])?;
+            let len = ba.lock().unwrap().len();
+            Ok(Value::Lit(Literal::LitInt(len as i64)))
+        }
+        PrimOpKind::IndexWordArray => {
+            // indexWordArray# :: ByteArray# -> Int# -> Word#
+            // Read a machine word (8 bytes on 64-bit) at index i (word-sized offset)
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int_like(&args[1])? as usize;
+            let bytes = ba.lock().unwrap();
+            let offset = idx * 8;
+            if offset + 8 > bytes.len() {
+                return Err(EvalError::TypeMismatch {
+                    expected: "valid IndexWordArray index",
+                    got: crate::error::ValueKind::Other(format!("index {} out of bounds (len={})", idx, bytes.len())),
+                });
+            }
+            let word = u64::from_ne_bytes(bytes[offset..offset+8].try_into().unwrap());
+            Ok(Value::Lit(Literal::LitWord(word)))
+        }
+        PrimOpKind::Int64Mul => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a.wrapping_mul(b))))
+        }
+        PrimOpKind::Word64Or => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a | b)))
+        }
+        PrimOpKind::Word8Le => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a <= b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Add => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a.wrapping_add(b))))
+        }
+        PrimOpKind::Int64Gt => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a > b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Lt => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a < b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Le => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a <= b { 1 } else { 0 })))
+        }
+        PrimOpKind::Int64Sub => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a.wrapping_sub(b))))
+        }
+        PrimOpKind::Int64Shl => {
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a.wrapping_shl(b as u32))))
+        }
+        PrimOpKind::Word8Add => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord((a.wrapping_add(b)) & 0xFF)))
+        }
+        PrimOpKind::WriteWordArray => {
+            // writeWordArray# :: MutableByteArray# -> Int# -> Word# -> State# -> State#
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int_like(&args[1])? as usize;
+            let val = expect_word(&args[2])?;
+            let offset = idx * 8;
+            let mut bytes = ba.lock().unwrap();
+            if offset + 8 <= bytes.len() {
+                bytes[offset..offset+8].copy_from_slice(&val.to_ne_bytes());
+            }
+            Ok(Value::ByteArray(ba.clone()))
+        }
+        PrimOpKind::ReadWordArray => {
+            // readWordArray# :: MutableByteArray# -> Int# -> State# -> (# State#, Word# #)
+            let ba = expect_byte_array(&args[0])?;
+            let idx = expect_int_like(&args[1])? as usize;
+            let bytes = ba.lock().unwrap();
+            let offset = idx * 8;
+            if offset + 8 > bytes.len() {
+                return Err(EvalError::TypeMismatch {
+                    expected: "valid ReadWordArray index",
+                    got: crate::error::ValueKind::Other(format!("index {} out of bounds (len={})", idx, bytes.len())),
+                });
+            }
+            let word = u64::from_ne_bytes(bytes[offset..offset+8].try_into().unwrap());
+            Ok(Value::Lit(Literal::LitWord(word)))
+        }
+        PrimOpKind::SetByteArray => {
+            // setByteArray# :: MutableByteArray# -> Int# -> Int# -> Int# -> State# -> State#
+            // Fill `count` bytes starting at `offset` with byte `val`
+            let ba = expect_byte_array(&args[0])?;
+            let offset = expect_int_like(&args[1])? as usize;
+            let count = expect_int_like(&args[2])? as usize;
+            let val = expect_int_like(&args[3])? as u8;
+            let mut bytes = ba.lock().unwrap();
+            let end = (offset + count).min(bytes.len());
+            for b in &mut bytes[offset..end] {
+                *b = val;
+            }
+            Ok(Value::ByteArray(ba.clone()))
+        }
+        PrimOpKind::AddIntCVal => {
+            // addIntC# returns (# result, carry #). This is the result component.
+            let (a, b) = bin_op_int(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(a.wrapping_add(b))))
+        }
+        PrimOpKind::AddIntCCarry => {
+            // addIntC# carry flag: 1 if overflow, 0 otherwise
+            let (a, b) = bin_op_int(op, &args)?;
+            let overflow = a.checked_add(b).is_none();
+            Ok(Value::Lit(Literal::LitInt(if overflow { 1 } else { 0 })))
+        }
+        PrimOpKind::SubWordCVal => {
+            // subWordC# result component: a - b (wrapping)
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a.wrapping_sub(b))))
+        }
+        PrimOpKind::SubWordCCarry => {
+            // subWordC# carry: 1 if borrow (a < b), 0 otherwise
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitInt(if a < b { 1 } else { 0 })))
+        }
+        PrimOpKind::AddWordCVal => {
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a.wrapping_add(b))))
+        }
+        PrimOpKind::AddWordCCarry => {
+            let (a, b) = bin_op_word(op, &args)?;
+            let carry = a.checked_add(b).is_none();
+            Ok(Value::Lit(Literal::LitInt(if carry { 1 } else { 0 })))
+        }
+        PrimOpKind::TimesWord2Hi => {
+            // timesWord2# high word: (a * b) >> 64
+            let (a, b) = bin_op_word(op, &args)?;
+            let product = (a as u128) * (b as u128);
+            Ok(Value::Lit(Literal::LitWord((product >> 64) as u64)))
+        }
+        PrimOpKind::TimesWord2Lo => {
+            // timesWord2# low word: (a * b) & 0xFFFFFFFFFFFFFFFF
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a.wrapping_mul(b))))
+        }
+        PrimOpKind::QuotRemWordVal => {
+            // quotRemWord# quotient: a / b
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a / b)))
+        }
+        PrimOpKind::QuotRemWordRem => {
+            // quotRemWord# remainder: a % b
+            let (a, b) = bin_op_word(op, &args)?;
+            Ok(Value::Lit(Literal::LitWord(a % b)))
+        }
+
+        // --- FFI intrinsics ---
+        PrimOpKind::FfiStrlen => {
+            // strlen(Addr#) -> Int#: count bytes until null terminator
+            let bytes = match &args[0] {
+                Value::Lit(Literal::LitString(bs)) => bs,
+                other => {
+                    return Err(EvalError::TypeMismatch {
+                        expected: "Addr# (LitString)",
+                        got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                    })
+                }
+            };
+            let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+            Ok(Value::Lit(Literal::LitInt(len as i64)))
+        }
+        PrimOpKind::FfiTextMeasureOff => {
+            // _hs_text_measure_off(ByteArray#, off, len) -> Int#
+            // Walk UTF-8 bytes counting `len` chars, return byte offset
+            let ba = expect_byte_array(&args[0])?;
+            let off = expect_int_like(&args[1])? as usize;
+            let n_chars = expect_int_like(&args[2])? as usize;
+            let bytes = ba.lock().unwrap();
+            let slice = &bytes[off..];
+            let mut byte_count = 0usize;
+            let mut chars_counted = 0usize;
+            while chars_counted < n_chars && byte_count < slice.len() {
+                let b = slice[byte_count];
+                let char_len = if b < 0x80 { 1 }
+                    else if b < 0xE0 { 2 }
+                    else if b < 0xF0 { 3 }
+                    else { 4 };
+                byte_count += char_len;
+                chars_counted += 1;
+            }
+            Ok(Value::Lit(Literal::LitInt(byte_count as i64)))
+        }
+        PrimOpKind::FfiTextMemchr => {
+            // _hs_text_memchr(ByteArray#, off, len, byte) -> Int#
+            // Find byte in array, return offset from start or -1
+            let ba = expect_byte_array(&args[0])?;
+            let off = expect_int_like(&args[1])? as usize;
+            let len = expect_int_like(&args[2])? as usize;
+            let needle = expect_int_like(&args[3])? as u8;
+            let bytes = ba.lock().unwrap();
+            let end = std::cmp::min(off + len, bytes.len());
+            let result = bytes[off..end].iter().position(|&b| b == needle);
+            Ok(Value::Lit(Literal::LitInt(match result {
+                Some(pos) => (off + pos) as i64,
+                None => -1,
+            })))
+        }
+        PrimOpKind::FfiTextReverse => {
+            // _hs_text_reverse(dst, src, off, len) -> void
+            // Reverse UTF-8 chars from src[off..off+len] into dst
+            let dst_ba = expect_byte_array(&args[0])?;
+            let src_ba = expect_byte_array(&args[1])?;
+            let off = expect_int_like(&args[2])? as usize;
+            let len = expect_int_like(&args[3])? as usize;
+            // Clone src to avoid double-lock if src == dst
+            let src_slice: Vec<u8> = {
+                let src = src_ba.lock().unwrap();
+                src[off..off + len].to_vec()
+            };
+            // Parse UTF-8 chars and reverse
+            let mut chars: Vec<&[u8]> = Vec::new();
+            let mut i = 0;
+            while i < src_slice.len() {
+                let b = src_slice[i];
+                let char_len = if b < 0x80 { 1 }
+                    else if b < 0xE0 { 2 }
+                    else if b < 0xF0 { 3 }
+                    else { 4 };
+                let end = std::cmp::min(i + char_len, src_slice.len());
+                chars.push(&src_slice[i..end]);
+                i = end;
+            }
+            chars.reverse();
+            let reversed: Vec<u8> = chars.into_iter().flatten().copied().collect();
+            {
+                let mut dst = dst_ba.lock().unwrap();
+                let copy_len = std::cmp::min(reversed.len(), dst.len());
+                dst[..copy_len].copy_from_slice(&reversed[..copy_len]);
+            }
+            Ok(Value::ByteArray(dst_ba.clone()))
+        }
+    }
+}
+
+fn expect_byte_array(v: &Value) -> Result<&crate::value::SharedByteArray, EvalError> {
+    if let Value::ByteArray(ba) = v {
+        Ok(ba)
+    } else {
+        Err(EvalError::TypeMismatch {
+            expected: "ByteArray#",
+            got: crate::error::ValueKind::Other(format!("{:?}", v)),
+        })
+    }
+}
+
+/// Accept both LitInt and LitWord — FFI args go through Int→Int64→Word64 conversions
+fn expect_int_like(v: &Value) -> Result<i64, EvalError> {
+    match v {
+        Value::Lit(Literal::LitInt(n)) => Ok(*n),
+        Value::Lit(Literal::LitWord(n)) => Ok(*n as i64),
+        _ => Err(EvalError::TypeMismatch {
+            expected: "Int# or Word#",
+            got: crate::error::ValueKind::Other(format!("{:?}", v)),
+        }),
     }
 }
 
@@ -768,13 +1247,13 @@ fn expect_int(v: &Value) -> Result<i64, EvalError> {
 }
 
 fn expect_word(v: &Value) -> Result<u64, EvalError> {
-    if let Value::Lit(Literal::LitWord(n)) = v {
-        Ok(*n)
-    } else {
-        Err(EvalError::TypeMismatch {
+    match v {
+        Value::Lit(Literal::LitWord(n)) => Ok(*n),
+        Value::Lit(Literal::LitInt(n)) => Ok(*n as u64),
+        _ => Err(EvalError::TypeMismatch {
             expected: "Word#",
             got: crate::error::ValueKind::Other(format!("{:?}", v)),
-        })
+        }),
     }
 }
 

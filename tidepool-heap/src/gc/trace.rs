@@ -89,6 +89,7 @@ fn scan_value(val: &Value, queue: &mut VecDeque<ThunkId>) {
         Value::JoinCont(_, _, env) => {
             scan_env(env, queue);
         }
+        Value::ByteArray(_) => {}
     }
 }
 

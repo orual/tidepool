@@ -127,6 +127,7 @@ pub fn generate_from_core(info: &EnumInfo) -> TokenStream {
                             tidepool_eval::Value::ThunkRef(id) => format!("ThunkRef({:?})", id),
                             tidepool_eval::Value::JoinCont(_, _, _) => "JoinCont".to_string(),
                             tidepool_eval::Value::ConFun(id, arity, args) => format!("ConFun({:?}, {}/{})", id, args.len(), arity),
+                            tidepool_eval::Value::ByteArray(bs) => format!("ByteArray(len={})", bs.lock().unwrap().len()),
                         },
                     })
                 }
@@ -246,6 +247,7 @@ pub fn generate_struct_from_core(info: &StructInfo) -> TokenStream {
                             tidepool_eval::Value::ThunkRef(id) => format!("ThunkRef({:?})", id),
                             tidepool_eval::Value::JoinCont(_, _, _) => "JoinCont".to_string(),
                             tidepool_eval::Value::ConFun(id, arity, args) => format!("ConFun({:?}, {}/{})", id, args.len(), arity),
+                            tidepool_eval::Value::ByteArray(bs) => format!("ByteArray(len={})", bs.lock().unwrap().len()),
                         },
                     })
                 }

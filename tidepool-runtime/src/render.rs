@@ -98,6 +98,23 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                 }
                 ("C#", [x]) => value_to_json(x, table, d),
 
+                // Text constructor: Text ByteArray# off len → JSON string
+                ("Text", [ba_val, off_val, len_val]) => {
+                    if let Value::ByteArray(bs) = ba_val {
+                        let borrowed = bs.lock().unwrap();
+                        let off = extract_boxed_int(off_val, table).unwrap_or(0) as usize;
+                        let len = extract_boxed_int(len_val, table).unwrap_or(borrowed.len() as i64) as usize;
+                        let end = (off + len).min(borrowed.len());
+                        match std::str::from_utf8(&borrowed[off..end]) {
+                            Ok(s) => json!(s),
+                            Err(_) => json!(format!("<Text invalid UTF-8 len={}>", len)),
+                        }
+                    } else {
+                        let field_jsons: Vec<serde_json::Value> = fields.iter().map(|f| value_to_json(f, table, d)).collect();
+                        json!({"constructor": "Text", "fields": field_jsons})
+                    }
+                }
+
                 // List: try to collect as array or string
                 ("[]", []) => {
                     // Empty list
@@ -136,6 +153,29 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
             let name = con_name(*id, table);
             json!(format!("<partially-applied {}>", name))
         }
+        Value::ByteArray(bs) => {
+            let borrowed = bs.lock().unwrap();
+            match std::str::from_utf8(&borrowed) {
+                Ok(s) => json!(s),
+                Err(_) => json!(format!("<ByteArray# len={}>", borrowed.len())),
+            }
+        }
+    }
+}
+
+/// Extract an i64 from a potentially boxed Int value (LitInt or I#(LitInt)).
+fn extract_boxed_int(val: &Value, table: &DataConTable) -> Option<i64> {
+    match val {
+        Value::Lit(Literal::LitInt(n)) => Some(*n),
+        Value::Con(id, fields) if fields.len() == 1 => {
+            if table.get_by_name("I#") == Some(*id) {
+                if let Value::Lit(Literal::LitInt(n)) = &fields[0] {
+                    return Some(*n);
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 

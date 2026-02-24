@@ -96,9 +96,10 @@ pub struct EvalRequest {
 
 fn build_preamble(effects: &[EffectDecl]) -> String {
     let mut out = String::new();
-    out.push_str("{-# LANGUAGE NoImplicitPrelude, DataKinds, TypeOperators, FlexibleContexts, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}\n");
+    out.push_str("{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, DataKinds, TypeOperators, FlexibleContexts, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}\n");
     out.push_str("module Expr where\n");
     out.push_str("import Tidepool.Prelude\n");
+    out.push_str("import qualified Data.Text as T\n");
     out.push_str("import Control.Monad.Freer\n");
     out.push_str("default (Int)\n");
     out.push('\n');
@@ -140,7 +141,7 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
         "Use `pure x` as the last line to return a value. ",
         "Use `send (Constructor args)` to invoke effects. ",
         "First call is slow (~2s). Subsequent calls are cached.\n",
-        "Return values are automatically rendered to JSON by the Rust runtime — ",
+        "Return values are automatically rendered to JSON by the Rust runtime \u{2014} ",
         "Int becomes a number, [Char] becomes a string, Bool becomes true/false, ",
         "lists become arrays, etc. Prefer `pure x` over `send (Print (show x))` ",
         "for returning results.",
@@ -516,22 +517,22 @@ mod tests {
             EffectDecl {
                 type_name: "Console",
                 description: "Print output",
-                constructors: &["Print :: String -> Console ()"],
+                constructors: &["Print :: Text -> Console ()"],
                 type_defs: &[],
             },
             EffectDecl {
                 type_name: "KV",
                 description: "Key-value store",
                 constructors: &[
-                    "KvGet :: String -> KV (Maybe String)",
-                    "KvSet :: String -> String -> KV ()",
+                    "KvGet :: Text -> KV (Maybe Text)",
+                    "KvSet :: Text -> Text -> KV ()",
                 ],
                 type_defs: &[],
             },
         ];
         let preamble = build_preamble(&effects);
         assert!(preamble.contains("data Console a where"));
-        assert!(preamble.contains("  Print :: String -> Console ()"));
+        assert!(preamble.contains("  Print :: Text -> Console ()"));
         assert!(preamble.contains("data KV a where"));
     }
 
@@ -551,7 +552,7 @@ mod tests {
         let effects = vec![EffectDecl {
             type_name: "Console",
             description: "",
-            constructors: &["Print :: String -> Console ()"],
+            constructors: &["Print :: Text -> Console ()"],
             type_defs: &[],
         }];
         let preamble = build_preamble(&effects);
@@ -574,12 +575,12 @@ mod tests {
         let effects = vec![EffectDecl {
             type_name: "Console",
             description: "Print to console",
-            constructors: &["Print :: String -> Console ()"],
+            constructors: &["Print :: Text -> Console ()"],
             type_defs: &[],
         }];
         let desc = build_eval_tool_description(&effects);
         assert!(desc.contains("Console: Print to console"));
-        assert!(desc.contains("Print :: String -> Console ()"));
+        assert!(desc.contains("Print :: Text -> Console ()"));
     }
 
     #[test]

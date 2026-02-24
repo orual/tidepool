@@ -11,9 +11,21 @@ module Tidepool.Prelude
   , Int, Word, Char, Bool(..), Double, Float
   , String, Ordering(..), Maybe(..), Either(..)
   , IO
+    -- * Text type (re-exported from Data.Text)
+  , Text
+  , pack, unpack
+  , toUpper, toLower
+  , strip
+  , splitOn
+  , replace
+  , isSuffixOf, isInfixOf
+    -- * Text versions of words/lines
+  , words, lines, unwords, unlines
     -- * Typeclasses (re-exported from base)
-  , Eq(..), Ord(..), Num(..), Integral(..), Show(..)
+  , Eq(..), Ord(..), Num(..), Integral(..), Show
   , Functor(..), Applicative(..), Monad(..)
+    -- * show (Text-returning shadow)
+  , show
     -- * Basic functions (re-exported from base)
   , id, const, flip, (.), ($), ($!)
   , not, (&&), (||), otherwise, seq
@@ -34,10 +46,6 @@ module Tidepool.Prelude
   , span
   , break
   , init
-  , words
-  , lines
-  , unlines
-  , unwords
   , nub
   , nubBy
   , sort
@@ -66,26 +74,19 @@ module Tidepool.Prelude
   , last
     -- * Char/Enum
   , ord, chr, fromEnum
-    -- * Numeric
-  , showInt, readInt
-    -- * String comparison
-  , compareString
-  , eqString
-  , eqChar
   ) where
 
 import Prelude
   ( Int, Word, Char, Bool(..), Double, Float
   , String, Ordering(..), Maybe(..), Either(..)
   , IO
-  , Eq(..), Ord(..), Num(..), Integral(..), Show(..)
+  , Eq(..), Ord(..), Num(..), Integral(..), Show
   , Functor(..), Applicative(..), Monad(..)
   , id, const, flip, (.), ($), ($!)
   , not, (&&), (||), otherwise, seq
   , fst, snd, curry, uncurry
   , error, undefined
   , maybe, either
-  , show
   , map, filter, foldl, foldr
   , take, drop, zip, zipWith, unzip
   , lookup, elem, notElem
@@ -97,6 +98,17 @@ import Prelude
   , compare
   , fromEnum
   , mapM, mapM_, sequence, sequence_
+  )
+import qualified Prelude as P (show)
+import Data.Text (Text)
+import qualified Data.Text as T
+  ( pack, unpack
+  , toUpper, toLower
+  , strip
+  , splitOn
+  , replace
+  , isSuffixOf, isInfixOf
+  , words, lines, unwords, unlines
   )
 import Data.Char (ord, chr)
 import Data.Maybe (fromMaybe, isJust, isNothing, catMaybes, mapMaybe)
@@ -119,11 +131,56 @@ instance Renderable Double
 instance Renderable Float
 instance Renderable Bool
 instance Renderable ()
+instance Renderable Text
 instance Renderable a => Renderable [a]
 instance Renderable a => Renderable (Maybe a)
 instance (Renderable a, Renderable b) => Renderable (a, b)
 instance (Renderable a, Renderable b, Renderable c) => Renderable (a, b, c)
 instance (Renderable a, Renderable b, Renderable c, Renderable d) => Renderable (a, b, c, d)
+
+-- | Text-returning show: @show x@ gives @Text@ instead of @String@.
+show :: Show a => a -> Text
+show = T.pack . P.show
+
+-- Re-export Data.Text functions unqualified (non-colliding names)
+pack :: String -> Text
+pack = T.pack
+
+unpack :: Text -> String
+unpack = T.unpack
+
+toUpper :: Text -> Text
+toUpper = T.toUpper
+
+toLower :: Text -> Text
+toLower = T.toLower
+
+strip :: Text -> Text
+strip = T.strip
+
+splitOn :: Text -> Text -> [Text]
+splitOn = T.splitOn
+
+replace :: Text -> Text -> Text -> Text
+replace = T.replace
+
+isSuffixOf :: Text -> Text -> Bool
+isSuffixOf = T.isSuffixOf
+
+isInfixOf :: Text -> Text -> Bool
+isInfixOf = T.isInfixOf
+
+words :: Text -> [Text]
+words = T.words
+
+lines :: Text -> [Text]
+lines = T.lines
+
+unwords :: [Text] -> Text
+unwords = T.unwords
+
+unlines :: [Text] -> Text
+unlines = T.unlines
 
 -- | Append two lists.
 append :: [a] -> [a] -> [a]
@@ -191,41 +248,6 @@ init []     = []
 init [_]    = []
 init (x:xs) = x : init xs
 {-# INLINE init #-}
-
--- | Split a string into words separated by whitespace.
-words :: String -> [String]
-words s = case dropWhile isSpace s of
-  [] -> []
-  s' -> let (w, s'') = break isSpace s' in w : words s''
-  where
-    isSpace :: Char -> Bool
-    isSpace c = c == ' ' || c == '\t' || c == '\n' || c == '\r'
-{-# INLINE words #-}
-
--- | Split a string into lines separated by newline characters.
-lines :: String -> [String]
-lines [] = []
-lines s  = let (l, s') = break eqNl s
-           in l : case s' of
-                    []      -> []
-                    (_:s'') -> lines s''
-  where
-    eqNl :: Char -> Bool
-    eqNl c = c == '\n'
-{-# INLINE lines #-}
-
--- | Join lines with newline separators.
-unlines :: [String] -> String
-unlines []     = []
-unlines (l:ls) = l `append` ('\n' : unlines ls)
-{-# INLINE unlines #-}
-
--- | Join words with space separators.
-unwords :: [String] -> String
-unwords []     = []
-unwords [w]    = w
-unwords (w:ws) = w `append` (' ' : unwords ws)
-{-# INLINE unwords #-}
 
 -- | Remove duplicate elements (preserving first occurrence).
 nub :: Eq a => [a] -> [a]
@@ -354,60 +376,3 @@ last [x]    = x
 last (_:xs) = last xs
 last []     = error "last: empty list"
 {-# INLINE last #-}
-
--- | Convert an Int to its decimal String representation.
--- Uses quot/rem separately to avoid quotRemInt# (unboxed tuple primop).
-showInt :: Int -> String
-showInt n
-  | n < (0 :: Int)  = '-' : showPos (negate n)
-  | n == (0 :: Int) = "0"
-  | otherwise       = showPos n
-  where
-    showPos :: Int -> String
-    showPos m
-      | m == (0 :: Int) = ""
-      | otherwise       = showPos (quot m (10 :: Int)) `append` [digitToChar (rem m (10 :: Int))]
-    digitToChar :: Int -> Char
-    digitToChar d = case d of
-      0 -> '0'; 1 -> '1'; 2 -> '2'; 3 -> '3'; 4 -> '4'
-      5 -> '5'; 6 -> '6'; 7 -> '7'; 8 -> '8'; 9 -> '9'
-      _ -> '?'
-{-# INLINE showInt #-}
-
--- | Parse a decimal string to an Int. No error handling — returns 0 for empty.
-readInt :: String -> Int
-readInt [] = 0
-readInt ('-':cs) = negate (readPos cs)
-readInt cs = readPos cs
-
-readPos :: String -> Int
-readPos = go 0
-  where
-    go :: Int -> String -> Int
-    go !acc [] = acc
-    go !acc (c:rest) = go (acc * 10 + (ord c - ord '0')) rest
-{-# INLINE readInt #-}
-
--- | Lexicographic comparison of Strings.
-compareString :: String -> String -> Ordering
-compareString []     []     = EQ
-compareString []     (_:_)  = LT
-compareString (_:_)  []     = GT
-compareString (x:xs) (y:ys)
-  | x < y    = LT
-  | x > y    = GT
-  | otherwise = compareString xs ys
-{-# INLINE compareString #-}
-
--- | String equality without GHC's $fEqList specialization.
-eqString :: String -> String -> Bool
-eqString [] [] = True
-eqString (x:xs) (y:ys) = eqChar x y && eqString xs ys
-eqString _ _ = False
-{-# INLINE eqString #-}
-
--- | Character equality avoiding Eq class dictionary if possible.
-eqChar :: Char -> Char -> Bool
-eqChar c1 c2 = fromEnum c1 == fromEnum c2
-{-# INLINE eqChar #-}
-

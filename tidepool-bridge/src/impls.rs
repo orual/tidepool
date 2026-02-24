@@ -1,5 +1,6 @@
 use crate::error::BridgeError;
 use crate::traits::{FromCore, ToCore};
+use std::sync::{Arc, Mutex};
 use tidepool_eval::Value;
 use tidepool_repr::{DataConId, DataConTable, Literal};
 
@@ -17,6 +18,7 @@ fn type_mismatch(expected: &str, got: &Value) -> BridgeError {
         Value::ThunkRef(_) => "ThunkRef".to_string(),
         Value::JoinCont(_, _, _) => "JoinCont".to_string(),
         Value::ConFun(id, arity, args) => format!("ConFun({:?}, {}/{})", id, args.len(), arity),
+        Value::ByteArray(bs) => format!("ByteArray(len={})", bs.lock().unwrap().len()),
     };
     BridgeError::TypeMismatch {
         expected: expected.to_string(),
@@ -279,6 +281,29 @@ impl ToCore for char {
 impl FromCore for String {
     fn from_value(value: &Value, table: &DataConTable) -> Result<Self, BridgeError> {
         match value {
+            // Text constructor: Text ByteArray# off len
+            Value::Con(id, fields)
+                if fields.len() == 3 && table.get_by_name("Text") == Some(*id) =>
+            {
+                let ba = match &fields[0] {
+                    Value::ByteArray(bs) => bs.lock().unwrap().clone(),
+                    _ => return Err(type_mismatch("ByteArray in Text", &fields[0])),
+                };
+                let off = i64::from_value(&fields[1], table)? as usize;
+                let len = i64::from_value(&fields[2], table)? as usize;
+                if off + len > ba.len() {
+                    return Err(BridgeError::TypeMismatch {
+                        expected: "valid Text slice".to_string(),
+                        got: format!("off={}, len={}, ba_len={}", off, len, ba.len()),
+                    });
+                }
+                String::from_utf8(ba[off..off + len].to_vec()).map_err(|e| {
+                    BridgeError::TypeMismatch {
+                        expected: "UTF-8 Text".to_string(),
+                        got: format!("Invalid UTF-8: {}", e),
+                    }
+                })
+            }
             Value::Lit(Literal::LitString(bytes)) => {
                 String::from_utf8(bytes.clone()).map_err(|e| BridgeError::TypeMismatch {
                     expected: "UTF-8 String".to_string(),
@@ -291,14 +316,21 @@ impl FromCore for String {
                 let mut cur = value;
                 loop {
                     match cur {
-                        Value::Con(tag, fields) if table.get_by_name("[]") == Some(*tag) && fields.is_empty() => {
+                        Value::Con(tag, fields)
+                            if table.get_by_name("[]") == Some(*tag) && fields.is_empty() =>
+                        {
                             break;
                         }
-                        Value::Con(tag, fields) if table.get_by_name(":") == Some(*tag) && fields.len() == 2 => {
+                        Value::Con(tag, fields)
+                            if table.get_by_name(":") == Some(*tag) && fields.len() == 2 =>
+                        {
                             match &fields[0] {
                                 Value::Lit(Literal::LitChar(c)) => chars.push(*c),
                                 // Boxing: C# wraps a Char
-                                Value::Con(box_tag, box_fields) if table.get_by_name("C#") == Some(*box_tag) && box_fields.len() == 1 => {
+                                Value::Con(box_tag, box_fields)
+                                    if table.get_by_name("C#") == Some(*box_tag)
+                                        && box_fields.len() == 1 =>
+                                {
                                     match &box_fields[0] {
                                         Value::Lit(Literal::LitChar(c)) => chars.push(*c),
                                         other => return Err(type_mismatch("Char in C#", other)),
@@ -313,22 +345,29 @@ impl FromCore for String {
                 }
                 Ok(chars.into_iter().collect())
             }
-            _ => Err(type_mismatch("LitString or [Char]", value)),
+            _ => Err(type_mismatch("Text, LitString, or [Char]", value)),
         }
     }
 }
 
 impl ToCore for String {
     fn to_value(&self, table: &DataConTable) -> Result<Value, BridgeError> {
-        let cons_id = table.get_by_name(":").ok_or_else(|| BridgeError::UnknownDataConName("(:)".into()))?;
-        let nil_id = table.get_by_name("[]").ok_or_else(|| BridgeError::UnknownDataConName("[]".into()))?;
-        let char_con_id = table.get_by_name("C#").ok_or_else(|| BridgeError::UnknownDataConName("C#".into()))?;
-        let mut result = Value::Con(nil_id, vec![]);
-        for ch in self.chars().rev() {
-            let char_val = Value::Con(char_con_id, vec![Value::Lit(Literal::LitChar(ch))]);
-            result = Value::Con(cons_id, vec![char_val, result]);
-        }
-        Ok(result)
+        let text_id = table
+            .get_by_name("Text")
+            .ok_or_else(|| BridgeError::UnknownDataConName("Text".into()))?;
+        let i_hash_id = table
+            .get_by_name("I#")
+            .ok_or_else(|| BridgeError::UnknownDataConName("I#".into()))?;
+        let bytes = self.as_bytes().to_vec();
+        let len = bytes.len() as i64;
+        Ok(Value::Con(
+            text_id,
+            vec![
+                Value::ByteArray(Arc::new(Mutex::new(bytes))),
+                Value::Con(i_hash_id, vec![Value::Lit(Literal::LitInt(0))]),
+                Value::Con(i_hash_id, vec![Value::Lit(Literal::LitInt(len))]),
+            ],
+        ))
     }
 }
 
@@ -722,6 +761,13 @@ mod tests {
             name: "()".into(),
             tag: 1,
             rep_arity: 0,
+            field_bangs: vec![],
+        });
+        t.insert(DataCon {
+            id: DataConId(15),
+            name: "Text".into(),
+            tag: 1,
+            rep_arity: 3,
             field_bangs: vec![],
         });
         t

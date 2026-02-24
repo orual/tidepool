@@ -24,7 +24,7 @@ impl DescribeEffect for ConsoleHandler {
         EffectDecl {
             type_name: "Console",
             description: "Print text output.",
-            constructors: &["Print :: String -> Console ()"],
+            constructors: &["Print :: Text -> Console ()"],
             type_defs: &[],
         }
     }
@@ -75,10 +75,10 @@ impl DescribeEffect for KvHandler {
             type_name: "KV",
             description: "Persistent key-value store. State survives across calls within one server session.",
             constructors: &[
-                "KvGet :: String -> KV (Maybe String)",
-                "KvSet :: String -> String -> KV ()",
-                "KvDelete :: String -> KV ()",
-                "KvKeys :: KV [String]",
+                "KvGet :: Text -> KV (Maybe Text)",
+                "KvSet :: Text -> Text -> KV ()",
+                "KvDelete :: Text -> KV ()",
+                "KvKeys :: KV [Text]",
             ],
             type_defs: &[],
         }
@@ -172,8 +172,8 @@ impl DescribeEffect for FsHandler {
             type_name: "Fs",
             description: "Read and write files (sandboxed to server working directory).",
             constructors: &[
-                "FsRead :: String -> Fs String",
-                "FsWrite :: String -> String -> Fs ()",
+                "FsRead :: Text -> Fs Text",
+                "FsWrite :: Text -> Text -> Fs ()",
             ],
             type_defs: &[],
         }
@@ -423,14 +423,14 @@ impl DescribeEffect for SgHandler {
             ),
             type_defs: &[
                 "data Lang = Rust | Python | TypeScript | JavaScript | Go | Java | C | Cpp | Haskell | Nix | Html | Css | Json | Yaml | Toml",
-                "data Match = Match { mText :: String, mFile :: String, mLine :: Int, mVars :: [(String, String)], mReplacement :: String }",
-                "var :: Match -> String -> String",
+                "data Match = Match { mText :: Text, mFile :: Text, mLine :: Int, mVars :: [(Text, Text)], mReplacement :: Text }",
+                "var :: Match -> Text -> Text",
                 "var (Match _ _ _ vs _) k = case [v | (k', v) <- vs, k' == k] of { (x:_) -> x; _ -> \"\" }",
             ],
             constructors: &[
-                "SgFind :: Lang -> String -> [String] -> SG [Match]",
-                "SgPreview :: Lang -> String -> String -> [String] -> SG [Match]",
-                "SgReplace :: Lang -> String -> String -> [String] -> SG Int",
+                "SgFind :: Lang -> Text -> [Text] -> SG [Match]",
+                "SgPreview :: Lang -> Text -> Text -> [Text] -> SG [Match]",
+                "SgReplace :: Lang -> Text -> Text -> [Text] -> SG Int",
             ],
         }
     }

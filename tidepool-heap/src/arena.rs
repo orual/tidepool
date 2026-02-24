@@ -151,6 +151,7 @@ impl ArenaHeap {
             Value::Closure(env, _, _) => env.values().flat_map(Self::collect_thunk_refs).collect(),
             Value::JoinCont(_, _, env) => env.values().flat_map(Self::collect_thunk_refs).collect(),
             Value::Lit(_) => vec![],
+            Value::ByteArray(_) => vec![],
         }
     }
 }

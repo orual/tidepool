@@ -1,5 +1,12 @@
 use crate::env::Env;
+use std::sync::{Arc, Mutex};
 use tidepool_repr::{CoreExpr, DataConId, Literal, VarId};
+
+/// Shared mutable byte array — `Arc<Mutex>` for in-place mutation semantics
+/// and Send requirement (tidepool-mcp spawns threads).
+/// IMPORTANT: Never hold two locks simultaneously on different SharedByteArrays
+/// within a single primop — always clone data out first to avoid deadlock.
+pub type SharedByteArray = Arc<Mutex<Vec<u8>>>;
 
 /// Runtime value for the tree-walking interpreter.
 #[derive(Debug, Clone)]
@@ -17,6 +24,8 @@ pub enum Value {
     /// Partially-applied data constructor: (tag, arity, accumulated args)
     /// When all args are supplied, collapses to Con.
     ConFun(DataConId, usize, Vec<Value>),
+    /// Mutable/immutable byte array (ByteArray# / MutableByteArray#)
+    ByteArray(SharedByteArray),
 }
 
 /// Thunk identifier — index into the thunk store.
@@ -60,6 +69,10 @@ impl std::fmt::Display for Value {
             Value::JoinCont(..) => write!(f, "<join>"),
             Value::ConFun(id, arity, args) => {
                 write!(f, "<partial Con#{} {}/{}>", id.0, args.len(), arity)
+            }
+            Value::ByteArray(ba) => {
+                let bytes = ba.lock().unwrap();
+                write!(f, "<ByteArray# len={}>", bytes.len())
             }
         }
     }

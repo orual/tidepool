@@ -111,6 +111,14 @@ fn get_table() -> &'static DataConTable {
             rep_arity: 1,
             field_bangs: vec![SrcBang::NoSrcBang],
         });
+        // Text
+        table.insert(DataCon {
+            id: DataConId(14),
+            name: "Text".to_string(),
+            tag: 1,
+            rep_arity: 3,
+            field_bangs: vec![SrcBang::NoSrcBang, SrcBang::NoSrcBang, SrcBang::NoSrcBang],
+        });
         table
     })
 }
