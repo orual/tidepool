@@ -1,35 +1,63 @@
 use proptest::prelude::*;
+use proptest::test_runner::{Config, TestRunner};
 use tidepool_repr::*;
 use tidepool_repr::serial::{read_cbor, write_cbor, read_metadata, write_metadata};
 use tidepool_testing::gen::arb_core_expr;
 
-/// Round-trip property for CoreExpr: from_cbor(to_cbor(expr)) == expr
-proptest! {
-    #[test]
-    fn cbor_round_trip(expr in arb_core_expr()) {
-        let bytes = write_cbor(&expr).expect("write_cbor failed");
-        let recovered = read_cbor(&bytes).expect("read_cbor failed");
-        prop_assert_eq!(expr, recovered);
-    }
+// RecursiveTree's PartialEq is deeply recursive and can overflow the default
+// thread stack. Run all CoreExpr proptests on an 8MB stack.
+
+#[test]
+fn cbor_round_trip() {
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let mut runner = TestRunner::new(Config::default());
+            runner.run(&arb_core_expr(), |expr| {
+                let bytes = write_cbor(&expr).expect("write_cbor failed");
+                let recovered = read_cbor(&bytes).expect("read_cbor failed");
+                prop_assert_eq!(expr, recovered);
+                Ok(())
+            }).unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
-/// CBOR serialization is deterministic: to_cbor(expr) == to_cbor(expr)
-proptest! {
-    #[test]
-    fn cbor_deterministic(expr in arb_core_expr()) {
-        let bytes1 = write_cbor(&expr).expect("write_cbor failed (1)");
-        let bytes2 = write_cbor(&expr).expect("write_cbor failed (2)");
-        prop_assert_eq!(bytes1, bytes2);
-    }
+#[test]
+fn cbor_deterministic() {
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let mut runner = TestRunner::new(Config::default());
+            runner.run(&arb_core_expr(), |expr| {
+                let bytes1 = write_cbor(&expr).expect("write_cbor failed (1)");
+                let bytes2 = write_cbor(&expr).expect("write_cbor failed (2)");
+                prop_assert_eq!(bytes1, bytes2);
+                Ok(())
+            }).unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
-/// Serialized form is never empty for any non-trivial expr
-proptest! {
-    #[test]
-    fn cbor_non_empty(expr in arb_core_expr()) {
-        let bytes = write_cbor(&expr).expect("write_cbor failed");
-        prop_assert!(!bytes.is_empty());
-    }
+#[test]
+fn cbor_non_empty() {
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let mut runner = TestRunner::new(Config::default());
+            runner.run(&arb_core_expr(), |expr| {
+                let bytes = write_cbor(&expr).expect("write_cbor failed");
+                prop_assert!(!bytes.is_empty());
+                Ok(())
+            }).unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 /// Strategy for SrcBang
