@@ -112,6 +112,17 @@ pub unsafe fn heap_to_value(ptr: *const u8) -> Result<Value, BridgeError> {
             }
             Ok(Value::Con(DataConId(con_tag), fields))
         }
+        t if t == layout::TAG_CLOSURE || t == layout::TAG_THUNK => {
+            // Unevaluated closure/thunk — return as opaque Value.
+            // This can happen when Array# elements haven't been forced.
+            // We represent it as a dummy Closure with empty env and body.
+            use tidepool_eval::env::Env;
+            use tidepool_repr::{CoreExpr, CoreFrame, VarId};
+            let expr = CoreExpr {
+                nodes: vec![CoreFrame::Var(VarId(0))],
+            };
+            Ok(Value::Closure(Env::new(), VarId(0), expr))
+        }
         other => Err(BridgeError::UnexpectedHeapTag(other)),
     }
 }

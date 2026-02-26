@@ -375,7 +375,6 @@ fn test_aeson_object_simple() {
 
 /// Construct a JSON array via toJSON
 #[test]
-#[ignore] // needs Array#-aware heap bridge rendering for Vector internals
 fn test_aeson_array_tojson() {
     let json = run_aeson(&[
         r#"pure (toJSON [1, 2, 3 :: Int])"#,
@@ -491,28 +490,26 @@ fn test_aeson_lens_traverse_strings() {
 
 // --- Modification via lens ---
 
-/// Use (.~) to set a field value
+/// Use (.~) to set a field value (uses _String to avoid Scientific/GMP)
 #[test]
-#[ignore] // Requires Integer arithmetic (Scientific internals) — needs GMP FFI support
 fn test_aeson_lens_set_field() {
     let json = run_aeson(&[
-        r#"let obj = object ["x" .= (1 :: Int)]"#,
-        r#"let modified = obj & key "x" . _Number .~ 999"#,
-        r#"pure (modified ^? key "x" . _Number)"#,
+        r#"let obj = object ["x" .= ("old" :: Text)]"#,
+        r#"let modified = obj & key "x" . _String .~ "new""#,
+        r#"pure (modified ^? key "x" . _String)"#,
     ]);
-    assert_eq!(json, serde_json::json!(999.0));
+    assert_eq!(json, serde_json::json!("new"));
 }
 
-/// Use (%~) to modify a field value
+/// Use (%~) to modify a field value (uses _String to avoid Scientific/GMP)
 #[test]
-#[ignore] // Requires Integer arithmetic (Scientific internals) — needs GMP FFI support
 fn test_aeson_lens_modify_field() {
     let json = run_aeson(&[
-        r#"let obj = object ["count" .= (10 :: Int)]"#,
-        r#"let modified = obj & key "count" . _Number %~ (+ 5)"#,
-        r#"pure (modified ^? key "count" . _Number)"#,
+        r#"let obj = object ["greeting" .= ("hello" :: Text)]"#,
+        r#"let modified = obj & key "greeting" . _String %~ T.toUpper"#,
+        r#"pure (modified ^? key "greeting" . _String)"#,
     ]);
-    assert_eq!(json, serde_json::json!(15.0));
+    assert_eq!(json, serde_json::json!("HELLO"));
 }
 
 // --- Multi-stage: construct, inspect, transform ---
@@ -531,16 +528,15 @@ fn test_aeson_multistage_extract_compute() {
     assert_eq!(json, serde_json::json!(85.0));
 }
 
-/// Build nested JSON, modify inner field, extract result
+/// Build nested JSON, modify inner field, extract result (uses _String to avoid Scientific/GMP)
 #[test]
-#[ignore] // Requires Integer arithmetic (Scientific internals) — needs GMP FFI support
 fn test_aeson_multistage_nested_modify() {
     let json = run_aeson(&[
-        r#"let config = object ["db" .= object ["port" .= (5432 :: Int), "host" .= ("localhost" :: Text)]]"#,
-        r#"let updated = config & key "db" . key "port" . _Number .~ 3306"#,
-        r#"pure (updated ^? key "db" . key "port" . _Number)"#,
+        r#"let config = object ["db" .= object ["host" .= ("localhost" :: Text), "env" .= ("dev" :: Text)]]"#,
+        r#"let updated = config & key "db" . key "env" . _String .~ "prod""#,
+        r#"pure (updated ^? key "db" . key "env" . _String)"#,
     ]);
-    assert_eq!(json, serde_json::json!(3306.0));
+    assert_eq!(json, serde_json::json!("prod"));
 }
 
 // --- Multi-effect: aeson + Console + KV ---

@@ -170,6 +170,30 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                     json!(val)
                 }
 
+                // Aeson Array: Array (Vector Value) → delegate to vector
+                ("Array", [vec_val]) => value_to_json(vec_val, table, d),
+
+                // Data.Vector.Vector: worker-wrapper inlines fields as
+                // Vector Int# Int# (Array# a). The Array# contents come from
+                // heap_bridge as Con(DataConId(0), elems). Extract and render
+                // the elements directly rather than delegating to value_to_json
+                // (which would hit the generic constructor case for the nameless Con).
+                ("Vector", fields) => {
+                    // Find the Array# field: it's the Con(_, elems) with elements,
+                    // typically the last field (after Int# offset and length).
+                    let array_elems = fields.iter().rev().find_map(|f| match f {
+                        Value::Con(_, elems) if !elems.is_empty() => Some(elems),
+                        _ => None,
+                    });
+                    if let Some(elems) = array_elems {
+                        let arr: Vec<serde_json::Value> =
+                            elems.iter().map(|e| value_to_json(e, table, d)).collect();
+                        json!(arr)
+                    } else {
+                        json!([])
+                    }
+                }
+
                 // Generic constructor
                 (_name, fields) => {
                     if fields.is_empty() {
