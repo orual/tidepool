@@ -1390,6 +1390,7 @@ dependencies = [
  "ast-grep-core",
  "ast-grep-language",
  "frunk",
+ "serde_json",
  "tidepool-bridge",
  "tidepool-bridge-derive",
  "tidepool-effect",
@@ -2430,6 +2431,7 @@ name = "tidepool-bridge"
 version = "0.0.1"
 dependencies = [
  "proptest",
+ "serde_json",
  "tidepool-eval",
  "tidepool-repr",
 ]

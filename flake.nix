@@ -121,14 +121,12 @@
           };
           ghcEnv = hsPkgs.ghcWithPackages (ps: with ps; [
             freer-simple
-            aeson
             lens
-            lens-aeson
           ]);
           harness = hsPkgs.callCabal2nix "tidepool-harness" ./haskell {};
         in pkgs.writeShellScriptBin "tidepool-extract" ''
           export PATH="${ghcEnv}/bin:$PATH"
-          exec ${harness}/bin/tidepool-harness "$@"
+          exec ${harness}/bin/tidepool-extract-bin "$@"
         '';
 
         packages.default = self.packages.${system}.tidepool-extract;

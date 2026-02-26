@@ -3,15 +3,20 @@ name:          tidepool-harness
 version:       0.1.0.0
 build-type:    Simple
 
-executable tidepool-harness
+executable tidepool-extract-bin
   main-is:          Main.hs
-  hs-source-dirs:   app, src
+  hs-source-dirs:   app, src, lib
   other-modules:
     Tidepool.GhcPipeline
     Tidepool.Translate
     Tidepool.Resolve
     Tidepool.FatIface
     Tidepool.CborEncode
+    Tidepool.Prelude
+    Tidepool.Aeson
+    Tidepool.Aeson.Value
+    Tidepool.Aeson.KeyMap
+    Tidepool.Aeson.Lens
   build-depends:
     base         >= 4.20 && < 5,
     ghc          >= 9.12 && < 9.13,
@@ -23,11 +28,7 @@ executable tidepool-harness
     text,
     cborg,
     mtl,
-    aeson,
-    lens,
-    lens-aeson,
-    scientific,
-    vector
+    lens
   default-language: GHC2024
   default-extensions: OverloadedStrings
   ghc-options:      -Wall

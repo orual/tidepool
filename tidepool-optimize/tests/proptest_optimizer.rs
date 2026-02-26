@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
+use serial_test::serial;
 use tidepool_eval::pass::Pass;
 use tidepool_eval::{eval, Env, Value, VecHeap};
 use tidepool_optimize::beta::BetaReduce;
@@ -115,9 +116,10 @@ fn wrap_in_beta_reducible(body: CoreExpr, arg: CoreExpr, binder: VarId) -> CoreE
 }
 
 #[test]
+#[serial]
 fn beta_reduction_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -158,9 +160,10 @@ fn wrap_in_unused_let(rhs: CoreExpr, body: CoreExpr, binder: VarId) -> CoreExpr 
 }
 
 #[test]
+#[serial]
 fn dce_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -200,9 +203,10 @@ fn wrap_in_used_once_let(rhs: CoreExpr, binder: VarId) -> CoreExpr {
 }
 
 #[test]
+#[serial]
 fn inline_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -248,9 +252,10 @@ fn wrap_in_known_con_case(body: CoreExpr, binder: VarId, tag: DataConId) -> Core
 
 
 #[test]
+#[serial]
 fn case_of_known_con_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -271,9 +276,10 @@ fn case_of_known_con_preserves_eval() {
 }
 
 #[test]
+#[serial]
 fn random_beta_reduce_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -291,9 +297,10 @@ fn random_beta_reduce_preserves_eval() {
 }
 
 #[test]
+#[serial]
 fn random_case_reduce_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -311,9 +318,10 @@ fn random_case_reduce_preserves_eval() {
 }
 
 #[test]
+#[serial]
 fn random_inline_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -331,9 +339,10 @@ fn random_inline_preserves_eval() {
 }
 
 #[test]
+#[serial]
 fn random_dce_preserves_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -351,9 +360,10 @@ fn random_dce_preserves_eval() {
 }
 
 #[test]
+#[serial]
 fn multiple_passes_preserve_eval() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -410,9 +420,10 @@ Optimized Expr: {:#?}",
 }
 
 #[test]
+#[serial]
 fn optimization_is_idempotent() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,
@@ -459,9 +470,10 @@ Optimized Expr: {:#?}",
 }
 
 #[test]
+#[serial]
 fn dce_does_not_increase_size() {
     let handle = std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(16 * 1024 * 1024)
         .spawn(|| {
             let mut runner = TestRunner::new(Config {
                 cases: 200,

@@ -77,14 +77,12 @@ module Tidepool.Prelude
   , even, odd
     -- * Char/Enum
   , ord, chr, fromEnum
-    -- * JSON (Data.Aeson)
-  , Value, object, (.=), encode, decode, eitherDecode, eitherDecodeStrict, toJSON, fromJSON, Result(..)
-  , ToJSON, FromJSON
-    -- * JSON lenses (Data.Aeson.Lens + Control.Lens)
-  , key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double
+    -- * JSON (Tidepool.Aeson — vendored, construction-only)
+  , Value, object, (.=), toJSON, Result(..)
+  , ToJSON
+    -- * JSON lenses (Tidepool.Aeson.Lens + Control.Lens)
+  , key, nth, _String, _Number, _Bool, _Array, _Object, _Int, _Double
   , preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse
-    -- * Scientific
-  , Scientific
   ) where
 
 import Prelude
@@ -131,10 +129,9 @@ import Control.Monad
   , (=<<), (>=>), (<=<)
   , foldM, foldM_
   )
-import Data.Aeson (Value, object, (.=), encode, decode, eitherDecode, eitherDecodeStrict, toJSON, fromJSON, Result(..), ToJSON, FromJSON)
-import Data.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double)
+import Tidepool.Aeson (Value, object, (.=), toJSON, Result(..), ToJSON)
+import Tidepool.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Int, _Double)
 import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)
-import Data.Scientific (Scientific)
 
 -- | Marker typeclass for types whose runtime values can be rendered to JSON
 -- by the Rust-side value_to_json renderer. Use @pure x@ to return values
@@ -155,7 +152,6 @@ instance (Renderable a, Renderable b) => Renderable (a, b)
 instance (Renderable a, Renderable b, Renderable c) => Renderable (a, b, c)
 instance (Renderable a, Renderable b, Renderable c, Renderable d) => Renderable (a, b, c, d)
 instance Renderable Value
-instance Renderable Scientific
 
 -- | Text-returning show: @show x@ gives @Text@ instead of @String@.
 show :: Show a => a -> Text

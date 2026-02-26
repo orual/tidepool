@@ -16,3 +16,4 @@ tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
 [dev-dependencies]
 tidepool-testing = { version = "0.0.1", path = "../tidepool-testing" }
 proptest = "1"
+serial_test = "3.4.0"

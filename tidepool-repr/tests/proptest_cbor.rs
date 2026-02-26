@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
+use serial_test::serial;
 use tidepool_repr::*;
 use tidepool_repr::serial::{read_cbor, write_cbor, read_metadata, write_metadata};
 use tidepool_testing::gen::arb_core_expr;
@@ -8,6 +9,7 @@ use tidepool_testing::gen::arb_core_expr;
 // thread stack. Run all CoreExpr proptests on an 8MB stack.
 
 #[test]
+#[serial]
 fn cbor_round_trip() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -26,6 +28,7 @@ fn cbor_round_trip() {
 }
 
 #[test]
+#[serial]
 fn cbor_deterministic() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -44,6 +47,7 @@ fn cbor_deterministic() {
 }
 
 #[test]
+#[serial]
 fn cbor_non_empty() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -122,6 +126,7 @@ fn arb_data_con_table() -> impl Strategy<Value = DataConTable> {
 /// Round-trip property for DataConTable
 proptest! {
     #[test]
+    #[serial]
     fn cbor_round_trip_data_con_table(table in arb_data_con_table()) {
         let bytes = write_metadata(&table).expect("write_metadata failed");
         let recovered = read_metadata(&bytes).expect("read_metadata failed");
@@ -144,6 +149,7 @@ fn arb_literal() -> impl Strategy<Value = Literal> {
 /// Literal individual round-trip
 proptest! {
     #[test]
+    #[serial]
     fn literal_round_trip(lit in arb_literal()) {
         let expr = RecursiveTree {
             nodes: vec![CoreFrame::Lit(lit)],
@@ -172,6 +178,7 @@ fn gen_deep_expr(depth: usize) -> RecursiveTree<CoreFrame<usize>> {
 }
 
 #[test]
+#[serial]
 fn nested_expr_round_trip() {
     for depth in [5, 10, 20, 50] {
         let expr = gen_deep_expr(depth);
@@ -189,6 +196,7 @@ enum Mutation {
 }
 
 #[test]
+#[serial]
 fn cbor_corrupt_bytes_no_panic() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -244,6 +252,7 @@ fn cbor_corrupt_bytes_no_panic() {
 }
 
 #[test]
+#[serial]
 fn cbor_random_bytes_no_panic() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -269,6 +278,7 @@ fn cbor_random_bytes_no_panic() {
 }
 
 #[test]
+#[serial]
 fn cbor_truncated_no_panic() {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)

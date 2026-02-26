@@ -523,7 +523,14 @@ impl EffectHandler<CapturedOutput> for HttpHandler {
                 let body = resp.into_string().map_err(|e| {
                     EffectError::Handler(format!("Read body from '{}' failed: {}", url_str, e))
                 })?;
-                cx.respond(body)
+
+                let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+                    EffectError::Handler(format!(
+                        "JSON parse error for '{}': {}",
+                        url_str, e
+                    ))
+                })?;
+                cx.respond(json)
             }
         }
     }

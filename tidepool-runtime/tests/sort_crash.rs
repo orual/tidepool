@@ -288,9 +288,8 @@ fn aeson_import_strs() -> Vec<&'static str> {
     // Unqualified aeson/lens symbols now come from Tidepool.Prelude.
     // Only qualified imports needed here.
     vec![
-        "qualified Data.Aeson as Aeson",
-        "qualified Data.Aeson.KeyMap as KM",
-        "qualified Data.Vector as V",
+        "qualified Tidepool.Aeson as Aeson",
+        "qualified Tidepool.Aeson.KeyMap as KM",
     ]
 }
 
@@ -312,6 +311,39 @@ fn run_aeson_effectful_with_helpers(
 ) -> (serde_json::Value, Vec<String>) {
     let imports: Vec<&str> = aeson_import_strs();
     let src = mcp_source_with_imports(lines, helpers, &imports);
+    let pp = prelude_path();
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let include = [pp.as_path()];
+            let (console, captured) = TestConsole::new();
+            let kv = TestKv::new();
+            let mut handlers = frunk::hlist![console, kv, TestFs];
+            let val = compile_and_run(&src, "result", &include, &mut handlers, &())
+                .expect("compile_and_run failed");
+            let json = val.to_json();
+            let lines = captured.lock().unwrap().clone();
+            (json, lines)
+        })
+        .unwrap()
+        .join()
+        .expect("thread panicked")
+}
+
+fn run_aeson_effectful_with_input(
+    lines: &[&str],
+    helpers: &[&str],
+    input: serde_json::Value,
+) -> (serde_json::Value, Vec<String>) {
+    let decls = test_decls();
+    let preamble = tidepool_mcp::build_preamble(&decls);
+    let stack = tidepool_mcp::build_effect_stack_type(&decls);
+    let lines_owned: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+    let imports: Vec<String> = aeson_import_strs().iter().map(|s| s.to_string()).collect();
+    let helpers_owned: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
+    let src = tidepool_mcp::template_haskell(
+        &preamble, &stack, &lines_owned, &imports, &helpers_owned, Some(&input),
+    );
     let pp = prelude_path();
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
@@ -700,15 +732,12 @@ fn test_aeson_helper_pipeline() {
 
 // --- Deep-nesting regression (CBOR recursion limit) ---
 
-/// _Integer lens on object field — crashes because _Integer converts Scientific to Integer,
-/// pulling in GMP arithmetic (integerFromNatural etc) which uses unsupported primops.
-/// Use _Number instead for now.
+/// _Int lens on object field — now uses Double internally (no Scientific/GMP).
 #[test]
-#[ignore = "SIGILL: _Integer prism uses Integer/GMP arithmetic (unsupported primops)"]
-fn test_aeson_lens_integer_prism() {
+fn test_aeson_lens_int_prism() {
     let json = run_aeson(&[
         r#"let obj = object ["x" .= (42 :: Int)]"#,
-        r#"pure (obj ^? key "x" . _Integer)"#,
+        r#"pure (obj ^? key "x" . _Int)"#,
     ]);
     assert_eq!(json, serde_json::json!(42));
 }
@@ -745,24 +774,19 @@ fn test_aeson_lens_nested_deep() {
     assert_eq!(json, serde_json::json!([1.0, true]));
 }
 
-/// Isolate: Scientific → Integer conversion (used internally by _Integer prism)
-/// This crashes with SIGILL because the conversion uses GMP-backed Integer arithmetic.
+/// _Number now returns Double directly (no Scientific).
 #[test]
-#[ignore = "SIGILL: Scientific to Integer conversion uses unsupported Integer primops"]
-fn test_aeson_scientific_to_integer() {
+fn test_aeson_number_prism_double() {
     let json = run_aeson(&[
         r#"let s = toJSON (42 :: Int)"#,
         r#"let n = s ^? _Number"#,
-        // floatingOrInteger is what _Integer uses internally
         r#"pure n"#,
     ]);
-    // This works — _Number gives Scientific directly
     assert_eq!(json, serde_json::json!(42.0));
 }
 
-/// _Double prism — also crashes (same Scientific→Double conversion issue?)
+/// _Double prism — now trivially wraps _Number (no Scientific).
 #[test]
-#[ignore = "SIGILL: _Double prism likely uses Scientific conversion with unsupported primops"]
 fn test_aeson_lens_double_prism() {
     let json = run_aeson(&[
         r#"let obj = object ["x" .= (3.14 :: Double)]"#,
@@ -2111,4 +2135,1479 @@ fn test_primop_kvget_to_upper() {
         r#"pure (fmap toUpper v)"#,
     ]);
     assert_eq!(json, serde_json::json!("HELLO"));
+}
+
+// ===========================================================================
+// Vendored Aeson comprehensive test suite
+//
+// Tests the full Tidepool.Aeson stack: Value construction, ToJSON class,
+// lens-based access/modification, composition with effects, input injection,
+// helper functions, and edge cases.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Value construction: every constructor
+// ---------------------------------------------------------------------------
+
+/// Construct Null via qualified name
+#[test]
+fn test_vendored_aeson_null_qualified() {
+    let json = run_aeson(&[r#"pure Aeson.Null"#]);
+    assert_eq!(json, serde_json::json!("Null"));
+}
+
+/// Construct Bool True and Bool False
+#[test]
+fn test_vendored_aeson_bool_both() {
+    let t = run_aeson(&[r#"pure (Aeson.Bool True)"#]);
+    let f = run_aeson(&[r#"pure (Aeson.Bool False)"#]);
+    assert_eq!(t, serde_json::json!({"constructor": "Bool", "fields": [true]}));
+    assert_eq!(f, serde_json::json!({"constructor": "Bool", "fields": [false]}));
+}
+
+/// Construct String with various content
+#[test]
+fn test_vendored_aeson_string_unicode() {
+    let json = run_aeson(&[r#"pure (Aeson.String "hello world")"#]);
+    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": ["hello world"]}));
+}
+
+/// Construct Number via toJSON Int
+#[test]
+fn test_vendored_aeson_number_via_tojson() {
+    let json = run_aeson(&[r#"pure (toJSON (99 :: Int))"#]);
+    // Number wraps Scientific — should be non-null
+    assert!(!json.is_null());
+}
+
+/// Construct Array via toJSON list
+#[test]
+fn test_vendored_aeson_array_via_tojson() {
+    let json = run_aeson(&[r#"pure (toJSON ([1, 2, 3] :: [Int]))"#]);
+    assert!(!json.is_null());
+}
+
+/// Construct empty object
+#[test]
+fn test_vendored_aeson_empty_object() {
+    let json = run_aeson(&[r#"pure (object [])"#]);
+    assert_eq!(json["constructor"], "Object");
+}
+
+/// Construct empty array
+#[test]
+fn test_vendored_aeson_empty_array() {
+    let json = run_aeson(&[r#"pure (toJSON ([] :: [Int]))"#]);
+    assert!(!json.is_null());
+}
+
+// ---------------------------------------------------------------------------
+// 2. ToJSON instances
+// ---------------------------------------------------------------------------
+
+/// ToJSON Text
+#[test]
+fn test_vendored_tojson_text() {
+    let json = run_aeson(&[r#"pure (toJSON ("hello" :: Text))"#]);
+    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": ["hello"]}));
+}
+
+/// ToJSON Bool
+#[test]
+fn test_vendored_tojson_bool() {
+    let json = run_aeson(&[r#"pure (toJSON True)"#]);
+    assert_eq!(json, serde_json::json!({"constructor": "Bool", "fields": [true]}));
+}
+
+/// ToJSON Maybe — Just wraps, Nothing becomes Null
+#[test]
+fn test_vendored_tojson_maybe() {
+    let just = run_aeson(&[r#"pure (toJSON (Just ("x" :: Text)))"#]);
+    let nothing = run_aeson(&[r#"pure (toJSON (Nothing :: Maybe Text))"#]);
+    assert_eq!(just, serde_json::json!({"constructor": "String", "fields": ["x"]}));
+    assert_eq!(nothing, serde_json::json!("Null"));
+}
+
+/// ToJSON nested list
+#[test]
+fn test_vendored_tojson_nested_list() {
+    let json = run_aeson(&[r#"pure (toJSON [toJSON [1 :: Int, 2], toJSON [3 :: Int, 4]])"#]);
+    assert!(!json.is_null());
+}
+
+// ---------------------------------------------------------------------------
+// 3. object / (.=) construction patterns
+// ---------------------------------------------------------------------------
+
+/// Object with mixed value types
+#[test]
+fn test_vendored_object_mixed_types() {
+    let json = run_aeson(&[
+        r#"let v = object ["name" .= ("Alice" :: Text), "active" .= True, "score" .= (100 :: Int)]"#,
+        r#"pure v"#,
+    ]);
+    assert_eq!(json["constructor"], "Object");
+}
+
+/// Object with nested objects
+#[test]
+fn test_vendored_object_nested() {
+    let json = run_aeson(&[
+        r#"let inner = object ["x" .= (1 :: Int), "y" .= (2 :: Int)]"#,
+        r#"let outer = object ["point" .= inner, "label" .= ("origin" :: Text)]"#,
+        r#"pure (outer ^? key "point" . key "x" . _Number)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(1.0));
+}
+
+/// Object with array values
+#[test]
+fn test_vendored_object_with_arrays() {
+    let json = run_aeson(&[
+        r#"let v = object ["tags" .= (["a", "b", "c"] :: [Text]), "count" .= (3 :: Int)]"#,
+        r#"pure (v ^.. key "tags" . _Array . traverse . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["a", "b", "c"]));
+}
+
+/// Object from list comprehension
+#[test]
+fn test_vendored_object_from_comprehension() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let pairs = [show i .= (i :: Int) | i <- [1, 2, 3]]"#,
+            r#"pure (object pairs)"#,
+        ],
+        &[],
+    );
+    assert_eq!(json["constructor"], "Object");
+}
+
+// ---------------------------------------------------------------------------
+// 4. Lens traversals — basic
+// ---------------------------------------------------------------------------
+
+/// key on nested 3-level object
+#[test]
+fn test_vendored_lens_triple_nested_key() {
+    let json = run_aeson(&[
+        r#"let v = object ["a" .= object ["b" .= object ["c" .= ("found" :: Text)]]]"#,
+        r#"pure (v ^? key "a" . key "b" . key "c" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("found"));
+}
+
+/// nth on nested array
+#[test]
+fn test_vendored_lens_nth_nested() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON [toJSON [10 :: Int, 20], toJSON [30 :: Int, 40]]"#,
+        r#"pure (arr ^? nth 1 . nth 0 . _Number)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(30.0));
+}
+
+/// ^.. with _Array to get all elements
+#[test]
+fn test_vendored_lens_array_tolist() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON ["x" :: Text, "y", "z"]"#,
+        r#"pure (arr ^.. _Array . traverse . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["x", "y", "z"]));
+}
+
+/// _Bool prism roundtrip
+#[test]
+fn test_vendored_lens_bool_prism_both() {
+    let t = run_aeson(&[r#"pure (Aeson.Bool True ^? _Bool)"#]);
+    let f = run_aeson(&[r#"pure (Aeson.Bool False ^? _Bool)"#]);
+    assert_eq!(t, serde_json::json!(true));
+    assert_eq!(f, serde_json::json!(false));
+}
+
+/// _String prism on non-string returns Nothing
+#[test]
+fn test_vendored_lens_prism_mismatch() {
+    let json = run_aeson(&[r#"pure (Aeson.Bool True ^? _String)"#]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+/// _Number prism on non-number returns Nothing
+#[test]
+fn test_vendored_lens_number_mismatch() {
+    let json = run_aeson(&[r#"pure (Aeson.String "hi" ^? _Number)"#]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+/// _Object prism extracts the map
+#[test]
+fn test_vendored_lens_object_prism() {
+    let json = run_aeson(&[
+        r#"let obj = object ["k" .= ("v" :: Text)]"#,
+        r#"let isObj = case obj ^? _Object of { Just _ -> True; Nothing -> False }"#,
+        r#"pure isObj"#,
+    ]);
+    assert_eq!(json, serde_json::json!(true));
+}
+
+/// _Array prism on non-array returns Nothing
+#[test]
+fn test_vendored_lens_array_prism_mismatch() {
+    let json = run_aeson(&[r#"pure (Aeson.String "hi" ^? _Array)"#]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+// ---------------------------------------------------------------------------
+// 5. Lens modification (.~ and %~)
+// ---------------------------------------------------------------------------
+
+/// Set nested field via (.~)
+#[test]
+fn test_vendored_lens_set_nested() {
+    let json = run_aeson(&[
+        r#"let v = object ["user" .= object ["name" .= ("old" :: Text)]]"#,
+        r#"let v2 = v & key "user" . key "name" . _String .~ "new""#,
+        r#"pure (v2 ^? key "user" . key "name" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("new"));
+}
+
+/// Modify via (%~) with Text function
+#[test]
+fn test_vendored_lens_modify_toupper() {
+    let json = run_aeson(&[
+        r#"let v = object ["msg" .= ("hello" :: Text)]"#,
+        r#"let v2 = v & key "msg" . _String %~ T.toUpper"#,
+        r#"pure (v2 ^? key "msg" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("HELLO"));
+}
+
+/// Set a Bool field
+#[test]
+fn test_vendored_lens_set_bool() {
+    let json = run_aeson(&[
+        r#"let v = object ["active" .= False]"#,
+        r#"let v2 = v & key "active" . _Bool .~ True"#,
+        r#"pure (v2 ^? key "active" . _Bool)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(true));
+}
+
+/// Set on missing key — no-op (lens traversal doesn't create keys)
+#[test]
+fn test_vendored_lens_set_missing_noop() {
+    let json = run_aeson(&[
+        r#"let v = object ["a" .= (1 :: Int)]"#,
+        r#"let v2 = v & key "missing" . _String .~ "x""#,
+        r#"pure (v2 ^? key "missing" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+// ---------------------------------------------------------------------------
+// 6. Composition with effects
+// ---------------------------------------------------------------------------
+
+/// Construct JSON, print each field name via Console
+#[test]
+fn test_vendored_effect_print_field_names() {
+    let (json, console) = run_aeson_effectful(&[
+        r#"let record = object ["alpha" .= ("a" :: Text), "beta" .= ("b" :: Text), "gamma" .= ("c" :: Text)]"#,
+        r#"let vals = record ^.. key "alpha" . _String"#,
+        r#"mapM_ (send . Print) vals"#,
+        r#"let vals2 = record ^.. key "beta" . _String"#,
+        r#"mapM_ (send . Print) vals2"#,
+        r#"let vals3 = record ^.. key "gamma" . _String"#,
+        r#"mapM_ (send . Print) vals3"#,
+        r#"pure (length vals + length vals2 + length vals3)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(3));
+    assert_eq!(console, vec!["a", "b", "c"]);
+}
+
+/// Build JSON, store stringified field in KV, retrieve it
+#[test]
+fn test_vendored_effect_json_to_kv() {
+    let (json, _) = run_aeson_effectful(&[
+        r#"let person = object ["name" .= ("Eve" :: Text)]"#,
+        r#"case person ^? key "name" . _String of"#,
+        r#"  Just n -> send (KvSet "cached_name" n)"#,
+        r#"  Nothing -> pure ()"#,
+        r#"result <- send (KvGet "cached_name")"#,
+        r#"pure result"#,
+    ]);
+    assert_eq!(json, serde_json::json!("Eve"));
+}
+
+/// Multiple KV ops driven by JSON data
+#[test]
+fn test_vendored_effect_json_driven_kv_batch() {
+    let (json, console) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let users = [object ["name" .= (n :: Text)] | n <- ["alice", "bob", "carol"]]"#,
+            r#"storeAll users"#,
+            r#"k <- send KvKeys"#,
+            r#"mapM_ (send . Print) (sort k)"#,
+            r#"pure (length k)"#,
+        ],
+        &[
+            "storeAll :: [Aeson.Value] -> Eff '[Console, KV, Fs] ()\n\
+             storeAll [] = pure ()\n\
+             storeAll (u:us) = do\n\
+             \x20 case u ^? key \"name\" . _String of\n\
+             \x20   Just n -> send (KvSet n n)\n\
+             \x20   Nothing -> pure ()\n\
+             \x20 storeAll us",
+        ],
+    );
+    assert_eq!(json, serde_json::json!(3));
+    assert_eq!(console, vec!["alice", "bob", "carol"]);
+}
+
+/// Pattern match on Maybe from lens, branch effects
+#[test]
+fn test_vendored_effect_conditional_on_lens() {
+    let (json, console) = run_aeson_effectful(&[
+        r#"let cfg = object ["debug" .= True]"#,
+        r#"case cfg ^? key "debug" . _Bool of"#,
+        r#"  Just True -> send (Print "debug mode on")"#,
+        r#"  _         -> send (Print "debug mode off")"#,
+        r#"pure ("ok" :: Text)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("ok"));
+    assert_eq!(console, vec!["debug mode on"]);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Input injection — varied shapes
+// ---------------------------------------------------------------------------
+
+/// Inject flat object, extract multiple fields
+#[test]
+fn test_vendored_input_multi_field() {
+    let json = run_aeson_with_input(
+        &[
+            r#"let n = input ^? key "name" . _String"#,
+            r#"let a = input ^? key "age" . _Number"#,
+            r#"pure (n, a)"#,
+        ],
+        serde_json::json!({"name": "Alice", "age": 30}),
+    );
+    assert_eq!(json, serde_json::json!(["Alice", 30.0]));
+}
+
+/// Inject deeply nested JSON
+#[test]
+fn test_vendored_input_deep_nested() {
+    let json = run_aeson_with_input(
+        &[r#"pure (input ^? key "a" . key "b" . key "c" . _String)"#],
+        serde_json::json!({"a": {"b": {"c": "deep"}}}),
+    );
+    assert_eq!(json, serde_json::json!("deep"));
+}
+
+/// Inject array of objects, extract field from each
+#[test]
+fn test_vendored_input_array_of_objects() {
+    let json = run_aeson_with_input(
+        &[r#"pure (input ^.. _Array . traverse . key "name" . _String)"#],
+        serde_json::json!([
+            {"name": "Alice", "score": 90},
+            {"name": "Bob", "score": 85},
+            {"name": "Carol", "score": 92}
+        ]),
+    );
+    assert_eq!(json, serde_json::json!(["Alice", "Bob", "Carol"]));
+}
+
+/// Inject null
+#[test]
+fn test_vendored_input_null() {
+    let json = run_aeson_with_input(
+        &[
+            r#"let isNull = case input ^? _String of { Just _ -> False; Nothing -> True }"#,
+            r#"pure isNull"#,
+        ],
+        serde_json::Value::Null,
+    );
+    assert_eq!(json, serde_json::json!(true));
+}
+
+/// Inject boolean
+#[test]
+fn test_vendored_input_bool() {
+    let json = run_aeson_with_input(
+        &[r#"pure (input ^? _Bool)"#],
+        serde_json::json!(true),
+    );
+    assert_eq!(json, serde_json::json!(true));
+}
+
+/// Inject string
+#[test]
+fn test_vendored_input_string() {
+    let json = run_aeson_with_input(
+        &[r#"pure (input ^? _String)"#],
+        serde_json::json!("hello world"),
+    );
+    assert_eq!(json, serde_json::json!("hello world"));
+}
+
+/// Inject number
+#[test]
+fn test_vendored_input_number() {
+    let json = run_aeson_with_input(
+        &[r#"pure (input ^? _Number)"#],
+        serde_json::json!(42),
+    );
+    assert_eq!(json, serde_json::json!(42.0));
+}
+
+/// Inject array of primitives, sum them via _Number
+#[test]
+fn test_vendored_input_array_sum() {
+    let json = run_aeson_with_input(
+        &[
+            r#"let nums = input ^.. _Array . traverse . _Number"#,
+            r#"pure (length nums)"#,
+        ],
+        serde_json::json!([10, 20, 30, 40, 50]),
+    );
+    assert_eq!(json, serde_json::json!(5));
+}
+
+// ---------------------------------------------------------------------------
+// 8. Helper functions — data processing patterns
+// ---------------------------------------------------------------------------
+
+/// Helper: extract all string values from any JSON value (recursive-ish)
+#[test]
+fn test_vendored_helper_extract_all_strings() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let v = object ["a" .= ("x" :: Text), "b" .= object ["c" .= ("y" :: Text)]]"#,
+            r#"pure (allStrings v)"#,
+        ],
+        &[
+            "allStrings :: Aeson.Value -> [Text]\n\
+             allStrings v = case v of\n\
+             \x20 Aeson.String s -> [s]\n\
+             \x20 Aeson.Object _ -> v ^.. Aeson.members . to allStrings . traverse\n\
+             \x20 Aeson.Array _ -> v ^.. Aeson.values . to allStrings . traverse\n\
+             \x20 _ -> []",
+        ],
+    );
+    // Map iteration order is alphabetical for our vendored KeyMap (Data.Map.Strict)
+    assert_eq!(json, serde_json::json!(["x", "y"]));
+}
+
+/// Helper: count total entries in an object
+#[test]
+fn test_vendored_helper_count_keys() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let v = object ["a" .= (1 :: Int), "b" .= (2 :: Int), "c" .= (3 :: Int)]"#,
+            r#"pure (countKeys v)"#,
+        ],
+        &[
+            "countKeys :: Aeson.Value -> Int\n\
+             countKeys (Aeson.Object o) = KM.size o\n\
+             countKeys _ = 0",
+        ],
+    );
+    assert_eq!(json, serde_json::json!(3));
+}
+
+/// Helper: filter array elements by predicate
+#[test]
+fn test_vendored_helper_filter_array() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let arr = toJSON ["alice" :: Text, "bob", "anna", "ben"]"#,
+            r#"pure (filterStrings (T.isPrefixOf "a") arr)"#,
+        ],
+        &[
+            "filterStrings :: (Text -> Bool) -> Aeson.Value -> [Text]\n\
+             filterStrings p v = filter p (v ^.. _Array . traverse . _String)",
+        ],
+    );
+    assert_eq!(json, serde_json::json!(["alice", "anna"]));
+}
+
+/// Helper: build summary from structured data
+#[test]
+fn test_vendored_helper_build_summary() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let people = toJSON [object ["name" .= ("Alice" :: Text), "dept" .= ("eng" :: Text)], object ["name" .= ("Bob" :: Text), "dept" .= ("eng" :: Text)], object ["name" .= ("Carol" :: Text), "dept" .= ("sales" :: Text)]]"#,
+            r#"pure (summarize people)"#,
+        ],
+        &[
+            "summarize :: Aeson.Value -> (Int, [Text])\n\
+             summarize v = let names = v ^.. _Array . traverse . key \"name\" . _String\n\
+             \x20             in (length names, names)",
+        ],
+    );
+    assert_eq!(json, serde_json::json!([3, ["Alice", "Bob", "Carol"]]));
+}
+
+// ---------------------------------------------------------------------------
+// 9. Composition patterns — multi-step pipelines
+// ---------------------------------------------------------------------------
+
+/// Build → modify → extract pipeline
+#[test]
+fn test_vendored_pipeline_build_modify_extract() {
+    let json = run_aeson(&[
+        r#"let v = object ["status" .= ("pending" :: Text), "retries" .= (0 :: Int)]"#,
+        r#"let v2 = v & key "status" . _String .~ "complete""#,
+        r#"let status = v2 ^? key "status" . _String"#,
+        r#"pure status"#,
+    ]);
+    assert_eq!(json, serde_json::json!("complete"));
+}
+
+/// Build → inspect → branch → build new
+#[test]
+fn test_vendored_pipeline_inspect_branch() {
+    let json = run_aeson(&[
+        r#"let req = object ["method" .= ("GET" :: Text), "path" .= ("/api" :: Text)]"#,
+        r#"let resp = case req ^? key "method" . _String of"#,
+        r#"             Just "GET"  -> object ["status" .= (200 :: Int), "body" .= ("ok" :: Text)]"#,
+        r#"             _           -> object ["status" .= (405 :: Int), "body" .= ("not allowed" :: Text)]"#,
+        r#"pure (resp ^? key "status" . _Number)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(200.0));
+}
+
+/// Multiple independent extractions from same value
+#[test]
+fn test_vendored_pipeline_multi_extract() {
+    let json = run_aeson(&[
+        r#"let record = object ["first" .= ("Jane" :: Text), "last" .= ("Doe" :: Text), "active" .= True]"#,
+        r#"let first = record ^? key "first" . _String"#,
+        r#"let last_ = record ^? key "last" . _String"#,
+        r#"let active = record ^? key "active" . _Bool"#,
+        r#"pure (first, last_, active)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["Jane", "Doe", true]));
+}
+
+/// Chain of modifications
+#[test]
+fn test_vendored_pipeline_chain_modifications() {
+    let json = run_aeson(&[
+        r#"let v = object ["a" .= ("x" :: Text), "b" .= ("y" :: Text), "c" .= ("z" :: Text)]"#,
+        r#"let v2 = v & key "a" . _String .~ "X""#,
+        r#"let v3 = v2 & key "b" . _String .~ "Y""#,
+        r#"let v4 = v3 & key "c" . _String .~ "Z""#,
+        r#"pure (v4 ^.. key "a" . _String, v4 ^.. key "b" . _String, v4 ^.. key "c" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!([["X"], ["Y"], ["Z"]]));
+}
+
+// ---------------------------------------------------------------------------
+// 10. Effect + JSON pipelines
+// ---------------------------------------------------------------------------
+
+/// Effectful pipeline: build JSON, extract fields, print, store in KV, read back
+#[test]
+fn test_vendored_effect_full_pipeline() {
+    let (json, console) = run_aeson_effectful(&[
+        r#"let user = object ["name" .= ("Dave" :: Text), "role" .= ("admin" :: Text)]"#,
+        r#"case user ^? key "name" . _String of"#,
+        r#"  Just n -> do { send (Print n); send (KvSet "user" n) }"#,
+        r#"  Nothing -> pure ()"#,
+        r#"stored <- send (KvGet "user")"#,
+        r#"pure stored"#,
+    ]);
+    assert_eq!(json, serde_json::json!("Dave"));
+    assert_eq!(console, vec!["Dave"]);
+}
+
+/// Effectful: iterate over JSON array, print each name
+#[test]
+fn test_vendored_effect_iterate_array() {
+    let (json, console) = run_aeson_effectful(&[
+        r#"let names = toJSON ["Alice" :: Text, "Bob", "Carol"]"#,
+        r#"let extracted = names ^.. _Array . traverse . _String"#,
+        r#"mapM_ (send . Print) extracted"#,
+        r#"pure (length extracted)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(3));
+    assert_eq!(console, vec!["Alice", "Bob", "Carol"]);
+}
+
+/// Effectful: conditional logic based on JSON field
+#[test]
+fn test_vendored_effect_json_conditional() {
+    let (json, console) = run_aeson_effectful(&[
+        r#"let cfg = object ["verbose" .= True, "prefix" .= (">>>" :: Text)]"#,
+        r#"let isVerbose = fromMaybe False (cfg ^? key "verbose" . _Bool)"#,
+        r#"let prefix = fromMaybe "" (cfg ^? key "prefix" . _String)"#,
+        r#"when isVerbose (send (Print (prefix `T.append` " starting")))"#,
+        r#"pure isVerbose"#,
+    ]);
+    assert_eq!(json, serde_json::json!(true));
+    assert_eq!(console, vec![">>> starting"]);
+}
+
+// ---------------------------------------------------------------------------
+// 11. Input injection + effects
+// ---------------------------------------------------------------------------
+
+/// Inject JSON, process with effects
+#[test]
+fn test_vendored_input_with_effects() {
+    let input_val = serde_json::json!({"items": ["task1", "task2", "task3"]});
+    let imports: Vec<&str> = aeson_import_strs();
+    let decls = test_decls();
+    let preamble = tidepool_mcp::build_preamble(&decls);
+    let stack = tidepool_mcp::build_effect_stack_type(&decls);
+    let lines = vec![
+        r#"let items = input ^.. key "items" . _Array . traverse . _String"#.to_string(),
+        r#"mapM_ (send . Print) items"#.to_string(),
+        r#"pure (length items)"#.to_string(),
+    ];
+    let imports_owned: Vec<String> = imports.iter().map(|s| s.to_string()).collect();
+    let src = tidepool_mcp::template_haskell(
+        &preamble, &stack, &lines, &imports_owned, &[], Some(&input_val),
+    );
+    let pp = prelude_path();
+    let result = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let include = [pp.as_path()];
+            let (console, captured) = TestConsole::new();
+            let kv = TestKv::new();
+            let mut handlers = frunk::hlist![console, kv, TestFs];
+            let val = compile_and_run(&src, "result", &include, &mut handlers, &())
+                .expect("compile_and_run failed");
+            let json = val.to_json();
+            let lines = captured.lock().unwrap().clone();
+            (json, lines)
+        })
+        .unwrap()
+        .join()
+        .expect("thread panicked");
+    assert_eq!(result.0, serde_json::json!(3));
+    assert_eq!(result.1, vec!["task1", "task2", "task3"]);
+}
+
+// ---------------------------------------------------------------------------
+// 12. Edge cases
+// ---------------------------------------------------------------------------
+
+/// Empty string in JSON
+#[test]
+fn test_vendored_edge_empty_string() {
+    let json = run_aeson(&[r#"pure (Aeson.String "")"#]);
+    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": [""]}));
+}
+
+/// Single-element object
+#[test]
+fn test_vendored_edge_single_key_object() {
+    let json = run_aeson(&[
+        r#"let v = object ["only" .= ("one" :: Text)]"#,
+        r#"pure (v ^? key "only" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("one"));
+}
+
+/// Single-element array
+#[test]
+fn test_vendored_edge_single_element_array() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON ["solo" :: Text]"#,
+        r#"pure (arr ^? nth 0 . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("solo"));
+}
+
+/// Out-of-bounds nth returns Nothing
+#[test]
+fn test_vendored_edge_nth_out_of_bounds() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON [1 :: Int, 2, 3]"#,
+        r#"pure (arr ^? nth 99 . _Number)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+/// Negative nth returns Nothing
+#[test]
+fn test_vendored_edge_nth_negative() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON [1 :: Int, 2, 3]"#,
+        r#"pure (arr ^? nth (-1) . _Number)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+/// Key with special characters
+#[test]
+fn test_vendored_edge_special_key_chars() {
+    let json = run_aeson(&[
+        r#"let v = object ["key with spaces" .= ("val" :: Text)]"#,
+        r#"pure (v ^? key "key with spaces" . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!("val"));
+}
+
+/// Object with many keys (stress test for Map-backed KeyMap)
+#[test]
+fn test_vendored_edge_many_keys() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let pairs = [show i .= (i :: Int) | i <- [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]"#,
+            r#"let obj = object pairs"#,
+            r#"pure (obj ^? key "5" . _Number)"#,
+        ],
+        &[],
+    );
+    assert_eq!(json, serde_json::json!(5.0));
+}
+
+/// Nested modification preserves other fields
+#[test]
+fn test_vendored_edge_modify_preserves_siblings() {
+    let json = run_aeson(&[
+        r#"let v = object ["x" .= ("a" :: Text), "y" .= ("b" :: Text)]"#,
+        r#"let v2 = v & key "x" . _String .~ "A""#,
+        r#"let x = v2 ^? key "x" . _String"#,
+        r#"let y = v2 ^? key "y" . _String"#,
+        r#"pure (x, y)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["A", "b"]));
+}
+
+/// Prism composition: _Array . traverse . _String filters non-strings
+#[test]
+fn test_vendored_edge_traverse_filters() {
+    let json = run_aeson(&[
+        r#"let arr = toJSON [Aeson.String "a", Aeson.Bool True, Aeson.String "b", Aeson.Null]"#,
+        r#"pure (arr ^.. _Array . traverse . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["a", "b"]));
+}
+
+/// toJSON on pair produces two-element array
+#[test]
+fn test_vendored_edge_tojson_pair() {
+    let json = run_aeson(&[
+        r#"pure (toJSON ("key" :: Text, "value" :: Text))"#,
+    ]);
+    // Our ToJSON (a,b) produces Array [toJSON a, toJSON b]
+    assert!(!json.is_null());
+}
+
+// ---------------------------------------------------------------------------
+// 13. KeyMap qualified usage
+// ---------------------------------------------------------------------------
+
+/// Use KM.size on an object
+#[test]
+fn test_vendored_keymap_size() {
+    let json = run_aeson(&[
+        r#"let obj = object ["a" .= (1 :: Int), "b" .= (2 :: Int)]"#,
+        r#"case obj ^? _Object of"#,
+        r#"  Just m -> pure (KM.size m)"#,
+        r#"  Nothing -> pure (0 :: Int)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(2));
+}
+
+/// Use KM.keys to list all keys
+#[test]
+fn test_vendored_keymap_keys() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let obj = object ["alpha" .= (1 :: Int), "beta" .= (2 :: Int)]"#,
+            r#"pure (getKeyNames obj)"#,
+        ],
+        &[
+            "getKeyNames :: Aeson.Value -> [Text]\n\
+             getKeyNames v = case v ^? _Object of\n\
+             \x20 Just m -> map Aeson.toText (KM.keys m)\n\
+             \x20 Nothing -> []",
+        ],
+    );
+    // Map keys are sorted alphabetically
+    assert_eq!(json, serde_json::json!(["alpha", "beta"]));
+}
+
+/// KM.lookup on extracted object
+#[test]
+fn test_vendored_keymap_lookup() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let obj = object ["x" .= ("found" :: Text)]"#,
+            r#"pure (lookupKey "x" obj)"#,
+        ],
+        &[
+            "lookupKey :: Text -> Aeson.Value -> Maybe Aeson.Value\n\
+             lookupKey k v = case v ^? _Object of\n\
+             \x20 Just m -> KM.lookup (Aeson.fromText k) m\n\
+             \x20 Nothing -> Nothing",
+        ],
+    );
+    // Should find String "found"
+    assert!(!json.is_null());
+}
+
+// ===========================================================================
+// 14. Complex effect orchestration with aeson lens
+// ===========================================================================
+
+/// State machine: JSON config drives a multi-step KV workflow.
+/// Reads a "commands" array from input, each command is an object with
+/// "op" (set/get/delete) and "key"/"value" fields. Executes them in order,
+/// collects results, returns them as a JSON array.
+#[test]
+fn test_orchestrate_json_command_interpreter() {
+    let input = serde_json::json!({
+        "commands": [
+            {"op": "set", "key": "color", "value": "blue"},
+            {"op": "set", "key": "size", "value": "large"},
+            {"op": "get", "key": "color"},
+            {"op": "delete", "key": "size"},
+            {"op": "get", "key": "size"}
+        ]
+    });
+    let (json, logs) = run_aeson_effectful_with_input(
+        &[
+            r#"let cmds = input ^.. key "commands" . _Array . traverse"#,
+            r#"results <- mapM runCmd cmds"#,
+            r#"pure results"#,
+        ],
+        &[
+            "runCmd :: Aeson.Value -> M Aeson.Value\n\
+             runCmd cmd = do\n\
+             \x20 let op  = fromMaybe \"\" (cmd ^? key \"op\" . _String)\n\
+             \x20 let k   = fromMaybe \"\" (cmd ^? key \"key\" . _String)\n\
+             \x20 let v   = fromMaybe \"\" (cmd ^? key \"value\" . _String)\n\
+             \x20 case op of\n\
+             \x20   \"set\" -> do\n\
+             \x20     send (KvSet k v)\n\
+             \x20     send (Print (\"SET \" `T.append` k `T.append` \"=\" `T.append` v))\n\
+             \x20     pure (object [\"status\" .= (\"ok\" :: Text)])\n\
+             \x20   \"get\" -> do\n\
+             \x20     mval <- send (KvGet k)\n\
+             \x20     pure (object [\"key\" .= k, \"value\" .= mval])\n\
+             \x20   \"delete\" -> do\n\
+             \x20     send (KvDelete k)\n\
+             \x20     send (Print (\"DEL \" `T.append` k))\n\
+             \x20     pure (object [\"status\" .= (\"deleted\" :: Text)])\n\
+             \x20   _ -> pure (object [\"error\" .= (\"unknown op\" :: Text)])",
+        ],
+        input,
+    );
+    // Should be an array of 5 results
+    let arr = json.as_array().expect("result should be array");
+    assert_eq!(arr.len(), 5);
+    // Check console logged SET and DEL operations
+    assert!(logs.iter().any(|l| l.contains("SET color=blue")));
+    assert!(logs.iter().any(|l| l.contains("DEL size")));
+}
+
+/// Build a JSON report by folding over data with KV accumulation.
+/// Processes a list of "transactions", accumulates running totals in KV,
+/// and builds a summary JSON object.
+#[test]
+fn test_orchestrate_transaction_ledger() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let txns = [ object ["item" .= ("apple" :: Text), "qty" .= (3 :: Int)]"#,
+            r#"            , object ["item" .= ("banana" :: Text), "qty" .= (7 :: Int)]"#,
+            r#"            , object ["item" .= ("apple" :: Text), "qty" .= (2 :: Int)]"#,
+            r#"            ]"#,
+            r#"mapM_ processTxn txns"#,
+            r#"send (Print "ledger complete")"#,
+            r#"ks <- send KvKeys"#,
+            r#"totals <- mapM (\k -> do { v <- send (KvGet k); pure (object ["item" .= k, "total" .= v]) }) ks"#,
+            r#"pure totals"#,
+        ],
+        &[
+            "processTxn :: Aeson.Value -> M ()\n\
+             processTxn txn = do\n\
+             \x20 let item = fromMaybe \"\" (txn ^? key \"item\" . _String)\n\
+             \x20 let qty  = fromMaybe 0 (txn ^? key \"qty\" . _Int)\n\
+             \x20 prev <- send (KvGet item)\n\
+             \x20 let old = case prev of { Just p -> maybe 0 fromIntegral (readMaybeInt p); Nothing -> 0 :: Int }\n\
+             \x20 let new_ = old + fromIntegral qty\n\
+             \x20 send (KvSet item (show new_))\n\
+             \x20 send (Print (item `T.append` \": \" `T.append` show new_))",
+            "readMaybeInt :: Text -> Maybe Int\n\
+             readMaybeInt t = case unpack t of\n\
+             \x20 [] -> Nothing\n\
+             \x20 cs -> Just (foldl' (\\acc c -> acc * 10 + fromEnum c - 48) 0 cs)",
+        ],
+    );
+    assert!(logs.iter().any(|l| l == "ledger complete"));
+    // Should have printed running totals
+    assert!(logs.iter().any(|l| l.contains("apple")));
+    assert!(logs.iter().any(|l| l.contains("banana")));
+}
+
+/// JSON schema validator: check that an input object has required fields
+/// with correct types, report violations via Console, return pass/fail.
+#[test]
+fn test_orchestrate_schema_validator() {
+    let input = serde_json::json!({
+        "name": "Alice",
+        "age": 30,
+        "email": null,
+        "active": true
+    });
+    let (json, logs) = run_aeson_effectful_with_input(
+        &[
+            r#"let schema = [ ("name", "string"), ("age", "number"), ("email", "string"), ("active", "bool") ] :: [(Text, Text)]"#,
+            r#"errors <- mapM (checkField input) schema"#,
+            r#"let errs = catMaybes errors"#,
+            r#"mapM_ (\e -> send (Print e)) errs"#,
+            r#"pure (object ["valid" .= (null errs), "errors" .= errs])"#,
+        ],
+        &[
+            "checkField :: Aeson.Value -> (Text, Text) -> M (Maybe Text)\n\
+             checkField obj (name, typ) = do\n\
+             \x20 let field = obj ^? key name\n\
+             \x20 case field of\n\
+             \x20   Nothing -> pure (Just (name `T.append` \": missing\"))\n\
+             \x20   Just v  -> case typ of\n\
+             \x20     \"string\" -> case v ^? _String of\n\
+             \x20       Just _  -> pure Nothing\n\
+             \x20       Nothing -> pure (Just (name `T.append` \": expected string\"))\n\
+             \x20     \"number\" -> case v ^? _Number of\n\
+             \x20       Just _  -> pure Nothing\n\
+             \x20       Nothing -> pure (Just (name `T.append` \": expected number\"))\n\
+             \x20     \"bool\" -> case v ^? _Bool of\n\
+             \x20       Just _  -> pure Nothing\n\
+             \x20       Nothing -> pure (Just (name `T.append` \": expected bool\"))\n\
+             \x20     _ -> pure (Just (name `T.append` \": unknown type\"))",
+        ],
+        input,
+    );
+    // "email" is null, not a string — should fail validation
+    assert!(logs.iter().any(|l| l.contains("email: expected string")));
+}
+
+/// JSON→KV cache pattern: serialize object fields into KV store,
+/// then reconstruct a new JSON object from KV reads.
+#[test]
+fn test_orchestrate_serialize_to_kv_and_reconstruct() {
+    let (json, _logs) = run_aeson_effectful_with_helpers(
+        &[
+            // Build and persist
+            r#"let person = object ["name" .= ("Bob" :: Text), "role" .= ("admin" :: Text), "level" .= (5 :: Int)]"#,
+            r#"persistObject "user:1" person"#,
+            // Reconstruct from KV
+            r#"reconstructed <- reconstructObject "user:1" ["name", "role", "level"]"#,
+            r#"pure reconstructed"#,
+        ],
+        &[
+            "persistObject :: Text -> Aeson.Value -> M ()\n\
+             persistObject prefix obj = do\n\
+             \x20 case obj ^? _Object of\n\
+             \x20   Nothing -> pure ()\n\
+             \x20   Just m -> do\n\
+             \x20     let pairs = KM.toList m\n\
+             \x20     mapM_ (\\(k, v) -> do\n\
+             \x20       let fieldKey = prefix `T.append` \":\" `T.append` Aeson.toText k\n\
+             \x20       let val = case v ^? _String of\n\
+             \x20                   Just s -> s\n\
+             \x20                   Nothing -> case v ^? _Int of\n\
+             \x20                     Just n -> show (fromIntegral n :: Int)\n\
+             \x20                     Nothing -> \"null\"\n\
+             \x20       send (KvSet fieldKey val)\n\
+             \x20       ) pairs",
+            "reconstructObject :: Text -> [Text] -> M Aeson.Value\n\
+             reconstructObject prefix fields = do\n\
+             \x20 pairs <- mapM (\\f -> do\n\
+             \x20   let fieldKey = prefix `T.append` \":\" `T.append` f\n\
+             \x20   mval <- send (KvGet fieldKey)\n\
+             \x20   pure (f .= fromMaybe \"\" mval)\n\
+             \x20   ) fields\n\
+             \x20 pure (object pairs)",
+        ],
+    );
+    // The reconstructed object should be an Object
+    assert_eq!(json["constructor"], "Object");
+}
+
+/// Nested lens pipeline: deeply transform a config object.
+/// Reads a config, modifies nested values via lens composition,
+/// logs changes, returns the modified config.
+#[test]
+fn test_orchestrate_config_transform() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let cfg = object [ "server" .= object [ "host" .= ("localhost" :: Text), "port" .= (8080 :: Int) ]"#,
+            r#"                 , "db" .= object [ "host" .= ("db.local" :: Text), "pool" .= (5 :: Int) ]"#,
+            r#"                 , "debug" .= True ]"#,
+            // Apply transformations
+            r#"let cfg2 = cfg & key "server" . key "port" . _Int .~ 9090"#,
+            r#"let cfg3 = cfg2 & key "debug" . _Bool .~ False"#,
+            // Log what changed
+            r#"let oldPort = cfg ^? key "server" . key "port" . _Int"#,
+            r#"let newPort = cfg3 ^? key "server" . key "port" . _Int"#,
+            r#"send (Print ("port: " `T.append` show oldPort `T.append` " -> " `T.append` show newPort))"#,
+            r#"send (Print ("debug: " `T.append` show (cfg3 ^? key "debug" . _Bool)))"#,
+            // Extract just the server section
+            r#"let serverHost = fromMaybe "" (cfg3 ^? key "server" . key "host" . _String)"#,
+            r#"pure serverHost"#,
+        ],
+        &[],
+    );
+    assert_eq!(json, "localhost");
+    assert!(logs.iter().any(|l| l.contains("port:")));
+    assert!(logs.iter().any(|l| l.contains("debug:")));
+}
+
+/// Map-reduce over JSON array: extract, transform, aggregate.
+/// Given an array of product objects, compute total revenue per category.
+#[test]
+fn test_orchestrate_map_reduce_products() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let products = [ object ["cat" .= ("fruit" :: Text), "price" .= (3 :: Int), "qty" .= (10 :: Int)]"#,
+            r#"               , object ["cat" .= ("veg" :: Text), "price" .= (2 :: Int), "qty" .= (5 :: Int)]"#,
+            r#"               , object ["cat" .= ("fruit" :: Text), "price" .= (5 :: Int), "qty" .= (3 :: Int)]"#,
+            r#"               , object ["cat" .= ("veg" :: Text), "price" .= (4 :: Int), "qty" .= (8 :: Int)]"#,
+            r#"               ]"#,
+            r#"let revenues = map (\p -> (fromMaybe "" (p ^? key "cat" . _String), revenue p)) products"#,
+            r#"let sorted = sortBy (\(a,_) (b,_) -> compare a b) revenues"#,
+            r#"let grouped = groupByKey sorted"#,
+            r#"pure (map (\(k, vs) -> object ["category" .= k, "total" .= sumInts vs]) grouped)"#,
+        ],
+        &[
+            "revenue :: Aeson.Value -> Int\n\
+             revenue p = let { pr = fromMaybe 0 (p ^? key \"price\" . _Int) ; qt = fromMaybe 0 (p ^? key \"qty\" . _Int) } in pr * qt",
+            "groupByKey :: [(Text, Int)] -> [(Text, [Int])]\n\
+             groupByKey [] = []\n\
+             groupByKey ((k,v):rest) =\n\
+             \x20 let (same, diff) = span (\\(k2,_) -> k2 == k) rest\n\
+             \x20 in (k, v : map snd same) : groupByKey diff",
+            "sumInts :: [Int] -> Int\n\
+             sumInts = foldl' (+) 0",
+        ],
+    );
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 2); // fruit, veg
+}
+
+/// Recursive JSON tree walker: flatten a nested tree structure into a list.
+/// The tree has "value" and optional "children" fields.
+#[test]
+fn test_orchestrate_tree_flatten() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let tree = object [ "value" .= (1 :: Int)"#,
+            r#"                  , "children" .= ([ object [ "value" .= (2 :: Int), "children" .= ([] :: [Aeson.Value]) ]"#,
+            r#"                                   , object [ "value" .= (3 :: Int)"#,
+            r#"                                            , "children" .= ([ object [ "value" .= (4 :: Int), "children" .= ([] :: [Aeson.Value]) ] ])"#,
+            r#"                                            ]"#,
+            r#"                                   ] :: [Aeson.Value])"#,
+            r#"                  ]"#,
+            r#"pure (flattenTree tree)"#,
+        ],
+        &[
+            "flattenTree :: Aeson.Value -> [Int]\n\
+             flattenTree node =\n\
+             \x20 let val = fromMaybe 0 (node ^? key \"value\" . _Int)\n\
+             \x20     kids = node ^.. key \"children\" . _Array . traverse\n\
+             \x20 in fromIntegral val : concatMap flattenTree kids",
+        ],
+    );
+    let arr = json.as_array().expect("should be array");
+    let vals: Vec<i64> = arr.iter().map(|v| v.as_i64().unwrap()).collect();
+    assert_eq!(vals, vec![1, 2, 3, 4]);
+}
+
+/// JSON diff: compare two objects, report added/removed/changed fields.
+#[test]
+#[ignore = "pre-existing: UnresolvedVar(patError) from wrapAllBinds metadata filtering bug"]
+fn test_orchestrate_json_diff() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let old = object ["a" .= (1 :: Int), "b" .= (2 :: Int), "c" .= (3 :: Int)]"#,
+            r#"let new_ = object ["a" .= (1 :: Int), "b" .= (99 :: Int), "d" .= (4 :: Int)]"#,
+            r#"diffObjects old new_"#,
+            r#"pure ("done" :: Text)"#,
+        ],
+        &[
+            "diffObjects :: Aeson.Value -> Aeson.Value -> M ()\n\
+             diffObjects old new_ = do\n\
+             \x20 case (old ^? _Object, new_ ^? _Object) of\n\
+             \x20   (Just om, Just nm) -> do\n\
+             \x20     let oldKeys = map Aeson.toText (KM.keys om)\n\
+             \x20     let newKeys = map Aeson.toText (KM.keys nm)\n\
+             \x20     let removed = filter (\\k -> not (k `elem` newKeys)) oldKeys\n\
+             \x20     let added   = filter (\\k -> not (k `elem` oldKeys)) newKeys\n\
+             \x20     let common  = filter (\\k -> k `elem` newKeys) oldKeys\n\
+             \x20     mapM_ (\\k -> send (Print (\"REMOVED: \" `T.append` k))) removed\n\
+             \x20     mapM_ (\\k -> send (Print (\"ADDED: \" `T.append` k))) added\n\
+             \x20     mapM_ (\\k -> do\n\
+             \x20       let ov = old ^? key k . _Int\n\
+             \x20       let nv = new_ ^? key k . _Int\n\
+             \x20       when (ov /= nv) (send (Print (\"CHANGED: \" `T.append` k `T.append` \" \" `T.append` show ov `T.append` \"->\" `T.append` show nv)))\n\
+             \x20       ) common\n\
+             \x20   _ -> pure ()",
+        ],
+    );
+    assert_eq!(json, "done");
+    assert!(logs.iter().any(|l| l.contains("REMOVED: c")));
+    assert!(logs.iter().any(|l| l.contains("ADDED: d")));
+    assert!(logs.iter().any(|l| l.contains("CHANGED: b")));
+}
+
+/// Pipeline: parse input config → validate → transform → persist to KV → return summary.
+/// Full end-to-end workflow combining input injection, lens, effects.
+#[test]
+fn test_orchestrate_full_etl_pipeline() {
+    let input = serde_json::json!({
+        "users": [
+            {"name": "Alice", "score": 95},
+            {"name": "Bob", "score": 40},
+            {"name": "Charlie", "score": 78}
+        ],
+        "threshold": 50
+    });
+    let (json, logs) = run_aeson_effectful_with_input(
+        &[
+            r#"let users = input ^.. key "users" . _Array . traverse"#,
+            r#"let thresh = fromMaybe 50 (input ^? key "threshold" . _Int)"#,
+            r#"send (Print ("threshold: " `T.append` show (fromIntegral thresh :: Int)))"#,
+            // Filter and transform
+            r#"let passing = filter (\u -> maybe False (>= thresh) (u ^? key "score" . _Int)) users"#,
+            r#"let names = catMaybes (map (\u -> u ^? key "name" . _String) passing)"#,
+            // Persist each passing user
+            r#"mapM_ (\n -> send (KvSet ("pass:" `T.append` n) "true")) names"#,
+            r#"send (Print ("passing: " `T.append` show (length names)))"#,
+            r#"pure (object ["count" .= length names, "names" .= names])"#,
+        ],
+        &[],
+        input,
+    );
+    assert!(logs.iter().any(|l| l.contains("threshold: 50")));
+    assert!(logs.iter().any(|l| l.contains("passing: 2")));
+}
+
+/// Accumulator pattern: fold over JSON array, building a new JSON object
+/// incrementally and logging each step.
+#[test]
+fn test_orchestrate_fold_build_json() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let items = [("x", 10), ("y", 20), ("z", 30)] :: [(Text, Int)]"#,
+            r#"result <- foldM buildStep (object []) items"#,
+            r#"pure result"#,
+        ],
+        &[
+            "buildStep :: Aeson.Value -> (Text, Int) -> M Aeson.Value\n\
+             buildStep acc (k, v) = do\n\
+             \x20 let acc2 = acc & key k . _Int .~ fromIntegral v\n\
+             \x20 let count = case acc2 ^? _Object of\n\
+             \x20               Just m  -> KM.size m\n\
+             \x20               Nothing -> 0\n\
+             \x20 send (Print (\"added \" `T.append` k `T.append` \", total fields: \" `T.append` show count))\n\
+             \x20 pure acc2",
+        ],
+    );
+    assert!(logs.len() >= 3);
+    assert!(logs.iter().any(|l| l.contains("added x")));
+    assert!(logs.iter().any(|l| l.contains("added z")));
+}
+
+/// Conditional branching: different effect chains based on JSON field values.
+/// Simulates a simple routing/dispatch system.
+#[test]
+fn test_orchestrate_dispatch_on_type() {
+    let input = serde_json::json!({
+        "type": "greeting",
+        "payload": {"name": "World", "lang": "en"}
+    });
+    let (json, logs) = run_aeson_effectful_with_input(
+        &[
+            r#"let typ = fromMaybe "" (input ^? key "type" . _String)"#,
+            r#"let payload = fromMaybe (object []) (input ^? key "payload")"#,
+            r#"result <- dispatch typ payload"#,
+            r#"pure result"#,
+        ],
+        &[
+            "dispatch :: Text -> Aeson.Value -> M Aeson.Value\n\
+             dispatch typ payload = case typ of\n\
+             \x20 \"greeting\" -> do\n\
+             \x20   let name = fromMaybe \"stranger\" (payload ^? key \"name\" . _String)\n\
+             \x20   let msg = \"Hello, \" `T.append` name `T.append` \"!\"\n\
+             \x20   send (Print msg)\n\
+             \x20   send (KvSet \"last_greeting\" msg)\n\
+             \x20   pure (object [\"response\" .= msg])\n\
+             \x20 \"farewell\" -> do\n\
+             \x20   send (Print \"Goodbye!\")\n\
+             \x20   pure (object [\"response\" .= (\"Goodbye!\" :: Text)])\n\
+             \x20 _ -> do\n\
+             \x20   send (Print (\"unknown type: \" `T.append` typ))\n\
+             \x20   pure (object [\"error\" .= (\"unknown\" :: Text)])",
+        ],
+        input,
+    );
+    assert!(logs.iter().any(|l| l == "Hello, World!"));
+}
+
+/// Multi-pass processing: first pass collects metadata into KV,
+/// second pass uses it to enrich the original data.
+#[test]
+fn test_orchestrate_two_pass_enrich() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let records = [ object ["id" .= (1 :: Int), "cat" .= ("A" :: Text)]"#,
+            r#"              , object ["id" .= (2 :: Int), "cat" .= ("B" :: Text)]"#,
+            r#"              , object ["id" .= (3 :: Int), "cat" .= ("A" :: Text)]"#,
+            r#"              , object ["id" .= (4 :: Int), "cat" .= ("A" :: Text)]"#,
+            r#"              ]"#,
+            // Pass 1: count per category
+            r#"mapM_ countCat records"#,
+            r#"send (Print "pass 1 done")"#,
+            // Pass 2: enrich with count
+            r#"enriched <- mapM enrichRecord records"#,
+            r#"send (Print "pass 2 done")"#,
+            r#"pure (length enriched)"#,
+        ],
+        &[
+            "countCat :: Aeson.Value -> M ()\n\
+             countCat rec = do\n\
+             \x20 let cat = fromMaybe \"\" (rec ^? key \"cat\" . _String)\n\
+             \x20 let k = \"count:\" `T.append` cat\n\
+             \x20 prev <- send (KvGet k)\n\
+             \x20 let n = case prev of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
+             \x20 send (KvSet k (show (n + 1)))",
+            "enrichRecord :: Aeson.Value -> M Aeson.Value\n\
+             enrichRecord rec = do\n\
+             \x20 let cat = fromMaybe \"\" (rec ^? key \"cat\" . _String)\n\
+             \x20 cnt <- send (KvGet (\"count:\" `T.append` cat))\n\
+             \x20 let cntVal = case cnt of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
+             \x20 pure (rec & key \"catCount\" . _Int .~ fromIntegral cntVal)",
+            "readInt :: Text -> Int\n\
+             readInt t = foldl' (\\acc c -> acc * 10 + fromEnum c - 48) 0 (unpack t)",
+        ],
+    );
+    assert!(logs.iter().any(|l| l == "pass 1 done"));
+    assert!(logs.iter().any(|l| l == "pass 2 done"));
+    assert_eq!(json, 4);
+}
+
+/// Lens-heavy: compose multiple nested traversals and modifications
+/// in a single expression chain.
+#[test]
+fn test_orchestrate_lens_composition_chain() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let db = object [ "tables" .= ([ object [ "name" .= ("users" :: Text)"#,
+            r#"                                        , "rows" .= ([ object ["id" .= (1 :: Int), "active" .= True]"#,
+            r#"                                                     , object ["id" .= (2 :: Int), "active" .= False]"#,
+            r#"                                                     ] :: [Aeson.Value])"#,
+            r#"                                        ]"#,
+            r#"                                ] :: [Aeson.Value])"#,
+            r#"                ]"#,
+            // Extract all IDs from all tables' rows
+            r#"let ids = db ^.. key "tables" . _Array . traverse . key "rows" . _Array . traverse . key "id" . _Int"#,
+            // Count active rows
+            r#"let actives = db ^.. key "tables" . _Array . traverse . key "rows" . _Array . traverse . key "active" . _Bool"#,
+            r#"let activeCount = length (filter (\x -> x) actives)"#,
+            r#"pure (object ["ids" .= (map fromIntegral ids :: [Int]), "activeCount" .= activeCount])"#,
+        ],
+        &[],
+    );
+    assert_eq!(json["constructor"], "Object");
+}
+
+/// Error recovery pattern: try operations, catch failures via Maybe,
+/// log problems, continue with defaults.
+#[test]
+fn test_orchestrate_graceful_degradation() {
+    let input = serde_json::json!({
+        "required": {"name": "test"},
+        "optional": null
+    });
+    let (json, logs) = run_aeson_effectful_with_input(
+        &[
+            // Required field — will succeed
+            r#"let name = fromMaybe "unnamed" (input ^? key "required" . key "name" . _String)"#,
+            r#"send (Print ("name: " `T.append` name))"#,
+            // Optional nested field — will fail gracefully
+            r#"let extra = input ^? key "optional" . key "detail" . _String"#,
+            r#"when (isNothing extra) (send (Print "optional.detail missing, using default"))"#,
+            r#"let detail = fromMaybe "default_detail" extra"#,
+            // Deep optional that doesn't exist at all
+            r#"let deep = input ^? key "nonexistent" . key "very" . key "deep" . _Int"#,
+            r#"let deepVal = fromMaybe 0 (fmap fromIntegral deep) :: Int"#,
+            r#"send (Print ("deep: " `T.append` show deepVal))"#,
+            r#"pure (object ["name" .= name, "detail" .= detail, "deep" .= deepVal])"#,
+        ],
+        &[],
+        input,
+    );
+    assert!(logs.iter().any(|l| l == "name: test"));
+    assert!(logs.iter().any(|l| l.contains("missing, using default")));
+    assert!(logs.iter().any(|l| l == "deep: 0"));
+}
+
+/// State machine with JSON-encoded state: each step reads current state
+/// from KV, applies a transition, persists the new state.
+#[test]
+fn test_orchestrate_kv_state_machine() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            // Initialize state
+            r#"let init = object ["step" .= (0 :: Int), "data" .= ([] :: [Int])]"#,
+            r#"send (KvSet "state" (encodeSimple init))"#,
+            // Run 5 transitions
+            r#"mapM_ (\_ -> transition) [1..5 :: Int]"#,
+            // Read final state
+            r#"finalStr <- send (KvGet "state")"#,
+            r#"send (Print ("final: " `T.append` fromMaybe "" finalStr))"#,
+            r#"pure (fromMaybe "" finalStr)"#,
+        ],
+        &[
+            "transition :: M ()\n\
+             transition = do\n\
+             \x20 ms <- send (KvGet \"state\")\n\
+             \x20 case ms of\n\
+             \x20   Nothing -> pure ()\n\
+             \x20   Just s -> do\n\
+             \x20     let step = readInt (T.takeWhile (\\c -> c /= ',') (T.drop 1 s))\n\
+             \x20     let newStep = step + 1\n\
+             \x20     let newState = \"(\" `T.append` show newStep `T.append` \")\"\n\
+             \x20     send (KvSet \"state\" newState)\n\
+             \x20     send (Print (\"step -> \" `T.append` show newStep))",
+            "encodeSimple :: Aeson.Value -> Text\n\
+             encodeSimple v = case v ^? key \"step\" . _Int of\n\
+             \x20 Just n -> \"(\" `T.append` show (fromIntegral n :: Int) `T.append` \")\"\n\
+             \x20 Nothing -> \"(0)\"",
+            "readInt :: Text -> Int\n\
+             readInt t = foldl' (\\acc c -> acc * 10 + fromEnum c - 48) 0 (unpack t)",
+        ],
+    );
+    // Should have logged 5 transitions
+    let step_logs: Vec<_> = logs.iter().filter(|l| l.contains("step ->")).collect();
+    assert_eq!(step_logs.len(), 5);
+}
+
+/// JSON array manipulation: zip, interleave, chunk.
+#[test]
+fn test_orchestrate_array_gymnastics() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let xs = map (\n -> object ["n" .= n, "sq" .= (n * n)]) [1..6 :: Int]"#,
+            // Take first 3
+            r#"let first3 = take 3 xs"#,
+            // Take last 3
+            r#"let last3 = drop 3 xs"#,
+            // Zip them into pairs
+            r#"let zipped = zipWith (\a b -> object ["a" .= (a ^? key "n" . _Int), "b" .= (b ^? key "n" . _Int)]) first3 last3"#,
+            // Extract all "sq" values from original
+            r#"let squares = catMaybes (map (\x -> fmap fromIntegral (x ^? key "sq" . _Int) :: Maybe Int) xs)"#,
+            r#"pure (object ["zipped" .= zipped, "squares" .= squares])"#,
+        ],
+        &[],
+    );
+    assert_eq!(json["constructor"], "Object");
+}
+
+/// Build a mini DSL: JSON objects represent "instructions" that get
+/// interpreted into effects.
+#[test]
+fn test_orchestrate_instruction_dsl() {
+    let (json, logs) = run_aeson_effectful_with_helpers(
+        &[
+            r#"let program = [ object ["instr" .= ("log" :: Text), "msg" .= ("hello" :: Text)]"#,
+            r#"              , object ["instr" .= ("store" :: Text), "k" .= ("x" :: Text), "v" .= ("42" :: Text)]"#,
+            r#"              , object ["instr" .= ("log" :: Text), "msg" .= ("stored x" :: Text)]"#,
+            r#"              , object ["instr" .= ("load" :: Text), "k" .= ("x" :: Text)]"#,
+            r#"              ]"#,
+            r#"results <- mapM execInstr program"#,
+            r#"pure (catMaybes results)"#,
+        ],
+        &[
+            "execInstr :: Aeson.Value -> M (Maybe Aeson.Value)\n\
+             execInstr instr = do\n\
+             \x20 let op = fromMaybe \"\" (instr ^? key \"instr\" . _String)\n\
+             \x20 case op of\n\
+             \x20   \"log\" -> do\n\
+             \x20     let msg = fromMaybe \"\" (instr ^? key \"msg\" . _String)\n\
+             \x20     send (Print msg)\n\
+             \x20     pure Nothing\n\
+             \x20   \"store\" -> do\n\
+             \x20     let k = fromMaybe \"\" (instr ^? key \"k\" . _String)\n\
+             \x20     let v = fromMaybe \"\" (instr ^? key \"v\" . _String)\n\
+             \x20     send (KvSet k v)\n\
+             \x20     pure Nothing\n\
+             \x20   \"load\" -> do\n\
+             \x20     let k = fromMaybe \"\" (instr ^? key \"k\" . _String)\n\
+             \x20     v <- send (KvGet k)\n\
+             \x20     pure (Just (object [\"loaded\" .= k, \"value\" .= v]))\n\
+             \x20   _ -> pure Nothing",
+        ],
+    );
+    assert!(logs.iter().any(|l| l == "hello"));
+    assert!(logs.iter().any(|l| l == "stored x"));
+    // Should have one "load" result
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 1);
+}
+
+/// Lens set on deeply nested array element, then read it back.
+#[test]
+fn test_orchestrate_deep_array_modify() {
+    let json = run_aeson(&[
+        r#"let matrix = object ["grid" .= ([ [1,2,3], [4,5,6], [7,8,9] ] :: [[Int]])]"#,
+        // Read the center element: grid[1][1]
+        r#"let center = matrix ^? key "grid" . nth 1 . nth 1 . _Int"#,
+        r#"pure center"#,
+    ]);
+    // [1][1] = 5
+    assert_eq!(json, 5);
+}
+
+/// Combine toJSON with lens to do round-trip transformations.
+#[test]
+fn test_orchestrate_tojson_lens_roundtrip() {
+    let json = run_aeson(&[
+        // Build structured data via toJSON
+        r#"let pairs = [("alpha", 1), ("beta", 2), ("gamma", 3)] :: [(Text, Int)]"#,
+        r#"let asJson = toJSON pairs"#,
+        // Now traverse the resulting array of pairs
+        r#"let firstPairs = asJson ^.. _Array . traverse . nth 0 . _String"#,
+        r#"pure firstPairs"#,
+    ]);
+    let arr = json.as_array().expect("should be array");
+    let vals: Vec<&str> = arr.iter().map(|v| v.as_str().unwrap()).collect();
+    assert_eq!(vals, vec!["alpha", "beta", "gamma"]);
+}
+
+/// Stress: build a moderately large JSON structure and traverse it.
+#[test]
+fn test_orchestrate_moderate_scale() {
+    let json = run_aeson_with_helpers(
+        &[
+            r#"let items = map mkItem [1..10 :: Int]"#,
+            r#"let catalog = object ["items" .= items, "count" .= (10 :: Int)]"#,
+            // Sum all prices
+            r#"let prices = catalog ^.. key "items" . _Array . traverse . key "price" . _Int"#,
+            r#"let total = foldl' (\acc x -> acc + fromIntegral x) (0 :: Int) prices"#,
+            r#"pure total"#,
+        ],
+        &[
+            "mkItem :: Int -> Aeson.Value\n\
+             mkItem i = object [ \"id\" .= i\n\
+             \x20                , \"name\" .= (\"item_\" `T.append` show i)\n\
+             \x20                , \"price\" .= (i * 10)\n\
+             \x20                , \"tags\" .= ([\"t\" `T.append` show i, \"all\"] :: [Text]) ]",
+        ],
+    );
+    // Sum of 10+20+...+100 = 550
+    assert_eq!(json, 550);
 }

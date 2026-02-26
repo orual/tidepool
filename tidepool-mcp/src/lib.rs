@@ -138,8 +138,8 @@ pub fn sg_decl() -> EffectDecl {
 pub fn http_decl() -> EffectDecl {
     EffectDecl {
         type_name: "Http",
-        description: "Fetch JSON from HTTP endpoints. Returns response body as Text.",
-        constructors: &["HttpGet :: Text -> Http Text"],
+        description: "Fetch JSON from HTTP endpoints. Returns response body as Value.",
+        constructors: &["HttpGet :: Text -> Http Value"],
         type_defs: &[],
     }
 }
@@ -243,9 +243,8 @@ pub fn build_preamble(effects: &[EffectDecl]) -> String {
 /// qualified access to KeyMap/Vector for power users.
 pub fn aeson_imports() -> Vec<String> {
     vec![
-        "qualified Data.Aeson as Aeson".into(),
-        "qualified Data.Aeson.KeyMap as KM".into(),
-        "qualified Data.Vector as V".into(),
+        "qualified Tidepool.Aeson as Aeson".into(),
+        "qualified Tidepool.Aeson.KeyMap as KM".into(),
     ]
 }
 
@@ -1057,8 +1056,9 @@ mod tests {
     #[test]
     fn test_standard_decls_includes_ask() {
         let decls = standard_decls();
-        assert_eq!(decls.len(), 5);
-        assert_eq!(decls[4].type_name, "Ask");
+        assert_eq!(decls.len(), 6);
+        assert_eq!(decls[4].type_name, "Http");
+        assert_eq!(decls[5].type_name, "Ask");
     }
 
     #[test]
@@ -1078,13 +1078,13 @@ mod tests {
         let preamble = build_preamble(&decls);
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Text"));
-        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Ask]"));
+        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Ask]"));
     }
 
     #[test]
     fn test_ask_in_effect_stack_type() {
         let decls = standard_decls();
         let stack = build_effect_stack_type(&decls);
-        assert_eq!(stack, "'[Console, KV, Fs, SG, Ask]");
+        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Ask]");
     }
 }

@@ -12,6 +12,7 @@ readme = "../README.md"
 [dependencies]
 tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
 tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
+serde_json = "1"
 
 [dev-dependencies]
 proptest = "1"

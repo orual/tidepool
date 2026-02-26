@@ -685,7 +685,15 @@ translate expr =
         fIdx <- translate f
         dummyIdx <- emitNode $ NLit (LEInt 0)
         emitNode $ NApp fIdx dummyIdx
-      _   -> error $ "runRW# expected 1 value arg, got " ++ show (length args) ++ ": " ++ showPprUnsafe expr
+      [] -> do
+        -- Partial application: runRW# with only type args, no value arg yet.
+        -- Emit \f -> f 0  (state token erased to dummy 0).
+        lamVar <- freshSynthVarId
+        fIdx   <- emitNode $ NVar lamVar
+        dummyIdx <- emitNode $ NLit (LEInt 0)
+        bodyIdx  <- emitNode $ NApp fIdx dummyIdx
+        emitNode $ NLam lamVar bodyIdx
+      _   -> error $ "runRW# expected 0-1 value args, got " ++ show (length args) ++ ": " ++ showPprUnsafe expr
 
     -- tagToEnum# @T arg → case arg of { 0# → C0; 1# → C1; ... }
     -- We desugar here because type information is erased downstream.
@@ -910,7 +918,10 @@ translateHead = \case
   Cast e _ -> translate e
   Tick _ e -> translate e
   Type _ -> error "Bare Type in expression position"
-  Coercion _ -> error "Bare Coercion in expression position"
+  -- Coercions are zero-cost type evidence (newtype proofs). They appear in
+  -- expression position when GHC inlines through vendored code compiled from
+  -- source (e.g., newtype Key = Key Text). Emit unit literal as a placeholder.
+  Coercion _ -> emitNode $ NLit (LEInt 0)
   App _ _ -> error "App should be handled by translate"
   _ -> error "Unexpected expression form"
 
