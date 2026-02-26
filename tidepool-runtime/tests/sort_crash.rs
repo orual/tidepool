@@ -285,14 +285,12 @@ fn run_mcp_effectful_with_helpers(
 // ===========================================================================
 
 fn aeson_import_strs() -> Vec<&'static str> {
+    // Unqualified aeson/lens symbols now come from Tidepool.Prelude.
+    // Only qualified imports needed here.
     vec![
-        "Data.Aeson (Value(..), object, (.=), encode, decode, toJSON, fromJSON, Result(..))",
-        "Data.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double)",
         "qualified Data.Aeson as Aeson",
-        "qualified Data.Aeson.Key as Key",
         "qualified Data.Aeson.KeyMap as KM",
         "qualified Data.Vector as V",
-        "Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)",
     ]
 }
 

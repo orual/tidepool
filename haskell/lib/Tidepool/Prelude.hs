@@ -82,7 +82,7 @@ module Tidepool.Prelude
   , ToJSON, FromJSON
     -- * JSON lenses (Data.Aeson.Lens + Control.Lens)
   , key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double
-  , preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just
+  , preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse
     -- * Scientific
   , Scientific
   ) where
@@ -133,7 +133,7 @@ import Control.Monad
   )
 import Data.Aeson (Value, object, (.=), encode, decode, eitherDecode, eitherDecodeStrict, toJSON, fromJSON, Result(..), ToJSON, FromJSON)
 import Data.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double)
-import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just)
+import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)
 import Data.Scientific (Scientific)
 
 -- | Marker typeclass for types whose runtime values can be rendered to JSON

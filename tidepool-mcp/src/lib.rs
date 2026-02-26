@@ -197,17 +197,14 @@ pub fn build_preamble(effects: &[EffectDecl]) -> String {
     out
 }
 
-/// Standard aeson/lens-aeson imports for MCP eval. These require lens-aeson in the GHC package DB.
+/// Qualified aeson imports for MCP eval. Unqualified symbols now come from Tidepool.Prelude.
+/// These provide `Aeson.` prefix (used by json_to_haskell for input injection) and
+/// qualified access to KeyMap/Vector for power users.
 pub fn aeson_imports() -> Vec<String> {
     vec![
-        "Data.Aeson (Value(..), object, (.=), encode, decode, toJSON, fromJSON, Result(..))".into(),
-        "Data.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Integer, _Double)".into(),
         "qualified Data.Aeson as Aeson".into(),
-        "qualified Data.Aeson.Key as Key".into(),
         "qualified Data.Aeson.KeyMap as KM".into(),
         "qualified Data.Vector as V".into(),
-        "Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just)".into(),
-        "Data.Scientific (Scientific)".into(),
     ]
 }
 
