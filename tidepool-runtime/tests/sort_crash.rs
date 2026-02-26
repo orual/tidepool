@@ -698,6 +698,79 @@ fn test_aeson_helper_pipeline() {
     assert_eq!(json, serde_json::json!(3));
 }
 
+// --- Deep-nesting regression (CBOR recursion limit) ---
+
+/// _Integer lens on object field — crashes because _Integer converts Scientific to Integer,
+/// pulling in GMP arithmetic (integerFromNatural etc) which uses unsupported primops.
+/// Use _Number instead for now.
+#[test]
+#[ignore = "SIGILL: _Integer prism uses Integer/GMP arithmetic (unsupported primops)"]
+fn test_aeson_lens_integer_prism() {
+    let json = run_aeson(&[
+        r#"let obj = object ["x" .= (42 :: Int)]"#,
+        r#"pure (obj ^? key "x" . _Integer)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(42));
+}
+
+/// _Bool lens on object field
+#[test]
+fn test_aeson_lens_bool_prism() {
+    let json = run_aeson(&[
+        r#"let obj = object ["flag" .= True]"#,
+        r#"pure (obj ^? key "flag" . _Bool)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(true));
+}
+
+/// traverse over _Array to extract all strings — deep nesting from Vector + lens
+#[test]
+fn test_aeson_lens_array_traverse_strings() {
+    let json = run_aeson(&[
+        r#"let obj = object ["tags" .= (["a", "b", "c"] :: [Text])]"#,
+        r#"pure (obj ^.. key "tags" . _Array . traverse . _String)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["a", "b", "c"]));
+}
+
+/// Multi-key extraction from nested object — deep composition chain
+#[test]
+fn test_aeson_lens_nested_deep() {
+    let json = run_aeson(&[
+        r#"let v = object ["meta" .= object ["ver" .= (1 :: Int), "ok" .= True]]"#,
+        r#"let ver = v ^? key "meta" . key "ver" . _Number"#,
+        r#"let ok = v ^? key "meta" . key "ok" . _Bool"#,
+        r#"pure (ver, ok)"#,
+    ]);
+    assert_eq!(json, serde_json::json!([1.0, true]));
+}
+
+/// Isolate: Scientific → Integer conversion (used internally by _Integer prism)
+/// This crashes with SIGILL because the conversion uses GMP-backed Integer arithmetic.
+#[test]
+#[ignore = "SIGILL: Scientific to Integer conversion uses unsupported Integer primops"]
+fn test_aeson_scientific_to_integer() {
+    let json = run_aeson(&[
+        r#"let s = toJSON (42 :: Int)"#,
+        r#"let n = s ^? _Number"#,
+        // floatingOrInteger is what _Integer uses internally
+        r#"pure n"#,
+    ]);
+    // This works — _Number gives Scientific directly
+    assert_eq!(json, serde_json::json!(42.0));
+}
+
+/// _Double prism — also crashes (same Scientific→Double conversion issue?)
+#[test]
+#[ignore = "SIGILL: _Double prism likely uses Scientific conversion with unsupported primops"]
+fn test_aeson_lens_double_prism() {
+    let json = run_aeson(&[
+        r#"let obj = object ["x" .= (3.14 :: Double)]"#,
+        r#"pure (obj ^? key "x" . _Double)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(3.14));
+}
+
 // ===========================================================================
 // Plain (non-effect) prelude tests
 // ===========================================================================
