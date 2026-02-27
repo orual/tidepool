@@ -170,26 +170,57 @@ pub fn standard_decls() -> Vec<EffectDecl> {
 // Request types
 // ---------------------------------------------------------------------------
 
-/// Request parameters for the structured `eval` tool.
+/// Request parameters for the `eval` tool.
 ///
-/// Provide do-notation lines; the server wraps them in a full Haskell module
-/// with the correct effect stack type, LANGUAGE pragmas, and imports.
+/// Provide a Haskell do-block as a single string. The server wraps it in a
+/// full module with the effect stack type, LANGUAGE pragmas, and imports.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EvalRequest {
-    /// Lines of do-notation Haskell code. Each line becomes one line in a
-    /// do-block. Use `pure x` as the last line to return a value.
+    /// Haskell do-notation code. Each line is indented into a do-block.
+    /// Use `pure x` as the last line to return a value.
     /// Use `send (Constructor args)` to invoke effects.
-    pub source: Vec<String>,
-    /// Additional Haskell module imports (e.g. `"Data.List"`). Optional.
-    #[serde(default)]
+    /// Accepts either a single string (preferred) or array of lines (legacy).
+    #[serde(deserialize_with = "deserialize_code")]
+    pub code: Vec<String>,
+    /// Additional Haskell imports, one per line (e.g. "Data.List (sort)").
+    /// Accepts a string (one import per line) or array of strings.
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub imports: Vec<String>,
-    /// Top-level helper definitions placed before the main binding. Optional.
-    /// Each entry is a complete Haskell definition (may be multi-line).
-    #[serde(default)]
+    /// Top-level helper definitions placed before the main do-block.
+    /// Accepts a string (raw Haskell) or array of definition strings.
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub helpers: Vec<String>,
     /// Optional JSON input injected as `input :: Aeson.Value` binding.
     #[serde(default)]
     pub input: Option<serde_json::Value>,
+}
+
+/// Deserialize `code` from either a string (split on newlines) or array of strings.
+fn deserialize_code<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        Str(String),
+        Vec(Vec<String>),
+    }
+    match StringOrVec::deserialize(d)? {
+        StringOrVec::Str(s) => Ok(s.lines().map(String::from).collect()),
+        StringOrVec::Vec(v) => Ok(v),
+    }
+}
+
+/// Deserialize from either a string (split on newlines, empty lines filtered) or array of strings.
+fn deserialize_string_or_vec<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        Str(String),
+        Vec(Vec<String>),
+    }
+    match StringOrVec::deserialize(d)? {
+        StringOrVec::Str(s) => Ok(s.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect()),
+        StringOrVec::Vec(v) => Ok(v),
+    }
 }
 
 /// Request parameters for the `resume` tool.
@@ -259,8 +290,8 @@ pub fn build_effect_stack_type(effects: &[EffectDecl]) -> String {
 
 fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
     let mut desc = String::from(concat!(
-        "Provide do-notation lines in `source`; the server wraps them in a Haskell ",
-        "module with the effect stack, pragmas, and imports. ",
+        "Write Haskell do-notation in `code`. The server wraps it in a module ",
+        "with the effect stack, pragmas, and imports. ",
         "Use `pure x` as the last line to return a value. ",
         "Use `send (Constructor args)` to invoke effects. ",
         "First call is slow (~2s). Subsequent calls are cached.\n",
@@ -286,7 +317,7 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
 pub fn template_haskell(
     preamble: &str,
     effect_stack: &str,
-    source: &[String],
+    code: &[String],
     imports: &[String],
     helpers: &[String],
     input: Option<&serde_json::Value>,
@@ -323,7 +354,7 @@ pub fn template_haskell(
 
     out.push_str(&format!("result :: Eff {} _\n", effect_stack));
     out.push_str("result = do\n");
-    for line in source {
+    for line in code {
         out.push_str(&format!("  {}\n", line));
     }
 
@@ -553,7 +584,7 @@ impl TidepoolMcpServerImpl {
     }
 
     async fn eval(&self, req: EvalRequest) -> Result<CallToolResult, McpError> {
-        tracing::info!(lines = req.source.len(), "eval request");
+        tracing::info!(lines = req.code.len(), "eval request");
         self.cleanup_stale_continuations();
 
         let mut all_imports = aeson_imports();
@@ -561,7 +592,7 @@ impl TidepoolMcpServerImpl {
         let source: Arc<str> = template_haskell(
             &self.haskell_preamble,
             &self.effect_stack_type,
-            &req.source,
+            &req.code,
             &all_imports,
             &req.helpers,
             req.input.as_ref(),
@@ -921,12 +952,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_eval_request_defaults() {
-        let json = serde_json::json!({"source": ["pure 42"]});
+    fn test_eval_request_string_code() {
+        let json = serde_json::json!({"code": "let x = 1\npure x"});
         let req: EvalRequest = serde_json::from_value(json).unwrap();
-        assert_eq!(req.source, vec!["pure 42"]);
+        assert_eq!(req.code, vec!["let x = 1", "pure x"]);
         assert!(req.imports.is_empty());
         assert!(req.helpers.is_empty());
+    }
+
+    #[test]
+    fn test_eval_request_array_code() {
+        let json = serde_json::json!({"code": ["pure 42"]});
+        let req: EvalRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.code, vec!["pure 42"]);
+    }
+
+    #[test]
+    fn test_eval_request_string_imports() {
+        let json = serde_json::json!({"code": "pure 42", "imports": "Data.List (sort)\nData.Char"});
+        let req: EvalRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.imports, vec!["Data.List (sort)", "Data.Char"]);
     }
 
     #[test]
