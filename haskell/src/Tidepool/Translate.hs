@@ -29,6 +29,8 @@ import GHC.Builtin.PrimOps
 import GHC.Types.Literal
 import GHC.Types.Name (nameOccName, isExternalName, isSystemName, nameModule_maybe)
 import GHC.Types.Name.Occurrence (occNameString)
+import GHC.Unit.Module (moduleName, moduleNameString)
+import GHC.Utils.Fingerprint (fingerprintString, Fingerprint(..))
 import GHC.Core.TyCon
 import GHC.Core.Type (splitTyConApp_maybe, isCoercionTy)
 import GHC.Builtin.Types.Prim (statePrimTyCon)
@@ -669,7 +671,12 @@ translate expr =
     Var v | Just dc <- isDataConWrapId_maybe v
           , length args == valueRepArity dc -> do
         recordDC dc
-        childIdxs <- mapM stripBoxCon args
+        -- Only strip boxes for product types (single-constructor types like Text, Int, Word).
+        -- For sum types (e.g. Maybe), the worker expects pointer arguments.
+        let tc = dataConTyCon dc
+        childIdxs <- if isAlgTyCon tc && length (tyConDataCons tc) == 1
+                     then mapM stripBoxCon args
+                     else mapM translate args
         emitNode $ NCon (varId (dataConWorkId dc)) childIdxs
 
     -- unsafeEqualityProof → unit value (always matches the single UnsafeRefl alt)
@@ -951,7 +958,26 @@ mapAltCon = \case
   DEFAULT    -> return FDefault
 
 varId :: Var -> Word64
-varId v = fromIntegral (getKey (varUnique v))
+varId v = case isDataConId_maybe v of
+  Just dc -> stableVarId (varName (dataConWorkId dc))
+  Nothing -> if isExternalName (varName v)
+             then stableVarId (varName v)
+             else fromIntegral (getKey (varUnique v))
+
+stableVarId :: Name -> Word64
+stableVarId name =
+  let modStr = case nameModule_maybe name of
+        Just m  -> normalizeMod (moduleNameString (moduleName m))
+        Nothing -> "WiredIn"
+      normalizeMod s =
+        let t = T.pack s
+            t1 = T.replace ".Internal" "" t
+            t2 = T.replace "Internal." "" t1
+        in T.unpack t2
+      occStr = occNameString (nameOccName name)
+      fullStr = modStr ++ ":" ++ occStr
+      Fingerprint h1 _ = fingerprintString fullStr
+  in (0xFE `shiftL` 56) .|. (h1 .&. 0x00FFFFFFFFFFFFFF)
 
 collectValueBinders :: Int -> CoreExpr -> ([Var], CoreExpr)
 collectValueBinders 0 e = ([], e)
@@ -978,7 +1004,8 @@ stripBoxCon expr =
       vArgs = filter isValueArg allArgs
   in case hd of
     Var w | Just innerDc <- isDataConWorkId_maybe w
-          , dataConRepArity innerDc == 1
+          , let tc = dataConTyCon innerDc
+          , isAlgTyCon tc && length (tyConDataCons tc) == 1
           , [inner] <- vArgs -> do
         recordDC innerDc  -- still record the box constructor for DataConTable
         translate inner
