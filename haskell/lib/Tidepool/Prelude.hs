@@ -23,8 +23,10 @@ module Tidepool.Prelude
   , words, lines, unwords, unlines
     -- * Typeclasses (re-exported from base)
   , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional, Show
+  , Semigroup(..), Monoid(..)
   , fromIntegral, realToFrac
   , Functor(..), Applicative(..), Monad(..)
+  , (<$>)
     -- * show (Text-returning shadow)
   , show
   , showDouble
@@ -91,8 +93,10 @@ import Prelude
   , String, Ordering(..), Maybe(..), Either(..)
   , IO
   , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional, Show
+  , Semigroup(..), Monoid(..)
   , fromIntegral, realToFrac, even, odd
   , Functor(..), Applicative(..), Monad(..)
+  , (<$>)
   , id, const, flip, (.), ($), ($!)
   , not, (&&), (||), otherwise, seq
   , fst, snd, curry, uncurry
@@ -113,14 +117,6 @@ import Prelude
 import qualified Prelude as P (show)
 import Data.Text (Text)
 import qualified Data.Text as T
-  ( pack, unpack
-  , toUpper, toLower
-  , strip
-  , splitOn
-  , replace
-  , isSuffixOf, isInfixOf
-  , words, lines, unwords, unlines
-  )
 import Data.Char (ord, chr)
 import Data.Maybe (fromMaybe, isJust, isNothing, catMaybes, mapMaybe)
 import Data.List (foldl')
