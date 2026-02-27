@@ -22,7 +22,7 @@ module Tidepool.Prelude
     -- * Text versions of words/lines
   , words, lines, unwords, unlines
     -- * Typeclasses (re-exported from base)
-  , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional, Show
+  , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional(..), Show
   , Semigroup(..), Monoid(..)
   , fromIntegral, realToFrac
   , Functor(..), Applicative(..), Monad(..)
@@ -92,7 +92,7 @@ import Prelude
   ( Int, Integer, Word, Char, Bool(..), Double, Float
   , String, Ordering(..), Maybe(..), Either(..)
   , IO
-  , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional, Show
+  , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional(..), Show
   , Semigroup(..), Monoid(..)
   , fromIntegral, realToFrac
   , Functor(..), Applicative(..), Monad(..)
@@ -407,3 +407,4 @@ even n = n `rem` 2 == 0
 odd :: Int -> Bool
 odd n = n `rem` 2 /= 0
 {-# INLINE odd #-}
+
