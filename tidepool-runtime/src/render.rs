@@ -175,8 +175,13 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                     json!(val)
                 }
 
-                // Aeson Array: Array (Vector Value) → delegate to vector
+                // Aeson Value constructors
+                ("Null", []) => json!(null),
+                ("Bool", [x]) => value_to_json(x, table, d),
+                ("Number", [x]) => value_to_json(x, table, d),
+                ("String", [x]) => value_to_json(x, table, d),
                 ("Array", [vec_val]) => value_to_json(vec_val, table, d),
+                ("Object", [map_val]) => map_to_json_object(map_val, table, d),
 
                 // Data.Vector.Vector: worker-wrapper inlines fields as
                 // Vector Int# Int# (Array# a). The Array# contents come from
@@ -230,6 +235,45 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                 Err(_) => json!(format!("<ByteArray# len={}>", borrowed.len())),
             }
         }
+    }
+}
+
+/// Walk a Data.Map.Strict Bin/Tip tree and collect key-value pairs into a JSON object.
+/// Keys are Text values (Key newtype is erased by GHC).
+fn map_to_json_object(val: &Value, table: &DataConTable, depth: usize) -> serde_json::Value {
+    let mut entries = serde_json::Map::new();
+    collect_map_entries(val, table, depth, &mut entries);
+    serde_json::Value::Object(entries)
+}
+
+fn collect_map_entries(
+    val: &Value,
+    table: &DataConTable,
+    depth: usize,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    match val {
+        Value::Con(id, fields) => {
+            let name = con_name(*id, table);
+            match (name, fields.as_slice()) {
+                ("Tip", []) => {}
+                // Bin size key value left right
+                ("Bin", [_size, k, v, left, right]) => {
+                    collect_map_entries(left, table, depth + 1, out);
+                    let key_str = match value_to_json(k, table, depth + 1) {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+                    out.insert(key_str, value_to_json(v, table, depth + 1));
+                    collect_map_entries(right, table, depth + 1, out);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
     }
 }
 

@@ -398,9 +398,8 @@ fn test_aeson_object_simple() {
     let json = run_aeson(&[
         r#"pure (object ["name" .= ("Alice" :: Text), "age" .= (30 :: Int)])"#,
     ]);
-    assert_eq!(json["constructor"], "Object");
-    // The exact structure depends on how aeson's Object renders through our bridge.
-    // At minimum, it should not crash.
+    // Object now renders as a proper JSON object
+    assert!(json.is_object());
 }
 
 /// Construct a JSON array via toJSON
@@ -420,8 +419,7 @@ fn test_aeson_null() {
     let json = run_aeson(&[
         r#"pure Aeson.Null"#,
     ]);
-    // Should render as the "Null" constructor
-    assert_eq!(json, serde_json::json!("Null"));
+    assert_eq!(json, serde_json::json!(null));
 }
 
 /// Construct Aeson.Bool
@@ -430,8 +428,7 @@ fn test_aeson_bool_true() {
     let json = run_aeson(&[
         r#"pure (Aeson.Bool True)"#,
     ]);
-    // Bool True wraps our True constructor
-    assert_eq!(json, serde_json::json!({"constructor": "Bool", "fields": [true]}));
+    assert_eq!(json, serde_json::json!(true));
 }
 
 /// Construct Aeson.String
@@ -440,7 +437,7 @@ fn test_aeson_string() {
     let json = run_aeson(&[
         r#"pure (Aeson.String "hello world")"#,
     ]);
-    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": ["hello world"]}));
+    assert_eq!(json, serde_json::json!("hello world"));
 }
 
 /// Construct Aeson.Number from Int
@@ -2151,7 +2148,7 @@ fn test_primop_kvget_to_upper() {
 #[test]
 fn test_vendored_aeson_null_qualified() {
     let json = run_aeson(&[r#"pure Aeson.Null"#]);
-    assert_eq!(json, serde_json::json!("Null"));
+    assert_eq!(json, serde_json::json!(null));
 }
 
 /// Construct Bool True and Bool False
@@ -2159,15 +2156,15 @@ fn test_vendored_aeson_null_qualified() {
 fn test_vendored_aeson_bool_both() {
     let t = run_aeson(&[r#"pure (Aeson.Bool True)"#]);
     let f = run_aeson(&[r#"pure (Aeson.Bool False)"#]);
-    assert_eq!(t, serde_json::json!({"constructor": "Bool", "fields": [true]}));
-    assert_eq!(f, serde_json::json!({"constructor": "Bool", "fields": [false]}));
+    assert_eq!(t, serde_json::json!(true));
+    assert_eq!(f, serde_json::json!(false));
 }
 
 /// Construct String with various content
 #[test]
 fn test_vendored_aeson_string_unicode() {
     let json = run_aeson(&[r#"pure (Aeson.String "hello world")"#]);
-    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": ["hello world"]}));
+    assert_eq!(json, serde_json::json!("hello world"));
 }
 
 /// Construct Number via toJSON Int
@@ -2189,7 +2186,7 @@ fn test_vendored_aeson_array_via_tojson() {
 #[test]
 fn test_vendored_aeson_empty_object() {
     let json = run_aeson(&[r#"pure (object [])"#]);
-    assert_eq!(json["constructor"], "Object");
+    assert_eq!(json, serde_json::json!({}));
 }
 
 /// Construct empty array
@@ -2207,14 +2204,14 @@ fn test_vendored_aeson_empty_array() {
 #[test]
 fn test_vendored_tojson_text() {
     let json = run_aeson(&[r#"pure (toJSON ("hello" :: Text))"#]);
-    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": ["hello"]}));
+    assert_eq!(json, serde_json::json!("hello"));
 }
 
 /// ToJSON Bool
 #[test]
 fn test_vendored_tojson_bool() {
     let json = run_aeson(&[r#"pure (toJSON True)"#]);
-    assert_eq!(json, serde_json::json!({"constructor": "Bool", "fields": [true]}));
+    assert_eq!(json, serde_json::json!(true));
 }
 
 /// ToJSON Maybe — Just wraps, Nothing becomes Null
@@ -2222,8 +2219,8 @@ fn test_vendored_tojson_bool() {
 fn test_vendored_tojson_maybe() {
     let just = run_aeson(&[r#"pure (toJSON (Just ("x" :: Text)))"#]);
     let nothing = run_aeson(&[r#"pure (toJSON (Nothing :: Maybe Text))"#]);
-    assert_eq!(just, serde_json::json!({"constructor": "String", "fields": ["x"]}));
-    assert_eq!(nothing, serde_json::json!("Null"));
+    assert_eq!(just, serde_json::json!("x"));
+    assert_eq!(nothing, serde_json::json!(null));
 }
 
 /// ToJSON nested list
@@ -2244,7 +2241,9 @@ fn test_vendored_object_mixed_types() {
         r#"let v = object ["name" .= ("Alice" :: Text), "active" .= True, "score" .= (100 :: Int)]"#,
         r#"pure v"#,
     ]);
-    assert_eq!(json["constructor"], "Object");
+    assert!(json.is_object());
+    assert_eq!(json["name"], serde_json::json!("Alice"));
+    assert_eq!(json["active"], serde_json::json!(true));
 }
 
 /// Object with nested objects
@@ -2278,7 +2277,7 @@ fn test_vendored_object_from_comprehension() {
         ],
         &[],
     );
-    assert_eq!(json["constructor"], "Object");
+    assert!(json.is_object());
 }
 
 // ---------------------------------------------------------------------------
@@ -2802,7 +2801,7 @@ fn test_vendored_input_with_effects() {
 #[test]
 fn test_vendored_edge_empty_string() {
     let json = run_aeson(&[r#"pure (Aeson.String "")"#]);
-    assert_eq!(json, serde_json::json!({"constructor": "String", "fields": [""]}));
+    assert_eq!(json, serde_json::json!(""));
 }
 
 /// Single-element object
@@ -3131,8 +3130,8 @@ fn test_orchestrate_serialize_to_kv_and_reconstruct() {
              \x20 pure (object pairs)",
         ],
     );
-    // The reconstructed object should be an Object
-    assert_eq!(json["constructor"], "Object");
+    // The reconstructed object should be a proper JSON object
+    assert!(json.is_object());
 }
 
 /// Nested lens pipeline: deeply transform a config object.
@@ -3418,7 +3417,7 @@ fn test_orchestrate_lens_composition_chain() {
         ],
         &[],
     );
-    assert_eq!(json["constructor"], "Object");
+    assert!(json.is_object());
 }
 
 /// Error recovery pattern: try operations, catch failures via Maybe,
@@ -3511,7 +3510,7 @@ fn test_orchestrate_array_gymnastics() {
         ],
         &[],
     );
-    assert_eq!(json["constructor"], "Object");
+    assert!(json.is_object());
 }
 
 /// Build a mini DSL: JSON objects represent "instructions" that get
@@ -3655,8 +3654,8 @@ fn test_group_b_simple_thunk() {
         r#"let xs = [True, False]"#,
         r#"case head xs of { True -> pure (toJSON (1.0 :: Double)); False -> pure (toJSON (0.0 :: Double)) }"#,
     ]);
-    // Aeson Value rendered via to_json includes constructor name and fields
-    assert_eq!(json["fields"][0], serde_json::json!(1.0));
+    // Aeson Number now renders directly as a number
+    assert_eq!(json, serde_json::json!(1.0));
 }
 
 // ---------------------------------------------------------------------------
