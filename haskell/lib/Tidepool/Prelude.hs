@@ -94,7 +94,7 @@ import Prelude
   , IO
   , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional, Show
   , Semigroup(..), Monoid(..)
-  , fromIntegral, realToFrac, even, odd
+  , fromIntegral, realToFrac
   , Functor(..), Applicative(..), Monad(..)
   , (<$>)
   , id, const, flip, (.), ($), ($!)
@@ -396,3 +396,14 @@ last [x]    = x
 last (_:xs) = last xs
 last []     = error "last: empty list"
 {-# INLINE last #-}
+
+-- | Monomorphic even/odd for Int.
+-- The polymorphic Prelude versions go through the Integral typeclass
+-- dictionary which contains error branches that the JIT evaluates eagerly.
+even :: Int -> Bool
+even n = n `rem` 2 == 0
+{-# INLINE even #-}
+
+odd :: Int -> Bool
+odd n = n `rem` 2 /= 0
+{-# INLINE odd #-}
