@@ -99,18 +99,23 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
                 // Text constructor: Text ByteArray off len → JSON string
                 // ByteArray# may be raw Value::ByteArray or lifted Con("ByteArray", [Value::ByteArray(..)])
                 ("Text", [ba_val, off_val, len_val]) => {
-                    let raw_ba = match ba_val {
-                        Value::ByteArray(bs) => Some(bs.clone()),
-                        Value::Con(id, fields)
-                            if con_name(*id, table) == "ByteArray" && fields.len() == 1 =>
-                        {
-                            if let Value::ByteArray(bs) = &fields[0] {
-                                Some(bs.clone())
-                            } else {
-                                None
+                    // Recursively unwrap Con("ByteArray", [x]) layers to find
+                    // the raw ByteArray#. Sliced Text values (from splitOn etc.)
+                    // can produce multiple wrapping layers.
+                    let raw_ba = {
+                        let mut cur = ba_val;
+                        loop {
+                            match cur {
+                                Value::ByteArray(bs) => break Some(bs.clone()),
+                                Value::Con(id, fields)
+                                    if con_name(*id, table) == "ByteArray"
+                                        && fields.len() == 1 =>
+                                {
+                                    cur = &fields[0];
+                                }
+                                _ => break None,
                             }
                         }
-                        _ => None,
                     };
                     if let Some(bs) = raw_ba {
                         let borrowed = bs.lock().unwrap();
@@ -228,19 +233,20 @@ fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json:
     }
 }
 
-/// Extract an i64 from a potentially boxed Int value (LitInt or I#(LitInt)).
+/// Extract an i64 from a potentially boxed Int value (LitInt or I#(I#(...(LitInt)))).
+/// Recursively unwraps nested Con("I#", [x]) layers.
 fn extract_boxed_int(val: &Value, table: &DataConTable) -> Option<i64> {
-    match val {
-        Value::Lit(Literal::LitInt(n)) => Some(*n),
-        Value::Con(id, fields) if fields.len() == 1 => {
-            if table.get_by_name("I#") == Some(*id) {
-                if let Value::Lit(Literal::LitInt(n)) = &fields[0] {
-                    return Some(*n);
-                }
+    let mut cur = val;
+    loop {
+        match cur {
+            Value::Lit(Literal::LitInt(n)) => return Some(*n),
+            Value::Con(id, fields)
+                if fields.len() == 1 && table.get_by_name("I#") == Some(*id) =>
+            {
+                cur = &fields[0];
             }
-            None
+            _ => return None,
         }
-        _ => None,
     }
 }
 
