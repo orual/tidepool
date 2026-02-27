@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 use tidepool_codegen::jit_machine::JitEffectMachine;
+pub use tidepool_codegen::host_fns::{drain_diagnostics, push_diagnostic};
 pub use tidepool_codegen::jit_machine::JitError;
 pub use tidepool_effect::dispatch::DispatchEffect;
 pub use tidepool_eval::value::Value;

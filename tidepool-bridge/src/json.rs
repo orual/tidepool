@@ -95,9 +95,10 @@ fn keymap_to_value(
     let tip_id = table
         .get_by_name_arity("Tip", 0)
         .ok_or_else(|| BridgeError::UnknownDataConName("Tip".into()))?;
-    let key_con_id = table
-        .get_by_name_arity("Key", 1)
-        .ok_or_else(|| BridgeError::UnknownDataConName("Key".into()))?;
+    // Bin's first field is !Int — boxed on the heap as I#(Int#)
+    let i_hash_id = table
+        .get_by_name_arity("I#", 1)
+        .ok_or_else(|| BridgeError::UnknownDataConName("I#".into()))?;
 
     // Collect and sort entries by key for balanced tree construction
     let mut entries: Vec<(&std::string::String, &serde_json::Value)> = map.iter().collect();
@@ -107,7 +108,7 @@ fn keymap_to_value(
         entries: &[(&std::string::String, &serde_json::Value)],
         bin_id: tidepool_repr::DataConId,
         tip_id: tidepool_repr::DataConId,
-        key_con_id: tidepool_repr::DataConId,
+        i_hash_id: tidepool_repr::DataConId,
         table: &DataConTable,
     ) -> Result<Value, BridgeError> {
         if entries.is_empty() {
@@ -115,15 +116,16 @@ fn keymap_to_value(
         }
         let mid = entries.len() / 2;
         let (k, v) = entries[mid];
-        let left = build_tree(&entries[..mid], bin_id, tip_id, key_con_id, table)?;
-        let right = build_tree(&entries[mid + 1..], bin_id, tip_id, key_con_id, table)?;
+        let left = build_tree(&entries[..mid], bin_id, tip_id, i_hash_id, table)?;
+        let right =
+            build_tree(&entries[mid + 1..], bin_id, tip_id, i_hash_id, table)?;
 
-        // Key wraps Text
-        let key_text = k.clone().to_value(table)?;
-        let key_val = Value::Con(key_con_id, vec![key_text]);
+        // Key is a newtype for Text — GHC erases it, so store plain Text
+        let key_val = k.clone().to_value(table)?;
 
         let json_val = v.to_value(table)?;
-        let size = Value::Lit(Literal::LitInt(entries.len() as i64));
+        // Bin's !Int field must be boxed as I#(n) to match GHC's heap representation
+        let size = Value::Con(i_hash_id, vec![Value::Lit(Literal::LitInt(entries.len() as i64))]);
 
         // Bin size key value left right
         Ok(Value::Con(
@@ -132,7 +134,7 @@ fn keymap_to_value(
         ))
     }
 
-    build_tree(&entries, bin_id, tip_id, key_con_id, table)
+    build_tree(&entries, bin_id, tip_id, i_hash_id, table)
 }
 
 #[cfg(test)]
@@ -151,21 +153,19 @@ mod tests {
             ("Number", 3, 1),
             ("Bool", 4, 1),
             ("Null", 5, 0),
-            // Key
-            ("Key", 6, 1),
             // Map constructors
-            ("Bin", 7, 5),
-            ("Tip", 8, 0),
+            ("Bin", 6, 5),
+            ("Tip", 7, 0),
             // Bool values
-            ("True", 9, 0),
-            ("False", 10, 0),
+            ("True", 8, 0),
+            ("False", 9, 0),
             // List
-            ("[]", 11, 0),
-            (":", 12, 2),
+            ("[]", 10, 0),
+            (":", 11, 2),
             // Text
-            ("Text", 13, 3),
+            ("Text", 12, 3),
             // Int boxing
-            ("I#", 14, 1),
+            ("I#", 13, 1),
         ];
 
         for (i, (name, tag, arity)) in cons.iter().enumerate() {
