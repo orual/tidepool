@@ -227,6 +227,8 @@ fn encode_primop(op: &PrimOpKind) -> &'static str {
         DataToTag => "DataToTag",
         IntQuot => "IntQuot",
         IntRem => "IntRem",
+        DecodeDoubleMantissa => "DecodeDoubleMantissa",
+        DecodeDoubleExponent => "DecodeDoubleExponent",
         Chr => "Chr",
         Ord => "Ord",
         IntAnd => "IntAnd",
@@ -372,6 +374,7 @@ fn encode_primop(op: &PrimOpKind) -> &'static str {
         Ctz16 => "Ctz16",
         Ctz32 => "Ctz32",
         Ctz64 => "Ctz64",
+        ShowDoubleAddr => "ShowDoubleAddr",
     }
 }
 

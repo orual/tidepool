@@ -644,6 +644,49 @@ pub extern "C" fn runtime_cas_boxed_array(arr: i64, idx: i64, expected: i64, new
     old
 }
 
+/// Decode a Double into its Int64 mantissa (significand).
+/// GHC's `decodeDouble_Int64#` returns (# mantissa, exponent #).
+pub extern "C" fn runtime_decode_double_mantissa(bits: i64) -> i64 {
+    let (man, _) = decode_double_int64(f64::from_bits(bits as u64));
+    man
+}
+
+/// Decode a Double into its Int exponent.
+pub extern "C" fn runtime_decode_double_exponent(bits: i64) -> i64 {
+    let (_, exp) = decode_double_int64(f64::from_bits(bits as u64));
+    exp
+}
+
+/// Shared implementation matching GHC's `decodeDouble_Int64#` semantics.
+/// Returns (mantissa, exponent) such that mantissa * 2^exponent == d,
+/// with mantissa normalized to have no trailing zeros in binary.
+fn decode_double_int64(d: f64) -> (i64, i64) {
+    if d == 0.0 || d.is_nan() {
+        return (0, 0);
+    }
+    if d.is_infinite() {
+        return (if d > 0.0 { 1 } else { -1 }, 0);
+    }
+    let bits = d.to_bits();
+    let sign: i64 = if bits >> 63 == 0 { 1 } else { -1 };
+    let raw_exp = ((bits >> 52) & 0x7ff) as i32;
+    let raw_man = (bits & 0x000f_ffff_ffff_ffff) as i64;
+    let (man, exp) = if raw_exp == 0 {
+        // subnormal
+        (raw_man, 1 - 1023 - 52)
+    } else {
+        // normal: implicit leading 1
+        (raw_man | (1i64 << 52), raw_exp - 1023 - 52)
+    };
+    let man = sign * man;
+    if man != 0 {
+        let tz = man.unsigned_abs().trailing_zeros();
+        (man >> tz, (exp + tz as i32) as i64)
+    } else {
+        (0, 0)
+    }
+}
+
 /// strlen: count bytes until null terminator.
 pub extern "C" fn runtime_strlen(addr: i64) -> i64 {
     if (addr as u64) < 0x1000 {
@@ -755,6 +798,39 @@ pub extern "C" fn runtime_text_reverse(dest: i64, src: i64, off: i64, len: i64) 
     }
 }
 
+/// Format a Double as a null-terminated C string and return its address.
+/// The CString is leaked (small bounded strings, acceptable).
+pub extern "C" fn runtime_show_double_addr(bits: i64) -> i64 {
+    let d = f64::from_bits(bits as u64);
+    let s = haskell_show_double(d);
+    let c_str = std::ffi::CString::new(s).unwrap();
+    let ptr = c_str.into_raw();
+    ptr as i64
+}
+
+/// Format a Double matching Haskell's `show` output.
+/// Decimal notation for 0.1 <= |x| < 1e7, scientific notation otherwise.
+/// Always includes a decimal point.
+fn haskell_show_double(d: f64) -> String {
+    if d.is_nan() {
+        return "NaN".to_string();
+    }
+    if d.is_infinite() {
+        return if d > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    if d == 0.0 {
+        return if d.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
+    }
+    let abs = d.abs();
+    if abs >= 0.1 && abs < 1.0e7 {
+        let s = format!("{}", d);
+        if s.contains('.') { s } else { format!("{}.0", s) }
+    } else {
+        // Scientific notation: Haskell uses e.g. "3.14e10"
+        format!("{:e}", d)
+    }
+}
+
 pub fn host_fn_symbols() -> Vec<(&'static str, *const u8)> {
     vec![
         ("gc_trigger", gc_trigger as *const u8),
@@ -794,6 +870,14 @@ pub fn host_fn_symbols() -> Vec<(&'static str, *const u8)> {
         ),
         ("runtime_strlen", runtime_strlen as *const u8),
         (
+            "runtime_decode_double_mantissa",
+            runtime_decode_double_mantissa as *const u8,
+        ),
+        (
+            "runtime_decode_double_exponent",
+            runtime_decode_double_exponent as *const u8,
+        ),
+        (
             "runtime_text_measure_off",
             runtime_text_measure_off as *const u8,
         ),
@@ -822,6 +906,10 @@ pub fn host_fn_symbols() -> Vec<(&'static str, *const u8)> {
         (
             "runtime_case_trap",
             runtime_case_trap as *const u8,
+        ),
+        (
+            "runtime_show_double_addr",
+            runtime_show_double_addr as *const u8,
         ),
     ]
 }
@@ -1199,6 +1287,47 @@ mod tests {
     fn test_memchr_last_byte() {
         let s = b"hello:";
         assert_eq!(runtime_text_memchr(s.as_ptr() as i64, 0, 6, b':' as i64), 5);
+    }
+
+    // ---------------------------------------------------------------
+    // decode_double_int64 — matches GHC's decodeDouble_Int64#
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_decode_double_3_14() {
+        let (m, e) = decode_double_int64(3.14);
+        assert_eq!(m as f64 * (2.0f64).powi(e as i32), 3.14);
+    }
+
+    #[test]
+    fn test_decode_double_1_0() {
+        let (m, e) = decode_double_int64(1.0);
+        assert_eq!((m, e), (1, 0));
+    }
+
+    #[test]
+    fn test_decode_double_42_0() {
+        let (m, e) = decode_double_int64(42.0);
+        assert_eq!(m as f64 * (2.0f64).powi(e as i32), 42.0);
+    }
+
+    #[test]
+    fn test_decode_double_zero() {
+        assert_eq!(decode_double_int64(0.0), (0, 0));
+    }
+
+    #[test]
+    fn test_decode_double_negative() {
+        let (m, e) = decode_double_int64(-1.5);
+        assert_eq!((m, e), (-3, -1));
+    }
+
+    #[test]
+    fn test_decode_double_runtime_mantissa() {
+        let bits = 3.14f64.to_bits() as i64;
+        let m = runtime_decode_double_mantissa(bits);
+        let e = runtime_decode_double_exponent(bits);
+        assert_eq!(m as f64 * (2.0f64).powi(e as i32), 3.14);
     }
 }
 

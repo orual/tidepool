@@ -558,3 +558,16 @@ showMaybeNothing = show (Nothing :: Maybe Int)
 
 showBool :: String
 showBool = show True
+
+showDouble :: String
+showDouble = showDouble' (3.14 :: Double)
+
+showDoubleInt :: String
+showDoubleInt = showDouble' (42.0 :: Double)
+
+-- Fallback body uses `d` so GHC preserves the argument in Core.
+-- GHC eta-reduces this to $fShowDouble_$cshow, which resolveExternals
+-- skips (isMagicUnpackVar) and Translate.hs intercepts (isShowDoubleVar).
+{-# NOINLINE showDouble' #-}
+showDouble' :: Double -> String
+showDouble' d = show d

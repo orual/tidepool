@@ -541,3 +541,21 @@ fn show_bool() {
     let s = collect_string(&val, &table);
     assert_eq!(s, "True", "expected \"True\", got \"{s}\"");
 }
+
+#[test]
+fn show_double() {
+    static CBOR: &[u8] = include_bytes!("../../haskell/test/suite_cbor/showDouble.cbor");
+    let val = eval_fixture(CBOR);
+    let table = table();
+    let s = collect_string(&val, &table);
+    assert_eq!(s, "3.14", "expected \"3.14\", got \"{s}\"");
+}
+
+#[test]
+fn show_double_int() {
+    static CBOR: &[u8] = include_bytes!("../../haskell/test/suite_cbor/showDoubleInt.cbor");
+    let val = eval_fixture(CBOR);
+    let table = table();
+    let s = collect_string(&val, &table);
+    assert_eq!(s, "42.0", "expected \"42.0\", got \"{s}\"");
+}

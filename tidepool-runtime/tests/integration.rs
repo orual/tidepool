@@ -188,3 +188,9 @@ deepList = [1..1000]
         .unwrap()
         .to_json();
 }
+
+// Note: showDouble JIT path is tested via the haskell_suite (tidepool-eval)
+// which loads pre-compiled CBOR fixtures. The compile_and_run path requires
+// freer-simple effect constructors (Val, E, Union, Leaf, Node) in metadata,
+// which plain Haskell modules don't produce. MCP uses the full effect stack
+// so it works there.

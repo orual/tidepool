@@ -611,6 +611,52 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let a = expect_double(&args[0])?;
             Ok(Value::Lit(Literal::LitInt(a as i64)))
         }
+        PrimOpKind::DecodeDoubleMantissa => {
+            if args.len() != 1 {
+                return Err(EvalError::ArityMismatch {
+                    context: "arguments",
+                    expected: 1,
+                    got: args.len(),
+                });
+            }
+            let d = expect_double(&args[0])?;
+            let (man, _) = eval_decode_double_int64(d);
+            Ok(Value::Lit(Literal::LitInt(man)))
+        }
+        PrimOpKind::DecodeDoubleExponent => {
+            if args.len() != 1 {
+                return Err(EvalError::ArityMismatch {
+                    context: "arguments",
+                    expected: 1,
+                    got: args.len(),
+                });
+            }
+            let d = expect_double(&args[0])?;
+            let (_, exp) = eval_decode_double_int64(d);
+            Ok(Value::Lit(Literal::LitInt(exp)))
+        }
+        PrimOpKind::ShowDoubleAddr => {
+            if args.len() != 1 {
+                return Err(EvalError::ArityMismatch {
+                    context: "arguments",
+                    expected: 1,
+                    got: args.len(),
+                });
+            }
+            // Accept both unboxed Double# and boxed D# Double#
+            let d = match &args[0] {
+                Value::Lit(Literal::LitDouble(bits)) => f64::from_bits(*bits),
+                Value::Con(_, fields) if fields.len() == 1 => expect_double(&fields[0])?,
+                other => return Err(EvalError::TypeMismatch {
+                    expected: "Double# or D# Double#",
+                    got: crate::error::ValueKind::Other(format!("{:?}", other)),
+                }),
+            };
+            let s = eval_haskell_show_double(d);
+            let mut bytes = s.into_bytes();
+            bytes.push(0); // null terminator for IndexCharOffAddr
+            Ok(Value::Lit(Literal::LitString(bytes)))
+        }
         PrimOpKind::Int2Float => {
             if args.len() != 1 {
                 return Err(EvalError::ArityMismatch {
@@ -1375,6 +1421,51 @@ fn bin_op_word(_op: PrimOpKind, args: &[Value]) -> Result<(u64, u64), EvalError>
         });
     }
     Ok((expect_word(&args[0])?, expect_word(&args[1])?))
+}
+
+fn eval_decode_double_int64(d: f64) -> (i64, i64) {
+    if d == 0.0 || d.is_nan() {
+        return (0, 0);
+    }
+    if d.is_infinite() {
+        return (if d > 0.0 { 1 } else { -1 }, 0);
+    }
+    let bits = d.to_bits();
+    let sign: i64 = if bits >> 63 == 0 { 1 } else { -1 };
+    let raw_exp = ((bits >> 52) & 0x7ff) as i32;
+    let raw_man = (bits & 0x000f_ffff_ffff_ffff) as i64;
+    let (man, exp) = if raw_exp == 0 {
+        (raw_man, 1 - 1023 - 52)
+    } else {
+        (raw_man | (1i64 << 52), raw_exp - 1023 - 52)
+    };
+    let man = sign * man;
+    if man != 0 {
+        let tz = man.unsigned_abs().trailing_zeros();
+        (man >> tz, (exp + tz as i32) as i64)
+    } else {
+        (0, 0)
+    }
+}
+
+/// Format a Double matching Haskell's `show` output.
+fn eval_haskell_show_double(d: f64) -> String {
+    if d.is_nan() {
+        return "NaN".to_string();
+    }
+    if d.is_infinite() {
+        return if d > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    if d == 0.0 {
+        return if d.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
+    }
+    let abs = d.abs();
+    if abs >= 0.1 && abs < 1.0e7 {
+        let s = format!("{}", d);
+        if s.contains('.') { s } else { format!("{}.0", s) }
+    } else {
+        format!("{:e}", d)
+    }
 }
 
 fn bin_op_double(_op: PrimOpKind, args: &[Value]) -> Result<(f64, f64), EvalError> {

@@ -463,6 +463,23 @@ translate expr =
   let (hd, allArgs) = collectArgs expr
       args = filter isValueArg allArgs
   in case hd of
+    -- Intercept showDouble: emit ShowDoubleAddr primop + unpackCString loop
+    Var v | isShowDoubleVar v
+          , [arg] <- args -> do
+        argIdx <- translate arg
+        addrIdx <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [argIdx]
+        emitRuntimeUnpackCString addrIdx
+
+    -- Eta-expanded case: showDouble' = $fShowDouble_$cshow (bare Var, no args)
+    -- Emit \d -> unpackCString# (ShowDoubleAddr d) so the binding has a valid body.
+    Var v | isShowDoubleVar v
+          , null args -> do
+        let paramVarId = varId v .|. 0x01  -- unique param id
+        paramRef <- emitNode $ NVar paramVarId
+        addrIdx <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [paramRef]
+        resultIdx <- emitRuntimeUnpackCString addrIdx
+        emitNode $ NLam paramVarId resultIdx
+
     -- Desugar unpackCString#/unpackCStringUtf8# to cons-cell chain:
     -- GHC represents string literals as (unpackCString# "addr"#) in Core.
     -- We expand to (:) 'c1' ((:) 'c2' ... []) so strings are uniform [Char]
@@ -839,6 +856,22 @@ translateHead = \case
         rCaseIdx <- emitNode $ NCase rValIdx (varId rBinder) [FlatAlt FDefault [] bodyIdx]
         -- case qVal of qBinder { DEFAULT -> rCaseIdx }
         emitNode $ NCase qValIdx (varId qBinder) [FlatAlt FDefault [] rCaseIdx]
+  -- Desugar unary multi-return primops: case decodeDouble_Int64# x of (# m, e #) -> body
+  Case scrut _caseBinder _ty [Alt (DataAlt dc) binders body]
+    | isUnboxedTupleDataCon dc
+    , (Var v, allArgs) <- collectArgs (stripTicksAndCasts scrut)
+    , Just pop <- isPrimOpId_maybe v
+    , Just (op1Name, op2Name) <- splitUnaryMultiReturnPrimOp pop
+    , let valArgs = filter isValueArg allArgs
+    , [a] <- valArgs
+    , vBinders <- filter (not . isTyVar) binders
+    , [r1Binder, r2Binder] <- vBinders -> do
+        aIdx <- translate a
+        v1Idx <- emitOp op1Name [aIdx]
+        v2Idx <- emitOp op2Name [aIdx]
+        bodyIdx <- translate body
+        c1 <- emitNode $ NCase v2Idx (varId r2Binder) [FlatAlt FDefault [] bodyIdx]
+        emitNode $ NCase v1Idx (varId r1Binder) [FlatAlt FDefault [] c1]
   -- Desugar triple-return primops: case timesInt2# a b of (# hi, lo, ovf #) -> body
   Case scrut _caseBinder _ty [Alt (DataAlt dc) binders body]
     | isUnboxedTupleDataCon dc
@@ -1344,6 +1377,12 @@ isUnpackCStringVar v =
   let name = occNameString (nameOccName (idName v))
   in name == "unpackCString#" || name == "unpackCStringUtf8#"
 
+isShowDoubleVar :: Id -> Bool
+isShowDoubleVar v =
+  let name = occNameString (nameOccName (idName v))
+  in name == "showDouble" || name == "showDouble'"
+     || name == "$fShowDouble_$cshow"
+
 -- | Recognize GHC's unpackAppendCString# builtin.
 -- unpackAppendCString# :: Addr# -> [Char] -> [Char]
 -- Prepends a C string literal to a suffix list.
@@ -1377,6 +1416,13 @@ splitTripleReturnPrimOp :: PrimOp -> Maybe (Text, Text, Text)
 splitTripleReturnPrimOp = \case
   IntMul2Op -> Just (T.pack "TimesInt2Hi", T.pack "TimesInt2Lo", T.pack "TimesInt2Overflow")
   _         -> Nothing
+
+-- | Like splitMultiReturnPrimOp but for unary primops (single argument)
+-- returning unboxed tuples.
+splitUnaryMultiReturnPrimOp :: PrimOp -> Maybe (Text, Text)
+splitUnaryMultiReturnPrimOp = \case
+  DoubleDecode_Int64Op -> Just (T.pack "DecodeDoubleMantissa", T.pack "DecodeDoubleExponent")
+  _                    -> Nothing
 
 -- | Extract Addr# literal bytes from an expression.
 -- Handles both direct Lit and Var with an unfolding to Lit

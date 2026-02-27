@@ -53,7 +53,8 @@ resolveExternals :: HscEnv -> [CoreBind] -> IO ([CoreBind], [UnresolvedVar])
 resolveExternals hscEnv binds = do
   let localBinders = foldMap bindersOfSet binds
       allFreeVars  = foldMap freeVarsOfBind binds
-      externals    = filter (isResolvable localBinders) (nonDetEltsUniqSet allFreeVars)
+      allFVList    = nonDetEltsUniqSet allFreeVars
+      externals    = filter (isResolvable localBinders) allFVList
       -- Build name→Var lookup for Prelude substitution fallback
       localNameMap = buildLocalNameMap binds
   fatCache <- newFatIfaceCache
@@ -207,15 +208,19 @@ resolveExternals hscEnv binds = do
         Just _  -> True
         Nothing -> False
 
-    -- | Skip magic unpack/string functions that Translate.hs handles specially.
-    -- Their unfoldings use Addr# primops (plusAddr#, indexCharOffAddr#) that we
-    -- don't support; instead, Translate desugars them to cons-cell chains.
+    -- | Skip magic functions that Translate.hs handles specially.
+    -- unpack* functions: their unfoldings use Addr# primops that we
+    -- don't support; Translate desugars them to cons-cell chains.
+    -- showDouble/$fShowDouble_$cshow: their unfoldings use Integer/GMP
+    -- arithmetic; Translate emits a ShowDoubleAddr primop instead.
     isMagicUnpackVar :: Var -> Bool
     isMagicUnpackVar v =
       let name = occNameString (nameOccName (varName v))
       in name `elem` [ "unpackCString#", "unpackCStringUtf8#"
                       , "unpackAppendCString#"
-                      , "unpackFoldrCString#", "unpackFoldrCStringUtf8#" ]
+                      , "unpackFoldrCString#", "unpackFoldrCStringUtf8#"
+                      , "showDouble", "showDouble'"
+                      , "$fShowDouble_$cshow" ]
 
 -- | Build a map from OccName string to (Var, CoreExpr) for all local binders.
 -- Used for Prelude substitution: when a specialized method can't be resolved,

@@ -65,6 +65,8 @@ pub enum PrimOpKind {
     DataToTag,
     IntQuot,
     IntRem,
+    DecodeDoubleMantissa,
+    DecodeDoubleExponent,
     Chr,
     Ord,
     // --- Tier 2: Int bitwise ---
@@ -222,6 +224,7 @@ pub enum PrimOpKind {
     Ctz32,
     Ctz64,
     CasSmallArray,
+    ShowDoubleAddr,
 }
 
 /// Case alternative constructor.
@@ -318,6 +321,8 @@ impl std::fmt::Display for PrimOpKind {
             PrimOpKind::DataToTag => "dataToTag#",
             PrimOpKind::IntQuot => "quotInt#",
             PrimOpKind::IntRem => "remInt#",
+            PrimOpKind::DecodeDoubleMantissa => "decodeDouble_Int64#[mantissa]",
+            PrimOpKind::DecodeDoubleExponent => "decodeDouble_Int64#[exponent]",
             PrimOpKind::Chr => "chr#",
             PrimOpKind::Ord => "ord#",
             PrimOpKind::IntAnd => "andI#",
@@ -460,6 +465,7 @@ impl std::fmt::Display for PrimOpKind {
             PrimOpKind::Ctz32 => "ctz32#",
             PrimOpKind::Ctz64 => "ctz64#",
             PrimOpKind::CasSmallArray => "casSmallArray#",
+            PrimOpKind::ShowDoubleAddr => "showDoubleAddr",
         };
         f.write_str(name)
     }

@@ -610,6 +610,8 @@ fn decode_primop(s: &str) -> Result<PrimOpKind, ReadError> {
         "DataToTag" => Ok(DataToTag),
         "IntQuot" => Ok(IntQuot),
         "IntRem" => Ok(IntRem),
+        "DecodeDoubleMantissa" => Ok(DecodeDoubleMantissa),
+        "DecodeDoubleExponent" => Ok(DecodeDoubleExponent),
         "Chr" => Ok(Chr),
         "Ord" => Ok(PrimOpKind::Ord),
         "IntAnd" => Ok(IntAnd),
@@ -755,6 +757,7 @@ fn decode_primop(s: &str) -> Result<PrimOpKind, ReadError> {
         "Ctz32" => Ok(Ctz32),
         "Ctz64" => Ok(Ctz64),
         "CasSmallArray" => Ok(CasSmallArray),
+        "ShowDoubleAddr" => Ok(ShowDoubleAddr),
         _ => Err(ReadError::InvalidPrimOp(s.to_string())),
     }
 }

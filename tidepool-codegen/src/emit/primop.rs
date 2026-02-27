@@ -331,6 +331,48 @@ pub fn emit_primop(
                 LIT_TAG_INT,
             ))
         }
+        PrimOpKind::DecodeDoubleMantissa => {
+            check_arity(op, 1, args.len())?;
+            let d = unbox_double(pipeline, builder, args[0]);
+            let bits = builder.ins().bitcast(types::I64, MemFlags::new(), d);
+            let result = emit_runtime_call(
+                pipeline,
+                builder,
+                "runtime_decode_double_mantissa",
+                &[AbiParam::new(types::I64)],
+                &[AbiParam::new(types::I64)],
+                &[bits],
+            )?;
+            Ok(SsaVal::Raw(result, LIT_TAG_INT))
+        }
+        PrimOpKind::DecodeDoubleExponent => {
+            check_arity(op, 1, args.len())?;
+            let d = unbox_double(pipeline, builder, args[0]);
+            let bits = builder.ins().bitcast(types::I64, MemFlags::new(), d);
+            let result = emit_runtime_call(
+                pipeline,
+                builder,
+                "runtime_decode_double_exponent",
+                &[AbiParam::new(types::I64)],
+                &[AbiParam::new(types::I64)],
+                &[bits],
+            )?;
+            Ok(SsaVal::Raw(result, LIT_TAG_INT))
+        }
+        PrimOpKind::ShowDoubleAddr => {
+            check_arity(op, 1, args.len())?;
+            let d = unbox_double(pipeline, builder, args[0]);
+            let bits = builder.ins().bitcast(types::I64, MemFlags::new(), d);
+            let result = emit_runtime_call(
+                pipeline,
+                builder,
+                "runtime_show_double_addr",
+                &[AbiParam::new(types::I64)],
+                &[AbiParam::new(types::I64)],
+                &[bits],
+            )?;
+            Ok(SsaVal::Raw(result, LIT_TAG_ADDR))
+        }
         PrimOpKind::Int2Float => {
             check_arity(op, 1, args.len())?;
             let v = unbox_int(pipeline, builder, args[0]);
