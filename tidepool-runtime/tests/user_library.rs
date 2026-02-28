@@ -1,0 +1,232 @@
+//! Tests for .tidepool/lib/Library.hs user library combinators.
+//! Run with: cargo test -p tidepool-runtime --test user_library
+
+use std::path::Path;
+use tidepool_runtime::compile_and_run_pure;
+
+fn prelude_dir() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("haskell/lib")
+        .leak()
+}
+
+fn user_lib_dir() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(".tidepool/lib")
+        .leak()
+}
+
+fn run_expr(expr: &str) -> serde_json::Value {
+    let source = format!(
+        r#"{{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, ScopedTypeVariables #-}}
+module Expr where
+import Tidepool.Prelude
+import qualified Data.Text as T
+import Library
+default (Int, Text)
+
+result :: Value
+result = toJSON ({expr})
+"#
+    );
+    let include = [prelude_dir(), user_lib_dir()];
+    let result = compile_and_run_pure(&source, "result", &include)
+        .expect("compile_and_run_pure failed");
+    result.to_json()
+}
+
+#[test]
+fn test_hylo_sum() {
+    let r = run_expr(
+        r#"hylo (\x acc -> x + acc) (0 :: Int) (\n -> if n <= 0 then Nothing else Just (n, n-1)) 10"#,
+    );
+    assert_eq!(r, serde_json::json!(55.0));
+}
+
+#[test]
+fn test_ana_squares() {
+    let r = run_expr(
+        r#"ana (\n -> if n > 5 then Nothing else Just (n*n, n+1)) (1 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!([1.0, 4.0, 9.0, 16.0, 25.0]));
+}
+
+#[test]
+fn test_cata_sum() {
+    let r = run_expr(r#"cata (\x acc -> x + acc) (0 :: Int) [1,2,3,4,5]"#);
+    assert_eq!(r, serde_json::json!(15.0));
+}
+
+#[test]
+fn test_para_with_tail() {
+    let r = run_expr(
+        r#"para (\x xs acc -> (x, length xs) : acc) ([] :: [(Int,Int)]) [10,20,30]"#,
+    );
+    assert_eq!(r, serde_json::json!([[10.0, 2.0], [20.0, 1.0], [30.0, 0.0]]));
+}
+
+#[test]
+fn test_apo_short_circuit() {
+    let r = run_expr(
+        r#"apo (\n -> if n >= 3 then Left [99 :: Int] else Right (n, n+1)) (0 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!([0.0, 1.0, 2.0, 99.0]));
+}
+
+#[test]
+fn test_iterate_n() {
+    let r = run_expr(r#"iterateN 5 (*2) (1 :: Int)"#);
+    assert_eq!(r, serde_json::json!([1.0, 2.0, 4.0, 8.0, 16.0]));
+}
+
+#[test]
+fn test_converge_isqrt() {
+    let r = run_expr(
+        r#"let isqrt n = converge (\x -> (x + n `div` x) `div` 2) n in isqrt (144 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!(12.0));
+}
+
+#[test]
+fn test_lens_1() {
+    let r = run_expr(r#"let p = (10 :: Int, 20 :: Int) in (p ^? _1, p & _2 .~ 99)"#);
+    assert_eq!(r, serde_json::json!([10.0, [10.0, 99.0]]));
+}
+
+#[test]
+fn test_lens_ix() {
+    let r = run_expr(r#"[1,2,3,4,5 :: Int] & ix 2 %~ (* 100)"#);
+    assert_eq!(r, serde_json::json!([1.0, 2.0, 300.0, 4.0, 5.0]));
+}
+
+#[test]
+fn test_lens_builder() {
+    let r = run_expr(
+        r#"let name = lens fst (\(_,b) a -> (a,b)); age = lens snd (\(a,_) b -> (a,b)) in ("alice" :: Text, 30 :: Int) & age %~ (+ 1) & name .~ "bob""#,
+    );
+    assert_eq!(r, serde_json::json!(["bob", 31.0]));
+}
+
+#[test]
+fn test_scanl() {
+    let r = run_expr(r#"scanl' (+) (0 :: Int) [1,2,3,4]"#);
+    assert_eq!(r, serde_json::json!([0.0, 1.0, 3.0, 6.0, 10.0]));
+}
+
+#[test]
+fn test_iterate_while() {
+    let r = run_expr(r#"iterateWhile (< 100) (* 2) (1 :: Int)"#);
+    assert_eq!(r, serde_json::json!([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]));
+}
+
+#[test]
+fn test_until() {
+    let r = run_expr(r#"until' (> 1000) (* 3) (1 :: Int)"#);
+    assert_eq!(r, serde_json::json!(2187.0));
+}
+
+#[test]
+fn test_apo_m() {
+    // apoM: unfold counting up, bail with precomputed tail at 3
+    let r = run_expr(
+        r#"let go n = if n >= 3 then Left [99, 100 :: Int] else Right (n, n+1) in apo go (0 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!([0.0, 1.0, 2.0, 99.0, 100.0]));
+}
+
+// -----------------------------------------------------------------------
+// Composition patterns
+// -----------------------------------------------------------------------
+
+#[test]
+fn test_compose_producer_consumer() {
+    // Pattern 1: ana (digits) then cata (reassemble reversed)
+    let r = run_expr(
+        r#"let digits = ana (\n -> if n == 0 then Nothing else Just (n `rem` 10, n `div` 10)) in foldl' (\acc d -> acc * 10 + d) (0 :: Int) (digits 1234)"#,
+    );
+    assert_eq!(r, serde_json::json!(4321.0));
+}
+
+#[test]
+fn test_compose_hylo_is_fused_ana_cata() {
+    // hylo = cata . ana but fused (no intermediate list)
+    // Sum of digits: unfold digits, fold by adding
+    let r = run_expr(
+        r#"hylo (+) (0 :: Int) (\n -> if n == 0 then Nothing else Just (n `rem` 10, n `div` 10)) 9999"#,
+    );
+    assert_eq!(r, serde_json::json!(36.0)); // 9+9+9+9
+}
+
+#[test]
+fn test_compose_producer_lens_consumer() {
+    // Pattern 2: ana produces pairs, lens transforms, cata consumes
+    let r = run_expr(
+        r#"let pairs = ana (\n -> if n > 3 then Nothing else Just ((n, n*n), n+1)) (1 :: Int) in cata (\p acc -> (p & _2 %~ (* 10)) : acc) ([] :: [(Int,Int)]) pairs"#,
+    );
+    // [(1,10), (2,40), (3,90)] — second elements multiplied by 10
+    assert_eq!(r, serde_json::json!([[1.0, 10.0], [2.0, 40.0], [3.0, 90.0]]));
+}
+
+#[test]
+fn test_compose_scanl_is_ana_with_accumulator() {
+    // Pattern 3: scanl' as fold-that-remembers, then consume the trace
+    // Running sum, then find the max
+    let r = run_expr(
+        r#"foldl' (\a b -> if a > b then a else b) (0 :: Int) (scanl' (+) 0 [3,1,4,1,5])"#,
+    );
+    assert_eq!(r, serde_json::json!(14.0)); // 0,3,4,8,9,14 → max is 14
+}
+
+#[test]
+fn test_compose_bounded_search() {
+    // Pattern 4: iterateWhile (bounded producer) → cata (consumer)
+    // Powers of 2 under 1000, then sum them
+    let r = run_expr(
+        r#"cata (+) (0 :: Int) (iterateWhile (< 1000) (* 2) 1)"#,
+    );
+    assert_eq!(r, serde_json::json!(1023.0)); // 1+2+4+...+512
+}
+
+#[test]
+fn test_compose_converge_with_scanl() {
+    // Newton's sqrt(2) traced via scanl': iterate the step, collect intermediates
+    // We can't use converge (it returns final), so use iterateWhile + scanl'
+    let r = run_expr(
+        r#"let step x = (x + 200 `div` x) `div` 2 in last (iterateN 6 step (200 :: Int))"#,
+    );
+    // Should converge toward 14 (isqrt 200 = 14)
+    assert_eq!(r, serde_json::json!(14.0));
+}
+
+#[test]
+fn test_compose_apo_into_cata() {
+    // apo produces with early bail, cata consumes
+    // Count up from 1, bail at 5 injecting [100,200], then sum all
+    let r = run_expr(
+        r#"cata (+) (0 :: Int) (apo (\n -> if n > 4 then Left [100, 200 :: Int] else Right (n, n+1)) 1)"#,
+    );
+    // 1+2+3+4+100+200 = 310
+    assert_eq!(r, serde_json::json!(310.0));
+}
+
+#[test]
+fn test_compose_para_for_suffixes() {
+    // para gives tail access: check if each element equals sum of remaining
+    let r = run_expr(
+        r#"para (\x xs acc -> (x == foldl' (+) 0 xs) : acc) ([] :: [Bool]) [6, 3, 2, 1 :: Int]"#,
+    );
+    // 6 == 3+2+1? True. 3 == 2+1? True. 2 == 1? False. 1 == 0? False.
+    assert_eq!(r, serde_json::json!([true, true, false, false]));
+}
+
+#[test]
+fn test_tree_hylo_merge_sort() {
+    let r = run_expr(
+        r#"let merge [] ys = ys; merge xs [] = xs; merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys in treeHylo (\l _ r -> merge l r) (id :: [Int] -> [Int]) (\xs -> if length xs <= 1 then Left xs else let h = length xs `div` 2 in Right (take h xs, (), drop h xs)) ([5,3,8,1,4,2 :: Int])"#,
+    );
+    assert_eq!(r, serde_json::json!([1.0, 2.0, 3.0, 4.0, 5.0, 8.0]));
+}
