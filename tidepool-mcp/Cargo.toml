@@ -10,6 +10,7 @@ description = "Model Context Protocol (MCP) server for Tidepool"
 readme = "../README.md"
 
 [dependencies]
+tidepool-codegen = { version = "0.0.1", path = "../tidepool-codegen" }
 tidepool-runtime = { version = "0.0.1", path = "../tidepool-runtime" }
 tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
 tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
@@ -23,6 +24,3 @@ frunk = "0.4"
 schemars = "=1.2.1"
 serde_json = "1"
 tidepool-bridge = { version = "0.0.1", path = "../tidepool-bridge" }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"

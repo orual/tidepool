@@ -22,5 +22,8 @@ tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
 tidepool-effect = { version = "0.0.1", path = "../tidepool-effect" }
 recursion = "0.5.4"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 proptest = "1"

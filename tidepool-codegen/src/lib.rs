@@ -16,4 +16,5 @@ pub mod jit_machine;
 pub mod nursery;
 pub mod pipeline;
 pub mod stack_map;
+pub mod signal_safety;
 pub mod yield_type;

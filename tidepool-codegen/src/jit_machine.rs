@@ -105,7 +105,12 @@ impl JitEffectMachine {
         let vmctx = self.nursery.make_vmctx(crate::host_fns::gc_trigger);
 
         let mut machine = CompiledEffectMachine::new(func_ptr, vmctx, tags);
-        let mut yield_result = machine.step();
+        let mut yield_result = match unsafe {
+            crate::signal_safety::with_signal_protection(|| machine.step())
+        } {
+            Ok(y) => y,
+            Err(e) => Yield::Error(crate::yield_type::YieldError::Signal(e.0)),
+        };
 
         let result = loop {
             match yield_result {
@@ -126,7 +131,14 @@ impl JitEffectMachine {
                     let resp_ptr =
                         unsafe { heap_bridge::value_to_heap(&resp_val, machine.vmctx_mut()) }
                             .map_err(JitError::HeapBridge)?;
-                    yield_result = unsafe { machine.resume(continuation, resp_ptr) };
+                    yield_result = match unsafe {
+                        crate::signal_safety::with_signal_protection(|| {
+                            machine.resume(continuation, resp_ptr)
+                        })
+                    } {
+                        Ok(y) => y,
+                        Err(e) => Yield::Error(crate::yield_type::YieldError::Signal(e.0)),
+                    };
                 }
                 Yield::Error(e) => break Err(JitError::Yield(e)),
             }
@@ -158,7 +170,18 @@ impl JitEffectMachine {
             unsafe { std::mem::transmute(self.pipeline.get_function_ptr(self.func_id)) };
         let mut vmctx = self.nursery.make_vmctx(crate::host_fns::gc_trigger);
 
-        let result_ptr: *mut u8 = unsafe { func_ptr(&mut vmctx) };
+        let result_ptr: *mut u8 = match unsafe {
+            crate::signal_safety::with_signal_protection(|| func_ptr(&mut vmctx))
+        } {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                // Cleanup registries before returning error
+                crate::host_fns::clear_gc_state();
+                crate::host_fns::clear_stack_map_registry();
+                crate::debug::clear_lambda_registry();
+                return Err(JitError::Yield(crate::yield_type::YieldError::Signal(e.0)));
+            }
+        };
 
         // Check for runtime error FIRST — runtime_error now returns a poison
         // object instead of null, so we can't rely on null-check alone.

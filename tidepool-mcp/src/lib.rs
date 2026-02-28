@@ -23,87 +23,6 @@ use tokio::time::{timeout, Duration};
 const EVAL_TIMEOUT_SECS: u64 = 30;
 
 // ---------------------------------------------------------------------------
-// JIT signal handling — convert SIGILL/SIGSEGV to panics on eval threads
-// ---------------------------------------------------------------------------
-
-/// Install signal handlers that convert SIGILL and SIGSEGV into Rust panics.
-///
-/// JIT-compiled code can hit `ud2` (SIGILL) from exhausted case branches or
-/// SIGSEGV from invalid memory access. Without this, these signals kill the
-/// entire MCP server process. With this, `catch_unwind` in the eval thread
-/// catches them and returns a clean error to the client.
-///
-/// Uses `sigaltstack` so the handler works even on stack overflow.
-///
-/// # Safety
-/// Must be called on the eval thread before JIT execution. The alternate stack
-/// is thread-local and leaked (lives for the thread's lifetime).
-#[cfg(unix)]
-unsafe fn install_jit_signal_handlers() {
-    use std::alloc::{alloc, Layout};
-
-    const ALT_STACK_SIZE: usize = 64 * 1024; // 64 KB alternate stack
-
-    // Allocate alternate signal stack for this thread
-    let layout = Layout::from_size_align(ALT_STACK_SIZE, 16).unwrap();
-    let alt_stack_ptr = unsafe { alloc(layout) };
-    if alt_stack_ptr.is_null() {
-        return; // Allocation failed, fall back to default signal behavior
-    }
-
-    let stack = libc::stack_t {
-        ss_sp: alt_stack_ptr as *mut libc::c_void,
-        ss_flags: 0,
-        ss_size: ALT_STACK_SIZE,
-    };
-    unsafe { libc::sigaltstack(&stack, std::ptr::null_mut()) };
-
-    // Install handler for SIGILL and SIGSEGV
-    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
-    sa.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK;
-    sa.sa_sigaction = jit_signal_handler as usize;
-    unsafe { libc::sigemptyset(&mut sa.sa_mask) };
-
-    unsafe { libc::sigaction(libc::SIGILL, &sa, std::ptr::null_mut()) };
-    unsafe { libc::sigaction(libc::SIGSEGV, &sa, std::ptr::null_mut()) };
-}
-
-#[cfg(unix)]
-extern "C" fn jit_signal_handler(sig: libc::c_int, _info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
-    // Only convert to panic on eval threads. On other threads, restore
-    // default behavior and re-raise (normal crash).
-    let is_eval_thread = std::thread::current()
-        .name()
-        .map_or(false, |n| n == "tidepool-eval");
-
-    // Reset signal to default so a double-fault terminates normally
-    unsafe { libc::signal(sig, libc::SIG_DFL); }
-
-    if !is_eval_thread {
-        // Re-raise on non-eval threads — default handler will terminate
-        unsafe { libc::raise(sig); }
-        return;
-    }
-
-    let name = match sig {
-        libc::SIGILL => "SIGILL (illegal instruction — likely exhausted case branch in JIT code)",
-        libc::SIGSEGV => "SIGSEGV (segmentation fault — likely invalid memory access in JIT code)",
-        _ => "unknown signal in JIT code",
-    };
-
-    // Panic so catch_unwind can capture it.
-    // NOTE: panic! in a signal handler is technically UB but works reliably
-    // on Linux with glibc's unwinder. This is the same approach used by
-    // JIT runtimes (Wasmtime, SpiderMonkey) before more complex solutions.
-    panic!("{}", name);
-}
-
-#[cfg(not(unix))]
-unsafe fn install_jit_signal_handlers() {
-    // No-op on non-Unix platforms
-}
-
-// ---------------------------------------------------------------------------
 // Effect metadata — lives next to the handler, discovered via trait
 // ---------------------------------------------------------------------------
 
@@ -934,10 +853,10 @@ impl TidepoolMcpServerImpl {
             .name("tidepool-eval".into())
             .stack_size(8 * 1024 * 1024)
             .spawn(move || {
-                // Install signal handlers on this thread so SIGILL/SIGSEGV from
-                // JIT code become panics (caught by catch_unwind) instead of
-                // killing the whole server process.
-                unsafe { install_jit_signal_handlers(); }
+                // Install signal handlers so SIGILL/SIGSEGV from JIT code
+                // are caught via sigsetjmp/siglongjmp instead of killing
+                // the whole server process.
+                tidepool_codegen::signal_safety::install();
 
                 let include_paths: Vec<&Path> =
                     include_refs.iter().map(|p| p.as_path()).collect();

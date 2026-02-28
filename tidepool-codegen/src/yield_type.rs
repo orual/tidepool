@@ -66,6 +66,8 @@ pub enum YieldError {
     BadFunPtrTag(u8),
     /// Heap overflow after GC.
     HeapOverflow,
+    /// Fatal signal during JIT execution (SIGILL=4, SIGSEGV=11, SIGBUS=7).
+    Signal(i32),
 }
 
 impl std::fmt::Display for YieldError {
@@ -94,6 +96,15 @@ impl std::fmt::Display for YieldError {
             YieldError::NullFunPtr => write!(f, "application of null function pointer"),
             YieldError::BadFunPtrTag(tag) => write!(f, "application of non-closure (tag={})", tag),
             YieldError::HeapOverflow => write!(f, "heap overflow (nursery exhausted after GC)"),
+            YieldError::Signal(sig) => {
+                let name = match *sig {
+                    4 => "SIGILL (illegal instruction — likely exhausted case branch)",
+                    11 => "SIGSEGV (segmentation fault — likely invalid memory access)",
+                    7 => "SIGBUS (bus error)",
+                    _ => "unknown signal",
+                };
+                write!(f, "JIT signal: {}", name)
+            }
         }
     }
 }

@@ -735,6 +735,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
+    // Install sigsetjmp/siglongjmp signal handlers early so SIGILL/SIGSEGV
+    // from JIT code returns clean errors instead of killing the server.
+    tidepool_codegen::signal_safety::install();
+
     let cwd = std::env::current_dir()?;
     let handlers = frunk::hlist![
         ConsoleHandler,
