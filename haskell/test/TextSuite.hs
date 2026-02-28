@@ -243,3 +243,255 @@ text_replace = T.replace (T.pack "world") (T.pack "there") (T.pack "hello world"
 -- All (check all chars satisfy predicate)
 text_all :: Bool
 text_all = T.all (\c -> c >= 'a' && c <= 'z') (T.pack "hello")
+
+-- ============================================================
+-- Group 11: Stress tests for searching (larger inputs)
+-- ============================================================
+
+-- isInfixOf on a longer string (needle at end)
+text_isInfixOf_long :: Bool
+text_isInfixOf_long =
+  let haystack = T.pack "the quick brown fox jumps over the lazy dog"
+  in T.isInfixOf (T.pack "lazy") haystack
+
+-- isInfixOf negative (needle not present)
+text_isInfixOf_neg :: Bool
+text_isInfixOf_neg =
+  not (T.isInfixOf (T.pack "cat") (T.pack "the quick brown fox jumps over the lazy dog"))
+
+-- filter with isInfixOf over a list of lines
+text_filter_isInfixOf :: [Text]
+text_filter_isInfixOf =
+  let lns = [ T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "module Main where"
+            , T.pack "import System.IO"
+            ]
+  in filter (T.isInfixOf (T.pack "import")) lns
+
+-- isInfixOf on replicated text (longer haystack)
+text_isInfixOf_replicated :: Bool
+text_isInfixOf_replicated =
+  let haystack = T.replicate 10 (T.pack "abcdef ")
+  in T.isInfixOf (T.pack "def a") haystack
+
+-- T.lines on a multi-line text (just count lines, no isInfixOf)
+text_lines_count :: Int
+text_lines_count =
+  let bigText :: Text
+      bigText = T.unlines [ T.pack "module Main where"
+                           , T.pack "import Data.Text"
+                           , T.pack "import Data.Map"
+                           , T.pack "import System.IO"
+                           , T.pack "main :: IO ()"
+                           , T.pack "main = putStrLn hello"
+                           , T.pack "-- import commented"
+                           , T.pack "helper = import trick"
+                           ]
+  in length (T.lines bigText)
+
+-- filter isInfixOf over a list (no T.lines involved)
+text_filter_list_isInfixOf :: Int
+text_filter_list_isInfixOf =
+  let lns :: [Text]
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            , T.pack "helper = import trick"
+            ]
+      matching :: [Text]
+      matching = filter (T.isInfixOf (T.pack "import")) lns
+  in length matching
+
+-- Simple filter: keep texts longer than 15 chars
+text_filter_length :: Int
+text_filter_length =
+  let lns :: [Text]
+      lns = [ T.pack "short"
+            , T.pack "this is a longer string"
+            , T.pack "tiny"
+            , T.pack "another long enough string"
+            ]
+  in length (filter (\t -> T.length t > 15) lns)
+
+-- filter isInfixOf with just 3 items (2 matches)
+text_filter_isInfixOf_small :: Int
+text_filter_isInfixOf_small =
+  let needle = T.pack "import"
+      lns = [ T.pack "import Data.Text"
+            , T.pack "main = hello"
+            , T.pack "import System.IO"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- filter isInfixOf with 4 items (3 matches)
+text_filter_isInfixOf_4 :: Int
+text_filter_isInfixOf_4 =
+  let needle = T.pack "import"
+      lns = [ T.pack "import Data.Text"
+            , T.pack "main = hello"
+            , T.pack "import System.IO"
+            , T.pack "import Data.Map"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- filter isInfixOf with 5 items (3 matches)
+text_filter_isInfixOf_5 :: Int
+text_filter_isInfixOf_5 =
+  let needle = T.pack "import"
+      lns = [ T.pack "import Data.Text"
+            , T.pack "main = hello"
+            , T.pack "import System.IO"
+            , T.pack "import Data.Map"
+            , T.pack "module Main where"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- filter isInfixOf with 6 items (4 matches)
+text_filter_isInfixOf_6 :: Int
+text_filter_isInfixOf_6 =
+  let needle = T.pack "import"
+      lns = [ T.pack "import Data.Text"
+            , T.pack "main = hello"
+            , T.pack "import System.IO"
+            , T.pack "import Data.Map"
+            , T.pack "module Main where"
+            , T.pack "import Prelude"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- filter isInfixOf with 7 items (4 matches)
+text_filter_isInfixOf_7 :: Int
+text_filter_isInfixOf_7 =
+  let needle = T.pack "import"
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- filter isInfixOf with 8 items (5 matches) — the original failing test
+text_filter_isInfixOf_8 :: Int
+text_filter_isInfixOf_8 =
+  let needle = T.pack "import"
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            , T.pack "helper = import trick"
+            ]
+  in length (filter (T.isInfixOf needle) lns)
+
+-- Same but return the filtered list instead of length
+text_filter_isInfixOf_8_list :: [Text]
+text_filter_isInfixOf_8_list =
+  let needle = T.pack "import"
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            , T.pack "helper = import trick"
+            ]
+  in filter (T.isInfixOf needle) lns
+
+-- map isInfixOf on 8 items (should be [F,T,T,T,F,F,T,T])
+text_map_isInfixOf_8 :: [Bool]
+text_map_isInfixOf_8 =
+  let needle = T.pack "import"
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            , T.pack "helper = import trick"
+            ]
+  in map (T.isInfixOf needle) lns
+
+-- filter with simple predicate on 8 items (should get 2)
+text_filter_simple_8 :: Int
+text_filter_simple_8 =
+  let lns :: [Text]
+      lns = [ T.pack "short"
+            , T.pack "this is a longer string yes"
+            , T.pack "tiny"
+            , T.pack "another long enough string here"
+            , T.pack "no"
+            , T.pack "x"
+            , T.pack "a medium length text that qualifies"
+            , T.pack "z"
+            ]
+  in length (filter (\t -> T.length t > 15) lns)
+
+-- isInfixOf where needle is NOT at position 0
+text_isInfixOf_mid :: Bool
+text_isInfixOf_mid = T.isInfixOf (T.pack "import") (T.pack "-- import commented")
+
+-- isInfixOf where needle is deep into string
+text_isInfixOf_deep :: Bool
+text_isInfixOf_deep = T.isInfixOf (T.pack "import") (T.pack "helper = import trick")
+
+-- isInfixOf: 4 char needle, short haystack
+text_isInfixOf_4char :: Bool
+text_isInfixOf_4char = T.isInfixOf (T.pack "lazy") (T.pack "the lazy dog")
+
+-- isInfixOf: 4 char needle, long haystack (same as text_isInfixOf_long)
+text_isInfixOf_4char_long :: Bool
+text_isInfixOf_4char_long = T.isInfixOf (T.pack "lazy") (T.pack "the quick brown fox jumps over the lazy dog")
+
+-- isInfixOf: 5 char needle, non-prefix
+text_isInfixOf_5char :: Bool
+text_isInfixOf_5char = T.isInfixOf (T.pack "hello") (T.pack "say hello world")
+
+-- isInfixOf: 6 char needle at position 0 (prefix — should work)
+text_isInfixOf_6prefix :: Bool
+text_isInfixOf_6prefix = T.isInfixOf (T.pack "import") (T.pack "import Data.Text")
+
+-- isInfixOf on each element, manually (no filter)
+text_isInfixOf_each :: [Bool]
+text_isInfixOf_each =
+  let needle = T.pack "import"
+      lns = [ T.pack "module Main where"
+            , T.pack "import Data.Text"
+            , T.pack "import Data.Map"
+            , T.pack "import System.IO"
+            , T.pack "main :: IO ()"
+            , T.pack "main = putStrLn hello"
+            , T.pack "-- import commented"
+            , T.pack "helper = import trick"
+            ]
+  in map (T.isInfixOf needle) lns
+
+-- filter isInfixOf over T.lines of a multi-line text
+text_filter_lines :: Int
+text_filter_lines =
+  let bigText :: Text
+      bigText = T.unlines [ T.pack "module Main where"
+                           , T.pack "import Data.Text"
+                           , T.pack "import Data.Map"
+                           , T.pack "import System.IO"
+                           , T.pack "main :: IO ()"
+                           , T.pack "main = putStrLn hello"
+                           , T.pack "-- import commented"
+                           , T.pack "helper = import trick"
+                           ]
+      lns :: [Text]
+      lns = T.lines bigText
+      matching :: [Text]
+      matching = filter (T.isInfixOf (T.pack "import")) lns
+  in length matching

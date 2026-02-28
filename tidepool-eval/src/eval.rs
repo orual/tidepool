@@ -1327,7 +1327,8 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
         }
         PrimOpKind::FfiTextMemchr => {
             // _hs_text_memchr(ByteArray#, off, len, byte) -> Int#
-            // Find byte in array, return offset from start or -1
+            // Find byte in array starting at off, return RELATIVE offset from off, or -1
+            // Matches C: ptr - (arr + off), NOT absolute position
             let ba = expect_byte_array(&args[0])?;
             let off = expect_int_like(&args[1])? as usize;
             let len = expect_int_like(&args[2])? as usize;
@@ -1336,7 +1337,7 @@ fn dispatch_primop(op: PrimOpKind, args: Vec<Value>) -> Result<Value, EvalError>
             let end = std::cmp::min(off + len, bytes.len());
             let result = bytes[off..end].iter().position(|&b| b == needle);
             Ok(Value::Lit(Literal::LitInt(match result {
-                Some(pos) => (off + pos) as i64,
+                Some(pos) => pos as i64,
                 None => -1,
             })))
         }
