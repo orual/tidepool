@@ -116,6 +116,14 @@ enum FsReq {
     Read(String),
     #[core(name = "FsWrite")]
     Write(String, String),
+    #[core(name = "FsListDir")]
+    ListDir(String),
+    #[core(name = "FsGlob")]
+    Glob(String),
+    #[core(name = "FsExists")]
+    Exists(String),
+    #[core(name = "FsMetadata")]
+    Metadata(String),
 }
 
 #[derive(Clone)]
@@ -186,6 +194,39 @@ impl EffectHandler<CapturedOutput> for FsHandler {
                 std::fs::write(&resolved, &contents)
                     .map_err(|e| EffectError::Handler(e.to_string()))?;
                 cx.respond(())
+            }
+            FsReq::ListDir(path) => {
+                let resolved = self.resolve(&path)?;
+                let mut entries: Vec<String> = std::fs::read_dir(&resolved)
+                    .map_err(|e| EffectError::Handler(e.to_string()))?
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect();
+                entries.sort();
+                cx.respond(entries)
+            }
+            FsReq::Glob(pattern) => {
+                let full_pattern = self.root.join(&pattern).to_string_lossy().to_string();
+                let paths: Vec<String> = glob::glob(&full_pattern)
+                    .map_err(|e| EffectError::Handler(format!("invalid glob: {}", e)))?
+                    .filter_map(|e| e.ok())
+                    .filter_map(|p| {
+                        p.strip_prefix(&self.root)
+                            .ok()
+                            .map(|r| r.to_string_lossy().to_string())
+                    })
+                    .collect();
+                cx.respond(paths)
+            }
+            FsReq::Exists(path) => {
+                let resolved = self.resolve(&path)?;
+                cx.respond(resolved.exists())
+            }
+            FsReq::Metadata(path) => {
+                let resolved = self.resolve(&path)?;
+                let meta = std::fs::metadata(&resolved)
+                    .map_err(|e| EffectError::Handler(e.to_string()))?;
+                cx.respond((meta.len() as i64, meta.is_file(), meta.is_dir()))
             }
         }
     }
@@ -454,10 +495,66 @@ impl EffectHandler<CapturedOutput> for SgHandler {
 enum HttpReq {
     #[core(name = "HttpGet")]
     Get(String),
+    #[core(name = "HttpPost")]
+    Post(String, Value),
+    #[core(name = "HttpRequest")]
+    Request(String, String, Vec<(String, String)>, String),
 }
 
 #[derive(Clone)]
 struct HttpHandler;
+
+impl HttpHandler {
+    fn validate_url(url_str: &str) -> Result<url::Url, EffectError> {
+        let url = url::Url::parse(url_str).map_err(|e| {
+            EffectError::Handler(format!("Invalid URL '{}': {}", url_str, e))
+        })?;
+
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(EffectError::Handler(format!(
+                "Unsupported protocol '{}'. Only http/https allowed.",
+                url.scheme()
+            )));
+        }
+
+        if let Some(host) = url.host() {
+            match host {
+                url::Host::Ipv4(ip) => {
+                    if ip.is_loopback() || ip.is_private() || ip.is_link_local() {
+                        return Err(EffectError::Handler(format!(
+                            "Access to internal IP '{}' is restricted.",
+                            ip
+                        )));
+                    }
+                }
+                url::Host::Ipv6(ip) => {
+                    if ip.is_loopback() || ip.is_unspecified() {
+                        return Err(EffectError::Handler(format!(
+                            "Access to internal IP '{}' is restricted.",
+                            ip
+                        )));
+                    }
+                }
+                url::Host::Domain(domain) => {
+                    if domain == "localhost" {
+                        return Err(EffectError::Handler(
+                            "Access to 'localhost' is restricted.".into(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok(url)
+    }
+
+    fn parse_response(_url_str: &str, body: &str) -> Result<serde_json::Value, EffectError> {
+        serde_json::from_str(body).or_else(|_| {
+            // If not valid JSON, wrap as string
+            Ok(serde_json::Value::String(body.to_string()))
+        })
+    }
+}
 
 impl DescribeEffect for HttpHandler {
     fn effect_decl() -> EffectDecl {
@@ -474,63 +571,156 @@ impl EffectHandler<CapturedOutput> for HttpHandler {
     ) -> Result<Value, EffectError> {
         match req {
             HttpReq::Get(url_str) => {
-                let url = url::Url::parse(&url_str).map_err(|e| {
-                    EffectError::Handler(format!("Invalid URL '{}': {}", url_str, e))
-                })?;
-
-                if url.scheme() != "http" && url.scheme() != "https" {
-                    return Err(EffectError::Handler(format!(
-                        "Unsupported protocol '{}'. Only http/https allowed.",
-                        url.scheme()
-                    )));
-                }
-
-                if let Some(host) = url.host() {
-                    match host {
-                        url::Host::Ipv4(ip) => {
-                            if ip.is_loopback() || ip.is_private() || ip.is_link_local() {
-                                return Err(EffectError::Handler(format!(
-                                    "Access to internal IP '{}' is restricted.",
-                                    ip
-                                )));
-                            }
-                        }
-                        url::Host::Ipv6(ip) => {
-                            if ip.is_loopback() || ip.is_unspecified() {
-                                return Err(EffectError::Handler(format!(
-                                    "Access to internal IP '{}' is restricted.",
-                                    ip
-                                )));
-                            }
-                        }
-                        url::Host::Domain(domain) => {
-                            if domain == "localhost" {
-                                return Err(EffectError::Handler(
-                                    "Access to 'localhost' is restricted.".into(),
-                                ));
-                            }
-                        }
-                    }
-                }
-
+                let url = Self::validate_url(&url_str)?;
                 let resp = ureq::get(url.as_str())
                     .timeout(std::time::Duration::from_secs(30))
                     .call()
                     .map_err(|e| {
                         EffectError::Handler(format!("HTTP GET '{}' failed: {}", url_str, e))
                     })?;
-
                 let body = resp.into_string().map_err(|e| {
                     EffectError::Handler(format!("Read body from '{}' failed: {}", url_str, e))
                 })?;
-
-                let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
-                    EffectError::Handler(format!(
-                        "JSON parse error for '{}': {}",
-                        url_str, e
-                    ))
-                })?;
+                let json = Self::parse_response(&url_str, &body)?;
                 cx.respond(json)
+            }
+            HttpReq::Post(url_str, body_val) => {
+                let url = Self::validate_url(&url_str)?;
+                let json_body = tidepool_runtime::value_to_json(&body_val, cx.table(), 0);
+                let resp = ureq::post(url.as_str())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .send_json(&json_body)
+                    .map_err(|e| {
+                        EffectError::Handler(format!("HTTP POST '{}' failed: {}", url_str, e))
+                    })?;
+                let body = resp.into_string().map_err(|e| {
+                    EffectError::Handler(format!("Read body from '{}' failed: {}", url_str, e))
+                })?;
+                let json = Self::parse_response(&url_str, &body)?;
+                cx.respond(json)
+            }
+            HttpReq::Request(method, url_str, headers, body_str) => {
+                let url = Self::validate_url(&url_str)?;
+                let mut req = ureq::request(&method, url.as_str())
+                    .timeout(std::time::Duration::from_secs(30));
+                for (k, v) in &headers {
+                    req = req.set(k, v);
+                }
+                let resp = if body_str.is_empty() {
+                    req.call()
+                } else {
+                    req.set("Content-Type", "application/json")
+                        .send_string(&body_str)
+                }
+                .map_err(|e| {
+                    EffectError::Handler(format!("HTTP {} '{}' failed: {}", method, url_str, e))
+                })?;
+                let body = resp.into_string().map_err(|e| {
+                    EffectError::Handler(format!("Read body from '{}' failed: {}", url_str, e))
+                })?;
+                let json = Self::parse_response(&url_str, &body)?;
+                cx.respond(json)
+            }
+        }
+    }
+}
+
+// === Tag 5: Exec (shell commands) ===
+
+#[derive(FromCore)]
+enum ExecReq {
+    #[core(name = "Run")]
+    Run(String),
+    #[core(name = "RunIn")]
+    RunIn(String, String),
+    #[core(name = "RunJson")]
+    RunJson(String),
+}
+
+#[derive(Clone)]
+struct ExecHandler {
+    root: PathBuf,
+}
+
+impl ExecHandler {
+    fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    /// Maximum stdout size (512 KB). Large JSON outputs create tens of thousands
+    /// of Value nodes that can crash the JIT. Pipe through `jq` or use flags like
+    /// `--no-deps` to reduce output.
+    const MAX_OUTPUT_BYTES: usize = 512 * 1024;
+
+    fn run_command(&self, cmd: &str, dir: &std::path::Path) -> Result<(i64, String, String), EffectError> {
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .current_dir(dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .map_err(|e| EffectError::Handler(format!("exec failed: {}", e)))?;
+
+        if output.stdout.len() > Self::MAX_OUTPUT_BYTES {
+            return Err(EffectError::Handler(format!(
+                "stdout too large ({} bytes, limit {}). Pipe through jq/head to reduce output, \
+                 e.g. `cargo metadata --format-version=1 --no-deps` or `cmd | jq .field`",
+                output.stdout.len(),
+                Self::MAX_OUTPUT_BYTES,
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let code = output.status.code().unwrap_or(-1) as i64;
+        Ok((code, stdout, stderr))
+    }
+}
+
+impl DescribeEffect for ExecHandler {
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::exec_decl()
+    }
+}
+
+impl EffectHandler<CapturedOutput> for ExecHandler {
+    type Request = ExecReq;
+    fn handle(
+        &mut self,
+        req: ExecReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
+        match req {
+            ExecReq::Run(cmd) => {
+                let (code, stdout, stderr) = self.run_command(&cmd, &self.root)?;
+                cx.respond((code, stdout, stderr))
+            }
+            ExecReq::RunJson(cmd) => {
+                let (code, stdout, stderr) = self.run_command(&cmd, &self.root)?;
+                if code != 0 {
+                    return Err(EffectError::Handler(format!(
+                        "command failed (exit {}): {}\n{}",
+                        code, cmd, stderr
+                    )));
+                }
+                let json_val: serde_json::Value = serde_json::from_str(&stdout)
+                    .map_err(|e| EffectError::Handler(format!(
+                        "runJson: invalid JSON from '{}': {}",
+                        cmd, e
+                    )))?;
+                cx.respond(json_val)
+            }
+            ExecReq::RunIn(dir, cmd) => {
+                let target = self.root.join(&dir);
+                if !target.is_dir() {
+                    return Err(EffectError::Handler(format!(
+                        "directory '{}' does not exist",
+                        dir
+                    )));
+                }
+                let (code, stdout, stderr) = self.run_command(&cmd, &target)?;
+                cx.respond((code, stdout, stderr))
             }
         }
     }
@@ -552,7 +742,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         KvHandler::new(),
         FsHandler::new(cwd.clone()),
         SgHandler::new(cwd.clone()),
-        HttpHandler
+        HttpHandler,
+        ExecHandler::new(cwd.clone())
     ];
 
     // Prelude lives at haskell/lib/ relative to repo root, or via TIDEPOOL_PRELUDE_DIR.

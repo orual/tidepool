@@ -1027,6 +1027,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
 name = "globset"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1390,6 +1396,7 @@ dependencies = [
  "ast-grep-core",
  "ast-grep-language",
  "frunk",
+ "glob",
  "serde_json",
  "tidepool-bridge",
  "tidepool-bridge-derive",
@@ -1397,6 +1404,7 @@ dependencies = [
  "tidepool-eval",
  "tidepool-mcp",
  "tidepool-repr",
+ "tidepool-runtime",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2544,6 +2552,7 @@ version = "0.0.1"
 dependencies = [
  "dyn-clone",
  "frunk",
+ "libc",
  "rmcp",
  "schemars",
  "serde",
@@ -3093,6 +3102,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "url",
  "webpki-roots 0.26.11",
 ]

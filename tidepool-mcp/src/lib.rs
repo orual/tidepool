@@ -23,6 +23,87 @@ use tokio::time::{timeout, Duration};
 const EVAL_TIMEOUT_SECS: u64 = 30;
 
 // ---------------------------------------------------------------------------
+// JIT signal handling — convert SIGILL/SIGSEGV to panics on eval threads
+// ---------------------------------------------------------------------------
+
+/// Install signal handlers that convert SIGILL and SIGSEGV into Rust panics.
+///
+/// JIT-compiled code can hit `ud2` (SIGILL) from exhausted case branches or
+/// SIGSEGV from invalid memory access. Without this, these signals kill the
+/// entire MCP server process. With this, `catch_unwind` in the eval thread
+/// catches them and returns a clean error to the client.
+///
+/// Uses `sigaltstack` so the handler works even on stack overflow.
+///
+/// # Safety
+/// Must be called on the eval thread before JIT execution. The alternate stack
+/// is thread-local and leaked (lives for the thread's lifetime).
+#[cfg(unix)]
+unsafe fn install_jit_signal_handlers() {
+    use std::alloc::{alloc, Layout};
+
+    const ALT_STACK_SIZE: usize = 64 * 1024; // 64 KB alternate stack
+
+    // Allocate alternate signal stack for this thread
+    let layout = Layout::from_size_align(ALT_STACK_SIZE, 16).unwrap();
+    let alt_stack_ptr = unsafe { alloc(layout) };
+    if alt_stack_ptr.is_null() {
+        return; // Allocation failed, fall back to default signal behavior
+    }
+
+    let stack = libc::stack_t {
+        ss_sp: alt_stack_ptr as *mut libc::c_void,
+        ss_flags: 0,
+        ss_size: ALT_STACK_SIZE,
+    };
+    unsafe { libc::sigaltstack(&stack, std::ptr::null_mut()) };
+
+    // Install handler for SIGILL and SIGSEGV
+    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+    sa.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK;
+    sa.sa_sigaction = jit_signal_handler as usize;
+    unsafe { libc::sigemptyset(&mut sa.sa_mask) };
+
+    unsafe { libc::sigaction(libc::SIGILL, &sa, std::ptr::null_mut()) };
+    unsafe { libc::sigaction(libc::SIGSEGV, &sa, std::ptr::null_mut()) };
+}
+
+#[cfg(unix)]
+extern "C" fn jit_signal_handler(sig: libc::c_int, _info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
+    // Only convert to panic on eval threads. On other threads, restore
+    // default behavior and re-raise (normal crash).
+    let is_eval_thread = std::thread::current()
+        .name()
+        .map_or(false, |n| n == "tidepool-eval");
+
+    // Reset signal to default so a double-fault terminates normally
+    unsafe { libc::signal(sig, libc::SIG_DFL); }
+
+    if !is_eval_thread {
+        // Re-raise on non-eval threads — default handler will terminate
+        unsafe { libc::raise(sig); }
+        return;
+    }
+
+    let name = match sig {
+        libc::SIGILL => "SIGILL (illegal instruction — likely exhausted case branch in JIT code)",
+        libc::SIGSEGV => "SIGSEGV (segmentation fault — likely invalid memory access in JIT code)",
+        _ => "unknown signal in JIT code",
+    };
+
+    // Panic so catch_unwind can capture it.
+    // NOTE: panic! in a signal handler is technically UB but works reliably
+    // on Linux with glibc's unwinder. This is the same approach used by
+    // JIT runtimes (Wasmtime, SpiderMonkey) before more complex solutions.
+    panic!("{}", name);
+}
+
+#[cfg(not(unix))]
+unsafe fn install_jit_signal_handlers() {
+    // No-op on non-Unix platforms
+}
+
+// ---------------------------------------------------------------------------
 // Effect metadata — lives next to the handler, discovered via trait
 // ---------------------------------------------------------------------------
 
@@ -121,11 +202,19 @@ pub fn fs_decl() -> EffectDecl {
         constructors: &[
             "FsRead :: Text -> Fs Text",
             "FsWrite :: Text -> Text -> Fs ()",
+            "FsListDir :: Text -> Fs [Text]",
+            "FsGlob :: Text -> Fs [Text]",
+            "FsExists :: Text -> Fs Bool",
+            "FsMetadata :: Text -> Fs (Int, Bool, Bool)",
         ],
         type_defs: &[],
         helpers: &[
             "fsRead :: Text -> M Text\nfsRead = send . FsRead",
             "fsWrite :: Text -> Text -> M ()\nfsWrite f c = send (FsWrite f c)",
+            "fsListDir :: Text -> M [Text]\nfsListDir = send . FsListDir",
+            "fsGlob :: Text -> M [Text]\nfsGlob = send . FsGlob",
+            "fsExists :: Text -> M Bool\nfsExists = send . FsExists",
+            "fsMetadata :: Text -> M (Int, Bool, Bool)\nfsMetadata = send . FsMetadata",
         ],
     }
 }
@@ -163,10 +252,34 @@ pub fn http_decl() -> EffectDecl {
     EffectDecl {
         type_name: "Http",
         description: "Fetch JSON from HTTP endpoints. Returns response body as Value.",
-        constructors: &["HttpGet :: Text -> Http Value"],
+        constructors: &[
+            "HttpGet :: Text -> Http Value",
+            "HttpPost :: Text -> Value -> Http Value",
+            "HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value",
+        ],
         type_defs: &[],
         helpers: &[
             "httpGet :: Text -> M Value\nhttpGet = send . HttpGet",
+            "httpPost :: Text -> Value -> M Value\nhttpPost url body = send (HttpPost url body)",
+            "httpReq :: Text -> Text -> [(Text,Text)] -> Text -> M Value\nhttpReq method url headers body = send (HttpRequest method url headers body)",
+        ],
+    }
+}
+
+/// Exec effect: run shell commands.
+pub fn exec_decl() -> EffectDecl {
+    EffectDecl {
+        type_name: "Exec",
+        description: "Run shell commands and capture output.",
+        constructors: &[
+            "Run :: Text -> Exec (Int, Text, Text)",
+            "RunIn :: Text -> Text -> Exec (Int, Text, Text)",
+            "RunJson :: Text -> Exec Value",
+        ],
+        type_defs: &[],
+        helpers: &[
+            "run :: Text -> M (Int, Text, Text)\nrun = send . Run",
+            "runIn :: Text -> Text -> M (Int, Text, Text)\nrunIn dir cmd = send (RunIn dir cmd)",
         ],
     }
 }
@@ -192,6 +305,7 @@ pub fn standard_decls() -> Vec<EffectDecl> {
         fs_decl(),
         sg_decl(),
         http_decl(),
+        exec_decl(),
         ask_decl(),
     ]
 }
@@ -272,15 +386,17 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
     let mut out = String::new();
     out.push_str("{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, DataKinds, TypeOperators, FlexibleContexts, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}\n");
     out.push_str("module Expr where\n");
-    out.push_str("import Tidepool.Prelude\n");
+    out.push_str("import Tidepool.Prelude hiding (error)\n");
     out.push_str("import qualified Data.Text as T\n");
     out.push_str("import qualified Data.Map.Strict as Map\n");
     out.push_str("import qualified Data.Set as Set\n");
-    out.push_str("import Control.Monad.Freer\n");
+    out.push_str("import Control.Monad.Freer hiding (run)\n");
     if user_library {
         out.push_str("import Library\n");
     }
+    out.push_str("import qualified Prelude as P\n");
     out.push_str("default (Int, Text)\n");
+    out.push_str("error :: Text -> a\nerror = P.error . T.unpack\n");
     out.push('\n');
 
     for eff in effects {
@@ -310,6 +426,137 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
                 out.push('\n');
             }
         }
+        out.push('\n');
+    }
+
+    // Effect orchestration helpers (require M, Value, Text, ask, kvGet, say, etc.)
+    if user_library && !effects.is_empty() {
+        out.push_str("-- Effect orchestration (from Library preamble)\n");
+        out.push_str(concat!(
+            "converse :: (s -> Value -> Either a (Text, s)) -> Text -> s -> M a\n",
+            "converse decide firstQ s0 = do\n",
+            "  v <- ask firstQ\n",
+            "  case decide s0 v of\n",
+            "    Left a        -> pure a\n",
+            "    Right (q, s') -> converse decide q s'\n",
+        ));
+        out.push_str(concat!(
+            "askUntil :: (Value -> Maybe a) -> Text -> M a\n",
+            "askUntil check prompt = do\n",
+            "  v <- ask prompt\n",
+            "  case check v of\n",
+            "    Just a  -> pure a\n",
+            "    Nothing -> askUntil check (prompt <> \" (invalid, try again)\")\n",
+        ));
+        out.push_str(concat!(
+            "askChoice :: Text -> [(Text, a)] -> M a\n",
+            "askChoice prompt choices = do\n",
+            "  let choiceText = T.intercalate \", \" (map fst choices)\n",
+            "  v <- ask (prompt <> \" [\" <> choiceText <> \"]\")\n",
+            "  let answer = case v ^? _String of { Just s -> s; _ -> \"\" }\n",
+            "  case lookup answer choices of\n",
+            "    Just a  -> pure a\n",
+            "    Nothing -> askChoice prompt choices\n",
+        ));
+        out.push_str(concat!(
+            "confirm :: Text -> M Bool\n",
+            "confirm prompt = do\n",
+            "  v <- ask (prompt <> \" [yes/no]\")\n",
+            "  let answer = case v ^? _String of { Just s -> toLower s; _ -> \"\" }\n",
+            "  pure (answer == \"yes\" || answer == \"y\")\n",
+        ));
+        out.push_str(concat!(
+            "repl :: Text -> (Text -> M (Maybe a)) -> M a\n",
+            "repl prompt dispatch = do\n",
+            "  v <- ask prompt\n",
+            "  let cmd = case v ^? _String of { Just s -> s; _ -> \"\" }\n",
+            "  r <- dispatch cmd\n",
+            "  case r of\n",
+            "    Just a  -> pure a\n",
+            "    Nothing -> repl prompt dispatch\n",
+        ));
+        out.push_str(concat!(
+            "memo :: Text -> M Value -> M Value\n",
+            "memo k compute = do\n",
+            "  cached <- kvGet k\n",
+            "  case cached of\n",
+            "    Just v  -> pure v\n",
+            "    Nothing -> do { v <- compute; kvSet k v; pure v }\n",
+        ));
+        out.push_str(concat!(
+            "kvModify :: Text -> (Maybe Value -> Value) -> M Value\n",
+            "kvModify k f = do\n",
+            "  old <- kvGet k\n",
+            "  let new = f old\n",
+            "  kvSet k new\n",
+            "  pure new\n",
+        ));
+        out.push_str(concat!(
+            "kvIncr :: Text -> M Int\n",
+            "kvIncr k = do\n",
+            "  old <- kvGet k\n",
+            "  let n = case old >>= (^? _Int) of { Just i -> i; _ -> 0 }\n",
+            "  let n' = n + 1\n",
+            "  kvSet k (toJSON n')\n",
+            "  pure n'\n",
+        ));
+        out.push_str(concat!(
+            "kvAppend :: Text -> Value -> M [Value]\n",
+            "kvAppend k v = do\n",
+            "  old <- kvGet k\n",
+            "  let xs = case old >>= (^? _Array) of { Just arr -> arr; _ -> [] }\n",
+            "  let xs' = xs ++ [v]\n",
+            "  kvSet k (toJSON xs')\n",
+            "  pure xs'\n",
+        ));
+        out.push_str(concat!(
+            "supervised :: Text -> M Value -> (Value -> Maybe a) -> M a\n",
+            "supervised label body check = do\n",
+            "  say (\"[\" <> label <> \"] running...\")\n",
+            "  v <- body\n",
+            "  case check v of\n",
+            "    Just a  -> say (\"[\" <> label <> \"] done\") >> pure a\n",
+            "    Nothing -> do\n",
+            "      correction <- ask (\"[\" <> label <> \"] result: \" <> show v <> \"\\nHow should I adjust?\")\n",
+            "      supervised label body check\n",
+        ));
+        out.push_str(concat!(
+            "gather :: [(Text, Value -> a)] -> M [a]\n",
+            "gather [] = pure []\n",
+            "gather ((q, parse):rest) = do\n",
+            "  v <- ask q\n",
+            "  as <- gather rest\n",
+            "  pure (parse v : as)\n",
+        ));
+        out.push_str(concat!(
+            "mapFiles :: [Text] -> (Text -> Text -> M Text) -> M [Text]\n",
+            "mapFiles paths transform = mapM (\\p -> do\n",
+            "  content <- fsRead p\n",
+            "  result <- transform p content\n",
+            "  fsWrite p result\n",
+            "  pure p) paths\n",
+        ));
+        out.push_str(concat!(
+            "searchProcess :: Lang -> Text -> [Text] -> (Match -> M a) -> M [a]\n",
+            "searchProcess lang pat paths process = do\n",
+            "  matches <- sgFind lang pat paths\n",
+            "  mapM process matches\n",
+        ));
+        out.push_str(concat!(
+            "readGlob :: Text -> M [(Text, Text)]\n",
+            "readGlob pat = fsGlob pat >>= mapM (\\p -> (,) p <$> fsRead p)\n",
+        ));
+        out.push_str(concat!(
+            "runChecked :: Text -> M Text\n",
+            "runChecked cmd = do\n",
+            "  (ec, out, err) <- run cmd\n",
+            "  if ec == 0 then pure out\n",
+            "  else error (\"command failed: \" <> cmd <> \"\\n\" <> err)\n",
+        ));
+        out.push_str(concat!(
+            "runJson :: Text -> M Value\n",
+            "runJson = send . RunJson\n",
+        ));
         out.push('\n');
     }
 
@@ -687,6 +934,11 @@ impl TidepoolMcpServerImpl {
             .name("tidepool-eval".into())
             .stack_size(8 * 1024 * 1024)
             .spawn(move || {
+                // Install signal handlers on this thread so SIGILL/SIGSEGV from
+                // JIT code become panics (caught by catch_unwind) instead of
+                // killing the whole server process.
+                unsafe { install_jit_signal_handlers(); }
+
                 let include_paths: Vec<&Path> =
                     include_refs.iter().map(|p| p.as_path()).collect();
                 let mut ask_dispatcher = AskDispatcher {
@@ -1180,7 +1432,7 @@ mod tests {
         let result = template_haskell(&preamble, &stack, &source, &[], &[], None);
 
         assert!(result.contains("module Expr where"));
-        assert!(result.contains("import Control.Monad.Freer"));
+        assert!(result.contains("import Control.Monad.Freer hiding (run)"));
         assert!(result.contains("data Console a where"));
         assert!(result.contains("result :: Eff '[Console] Value"));
         assert!(result.contains("result = do"));
@@ -1255,9 +1507,10 @@ mod tests {
     #[test]
     fn test_standard_decls_includes_ask() {
         let decls = standard_decls();
-        assert_eq!(decls.len(), 6);
+        assert_eq!(decls.len(), 7);
         assert_eq!(decls[4].type_name, "Http");
-        assert_eq!(decls[5].type_name, "Ask");
+        assert_eq!(decls[5].type_name, "Exec");
+        assert_eq!(decls[6].type_name, "Ask");
     }
 
     #[test]
@@ -1277,13 +1530,62 @@ mod tests {
         let preamble = build_preamble(&decls, false);
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Value"));
-        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Ask]"));
+        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Ask]"));
     }
 
     #[test]
     fn test_ask_in_effect_stack_type() {
         let decls = standard_decls();
         let stack = build_effect_stack_type(&decls);
-        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Ask]");
+        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Ask]");
+    }
+
+    #[test]
+    fn test_preamble_hides_run_from_freer() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, false);
+        assert!(preamble.contains("import Control.Monad.Freer hiding (run)"));
+        // Our run helper should still be present
+        assert!(preamble.contains("run :: Text -> M (Int, Text, Text)\nrun = send . Run"));
+    }
+
+    #[test]
+    fn test_preamble_text_error_shadow() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, false);
+        // Prelude error (String-based) is hidden
+        assert!(preamble.contains("import Tidepool.Prelude hiding (error)"));
+        // Text-taking error is defined via qualified Prelude
+        assert!(preamble.contains("import qualified Prelude as P"));
+        assert!(preamble.contains("error :: Text -> a\nerror = P.error . T.unpack"));
+    }
+
+    #[test]
+    fn test_exec_decl_has_run_json() {
+        let decl = exec_decl();
+        assert_eq!(decl.type_name, "Exec");
+        assert!(decl.constructors.iter().any(|c| c.contains("RunJson :: Text -> Exec Value")));
+        assert!(decl.constructors.iter().any(|c| c.contains("Run :: Text -> Exec (Int, Text, Text)")));
+        assert!(decl.constructors.iter().any(|c| c.contains("RunIn :: Text -> Text -> Exec (Int, Text, Text)")));
+    }
+
+    #[test]
+    fn test_preamble_orchestration_helpers() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, true);
+        // runChecked uses our Text error, not String error
+        assert!(preamble.contains("runChecked :: Text -> M Text"));
+        assert!(preamble.contains("else error (\"command failed: \""));
+        // runJson is a thin wrapper over the effect constructor
+        assert!(preamble.contains("runJson :: Text -> M Value\nrunJson = send . RunJson"));
+    }
+
+    #[test]
+    fn test_preamble_no_orchestration_without_library() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, false);
+        // Orchestration helpers only appear with user_library=true
+        assert!(!preamble.contains("runChecked"));
+        assert!(!preamble.contains("runJson :: Text -> M Value"));
     }
 }

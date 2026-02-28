@@ -19,7 +19,7 @@ use tidepool_repr::{CoreExpr, DataConTable};
 mod cache;
 mod render;
 
-pub use render::EvalResult;
+pub use render::{EvalResult, value_to_json};
 
 /// Result of successful Haskell compilation: a Core expression and its associated DataCon metadata.
 pub type CompileResult = (CoreExpr, DataConTable);

@@ -64,7 +64,8 @@ fn con_name(id: DataConId, table: &DataConTable) -> &str {
     table.name_of(id).unwrap_or("<unknown>")
 }
 
-fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json::Value {
+/// Convert a tidepool Value to serde_json::Value using the DataConTable for constructor names.
+pub fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_json::Value {
     if depth > MAX_DEPTH {
         return json!("<depth limit>");
     }

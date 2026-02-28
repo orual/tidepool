@@ -224,6 +224,43 @@ fn test_compose_para_for_suffixes() {
 }
 
 #[test]
+fn test_pipeline_pure() {
+    // pipeline over Identity (pure): chain three transformations
+    let r = run_expr(
+        r#"let f x = Just (x + 1); g x = Just (x * 2); h x = Just (x - 3) in pipeline [f, g, h] (10 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!(19.0)); // ((10+1)*2)-3 = 19
+}
+
+#[test]
+fn test_fan_out_pure() {
+    // fanOut over Identity: run same input through multiple fns
+    let r = run_expr(
+        r#"fanOut [\x -> Just (x*2), \x -> Just (x+100), \x -> Just (x*x)] (5 :: Int)"#,
+    );
+    assert_eq!(r, serde_json::json!([10.0, 105.0, 25.0]));
+}
+
+#[test]
+fn test_fold_early() {
+    // foldEarlyM: sum until accumulator exceeds 10, then bail
+    let r = run_expr(
+        r#"let step acc x = if acc + x > 10 then Just (Left acc) else Just (Right (acc + x)) in foldEarlyM step (0 :: Int) [3, 4, 5, 6, 7]"#,
+    );
+    assert_eq!(r, serde_json::json!(7.0)); // 3+4=7, 7+5=12>10 → bail with 7
+}
+
+#[test]
+fn test_retry_pure() {
+    // retry over Maybe: succeed on 3rd try (simulated via list consumption)
+    // We'll use a simpler test: retry with always-Nothing gives Nothing
+    let r = run_expr(
+        r#"retry 5 (Just (Nothing :: Maybe Int))"#,
+    );
+    assert_eq!(r, serde_json::json!(null));
+}
+
+#[test]
 fn test_tree_hylo_merge_sort() {
     let r = run_expr(
         r#"let merge [] ys = ys; merge xs [] = xs; merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys in treeHylo (\l _ r -> merge l r) (id :: [Int] -> [Int]) (\xs -> if length xs <= 1 then Left xs else let h = length xs `div` 2 in Right (take h xs, (), drop h xs)) ([5,3,8,1,4,2 :: Int])"#,
