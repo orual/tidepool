@@ -451,7 +451,7 @@ fn compile_repl_cbor_inner() {
         "/../examples/tide/target/tidepool-cbor/Repl/meta.cbor"
     );
     let meta_data = std::fs::read(meta_path).unwrap();
-    let table = tidepool_repr::serial::read::read_metadata(&meta_data).unwrap();
+    let (table, _) = tidepool_repr::serial::read::read_metadata(&meta_data).unwrap();
 
     let expr = tidepool_codegen::datacon_env::wrap_with_datacon_env(&expr, &table);
 

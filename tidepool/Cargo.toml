@@ -11,15 +11,33 @@ readme = "../README.md"
 keywords = ["haskell", "jit", "cranelift", "effects", "compiler"]
 categories = ["compilers", "wasm"]
 
+[[bin]]
+name = "tidepool"
+path = "src/main.rs"
+
 [dependencies]
-tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
-tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
-tidepool-heap = { version = "0.0.1", path = "../tidepool-heap" }
-tidepool-optimize = { version = "0.0.1", path = "../tidepool-optimize" }
-tidepool-bridge = { version = "0.0.1", path = "../tidepool-bridge" }
-tidepool-bridge-derive = { version = "0.0.1", path = "../tidepool-bridge-derive" }
-tidepool-effect = { version = "0.0.1", path = "../tidepool-effect" }
-tidepool-codegen = { version = "0.0.1", path = "../tidepool-codegen" }
-tidepool-macro = { version = "0.0.1", path = "../tidepool-macro" }
-tidepool-runtime = { version = "0.0.1", path = "../tidepool-runtime" }
-tidepool-mcp = { version = "0.0.1", path = "../tidepool-mcp" }
+tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
+tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
+tidepool-heap = { version = "0.1.0", path = "../tidepool-heap" }
+tidepool-optimize = { version = "0.1.0", path = "../tidepool-optimize" }
+tidepool-bridge = { version = "0.1.0", path = "../tidepool-bridge" }
+tidepool-bridge-derive = { version = "0.1.0", path = "../tidepool-bridge-derive" }
+tidepool-effect = { version = "0.1.0", path = "../tidepool-effect" }
+tidepool-codegen = { version = "0.1.0", path = "../tidepool-codegen" }
+tidepool-macro = { version = "0.1.0", path = "../tidepool-macro" }
+tidepool-runtime = { version = "0.1.0", path = "../tidepool-runtime" }
+tidepool-mcp = { version = "0.1.0", path = "../tidepool-mcp" }
+ast-grep-config = "0.41"
+ast-grep-core = "0.41"
+ast-grep-language = "0.41"
+glob = "0.3"
+frunk = "0.4"
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+url = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "6"
+which = "7"
+rmcp = { version = "0.16", features = ["server", "transport-io"] }

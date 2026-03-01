@@ -18,6 +18,6 @@ quote = "1"
 proc-macro2 = "1"
 
 [dev-dependencies]
-tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
-tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
-tidepool-bridge = { version = "0.0.1", path = "../tidepool-bridge" }
+tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
+tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
+tidepool-bridge = { version = "0.1.0", path = "../tidepool-bridge" }

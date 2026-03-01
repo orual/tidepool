@@ -41,7 +41,7 @@ fn mcp_source_with_helpers(lines: &[&str], helpers: &[&str]) -> String {
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let helpers: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
-    tidepool_mcp::template_haskell(&preamble, &stack, &lines, &[], &helpers, None)
+    tidepool_mcp::template_haskell(&preamble, &stack, &lines, &[], &helpers, None, None)
 }
 
 fn mcp_source_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> String {
@@ -51,7 +51,7 @@ fn mcp_source_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -
     let lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let helpers: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
     let imports: Vec<String> = imports.iter().map(|s| s.to_string()).collect();
-    tidepool_mcp::template_haskell(&preamble, &stack, &lines, &imports, &helpers, None)
+    tidepool_mcp::template_haskell(&preamble, &stack, &lines, &imports, &helpers, None, None)
 }
 
 fn run_mcp_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> serde_json::Value {
@@ -112,7 +112,7 @@ fn compile_only(src: &str) -> Result<usize, String> {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp.as_path()];
-            let (expr, table) =
+            let (expr, table, _) =
                 compile_haskell(&src, "result", &include).map_err(|e| format!("{:?}", e))?;
             // Also test JIT compilation
             let _machine = JitEffectMachine::compile(&expr, &table, 1 << 20)
@@ -343,7 +343,7 @@ fn run_aeson_effectful_with_input(
     let imports: Vec<String> = aeson_import_strs().iter().map(|s| s.to_string()).collect();
     let helpers_owned: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
     let src = tidepool_mcp::template_haskell(
-        &preamble, &stack, &lines_owned, &imports, &helpers_owned, Some(&input),
+        &preamble, &stack, &lines_owned, &imports, &helpers_owned, Some(&input), None,
     );
     let pp = prelude_path();
     std::thread::Builder::new()
@@ -371,7 +371,7 @@ fn run_aeson_with_input(lines: &[&str], input: serde_json::Value) -> serde_json:
     let lines_owned: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let imports: Vec<String> = aeson_import_strs().iter().map(|s| s.to_string()).collect();
     let src = tidepool_mcp::template_haskell(
-        &preamble, &stack, &lines_owned, &imports, &[], Some(&input),
+        &preamble, &stack, &lines_owned, &imports, &[], Some(&input), None,
     );
     let pp = prelude_path();
     std::thread::Builder::new()
@@ -673,7 +673,7 @@ fn test_aeson_input_with_effect() {
     ];
     let imports_owned: Vec<String> = imports.iter().map(|s| s.to_string()).collect();
     let src = tidepool_mcp::template_haskell(
-        &preamble, &stack, &lines, &imports_owned, &[], Some(&input_val),
+        &preamble, &stack, &lines, &imports_owned, &[], Some(&input_val), None,
     );
     let pp = prelude_path();
     let result = std::thread::Builder::new()
@@ -2830,7 +2830,7 @@ fn test_vendored_input_with_effects() {
     ];
     let imports_owned: Vec<String> = imports.iter().map(|s| s.to_string()).collect();
     let src = tidepool_mcp::template_haskell(
-        &preamble, &stack, &lines, &imports_owned, &[], Some(&input_val),
+        &preamble, &stack, &lines, &imports_owned, &[], Some(&input_val), None,
     );
     let pp = prelude_path();
     let result = std::thread::Builder::new()
@@ -3676,7 +3676,7 @@ fn test_ir_dump_pap() {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp.as_path()];
-            let (expr, _table) = compile_haskell(&src, "result", &include).expect("compile");
+            let (expr, _table, _) = compile_haskell(&src, "result", &include).expect("compile");
             let ir = tidepool_repr::pretty::pretty_print(&expr);
             std::fs::write("/tmp/ir_pap.txt", &ir).unwrap();
             eprintln!("PAP IR: {} nodes, {} bytes", expr.nodes.len(), ir.len());
@@ -3696,7 +3696,7 @@ fn test_ir_dump_eta() {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let include = [pp.as_path()];
-            let (expr, _table) = compile_haskell(&src, "result", &include).expect("compile");
+            let (expr, _table, _) = compile_haskell(&src, "result", &include).expect("compile");
             let ir = tidepool_repr::pretty::pretty_print(&expr);
             std::fs::write("/tmp/ir_eta.txt", &ir).unwrap();
             eprintln!("Eta IR: {} nodes, {} bytes", expr.nodes.len(), ir.len());
@@ -4194,4 +4194,49 @@ fn test_sort_by_column() {
     );
     // Header stays, rest sorted by name
     assert_eq!(json, serde_json::json!([["name", "age"], ["Alice", "30"], ["Bob", "25"], ["Charlie", "20"]]));
+}
+
+// ===========================================================================
+// Pagination tests
+// ===========================================================================
+
+/// Small values pass through paginateResult unchanged (fast path).
+#[test]
+fn test_paginate_small_passthrough() {
+    let json = run_aeson(&["pure [1, 2, 3 :: Int]"]);
+    assert_eq!(json, serde_json::json!([1, 2, 3]));
+}
+
+/// Large string gets truncated by paginateResult.
+#[test]
+fn test_paginate_large_string() {
+    let json = run_aeson(&[
+        r#"let s10 = "abcdefghij""#,
+        r#"    s100 = s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10"#,
+        r#"    s1000 = s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100"#,
+        r#"    s5000 = s1000 <> s1000 <> s1000 <> s1000 <> s1000"#,
+        r#"pure (String s5000)"#,
+    ]);
+    // Result should be a truncated string with a size marker
+    let s = json.as_str().expect("should be string");
+    assert!(s.contains("...[5000 chars]"), "should contain size marker, got: {}...{}", &s[..50], &s[s.len()-30..]);
+    assert!(s.len() < 5000, "should be truncated, len={}", s.len());
+}
+
+/// Say output is a normal Print effect — no truncation. Full text passes through.
+#[test]
+fn test_paginate_say_passthrough() {
+    let (json, output) = run_aeson_effectful(&[
+        r#"let s10 = "abcdefghij""#,
+        r#"    s100 = s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10 <> s10"#,
+        r#"    s1000 = s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100 <> s100"#,
+        r#"    s5000 = s1000 <> s1000 <> s1000 <> s1000 <> s1000"#,
+        r#"say s5000"#,
+        r#"pure (42 :: Int)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(42));
+    assert_eq!(output.len(), 1);
+    let line = &output[0];
+    // say is a normal effect now — full text passes through
+    assert_eq!(line.len(), 5000, "say should pass full text, got len={}", line.len());
 }

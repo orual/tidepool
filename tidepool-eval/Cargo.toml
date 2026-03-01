@@ -10,5 +10,5 @@ description = "Tree-walking interpreter for Tidepool Core"
 readme = "../README.md"
 
 [dependencies]
-tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
+tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
 im = "15"

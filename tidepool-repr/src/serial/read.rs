@@ -52,10 +52,17 @@ pub fn read_cbor(bytes: &[u8]) -> Result<RecursiveTree<CoreFrame<usize>>, ReadEr
     Ok(RecursiveTree { nodes })
 }
 
-/// Reads a DataConTable from CBOR-encoded metadata bytes (meta.cbor format).
+/// Structured warnings from the Haskell extractor, encoded in meta.cbor.
+#[derive(Debug, Default, Clone)]
+pub struct MetaWarnings {
+    pub has_io: bool,
+}
+
+/// Reads a DataConTable and warnings from CBOR-encoded metadata bytes (meta.cbor format).
 ///
-/// Format: CBOR array of entries, each entry is [dcid: u64, name: Text, tag: u64, arity: u64, bangs: [Text]]
-pub fn read_metadata(bytes: &[u8]) -> Result<crate::DataConTable, ReadError> {
+/// New format: 2-element array `[entries_array, warnings_map]`
+/// Legacy format: flat array of 5-element entry arrays (backward compatible)
+pub fn read_metadata(bytes: &[u8]) -> Result<(crate::DataConTable, MetaWarnings), ReadError> {
     use crate::datacon::{DataCon, SrcBang};
     use crate::datacon_table::DataConTable;
     use crate::types::DataConId;
@@ -63,13 +70,39 @@ pub fn read_metadata(bytes: &[u8]) -> Result<crate::DataConTable, ReadError> {
     let val: Value =
         ciborium::de::from_reader(bytes).map_err(|e| ReadError::Cbor(e.to_string()))?;
 
-    let entries = match val {
+    let root = match val {
         Value::Array(a) => a,
         _ => {
             return Err(ReadError::InvalidStructure(
                 "Metadata must be a CBOR array".to_string(),
             ))
         }
+    };
+
+    // Detect new vs legacy format:
+    // New format: root is [entries_array, warnings_map] where entries_array[0] is an array
+    // Legacy format: root is [entry1, entry2, ...] where entry1 is a 5-element array
+    let (entries, warnings) = if root.len() == 2 {
+        if let Value::Array(_) = &root[0] {
+            if let Value::Map(_) = &root[1] {
+                // New format
+                let entries = match &root[0] {
+                    Value::Array(a) => a.clone(),
+                    _ => unreachable!(),
+                };
+                let warnings = parse_warnings(&root[1]);
+                (entries, warnings)
+            } else {
+                // Could be legacy with exactly 2 entries
+                (root, MetaWarnings::default())
+            }
+        } else {
+            // Legacy: first element is not an array (shouldn't happen, but safe fallback)
+            (root, MetaWarnings::default())
+        }
+    } else {
+        // Legacy format (0, 1, or 3+ entries)
+        (root, MetaWarnings::default())
     };
 
     let mut table = DataConTable::new();
@@ -130,7 +163,26 @@ pub fn read_metadata(bytes: &[u8]) -> Result<crate::DataConTable, ReadError> {
         });
     }
 
-    Ok(table)
+    Ok((table, warnings))
+}
+
+fn parse_warnings(val: &Value) -> MetaWarnings {
+    let mut warnings = MetaWarnings::default();
+    if let Value::Map(pairs) = val {
+        for (k, v) in pairs {
+            if let Value::Text(key) = k {
+                match key.as_str() {
+                    "has_io" => {
+                        if let Value::Bool(b) = v {
+                            warnings.has_io = *b;
+                        }
+                    }
+                    _ => {} // ignore unknown keys for forward compat
+                }
+            }
+        }
+    }
+    warnings
 }
 
 fn validate_indices(nodes: &[CoreFrame<usize>]) -> Result<(), ReadError> {

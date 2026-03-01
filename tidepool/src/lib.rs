@@ -3,10 +3,14 @@
 //! Compile Haskell [`freer-simple`](https://hackage.haskell.org/package/freer-simple) effect
 //! stacks into Cranelift-backed state machines drivable from Rust.
 //!
-//! This facade crate re-exports the main components of the Tidepool project. For most
-//! applications, start with [`compile_haskell`] to load a compiled Haskell module, then
-//! use [`tidepool_codegen::jit_machine::JitEffectMachine`] to JIT-compile and run it
-//! with your effect handlers.
+//! This crate serves two roles:
+//!
+//! - **Binary** (`cargo install tidepool`): an MCP server with built-in effect handlers
+//!   for Console, KV, Fs, ast-grep, HTTP, Exec, and Meta.
+//! - **Library**: re-exports the main components of the Tidepool project. Start with
+//!   [`compile_haskell`] to load a compiled Haskell module, then use
+//!   [`tidepool_codegen::jit_machine::JitEffectMachine`] to JIT-compile and run it
+//!   with your effect handlers.
 //!
 //! # Crate overview
 //!

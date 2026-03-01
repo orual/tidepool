@@ -13,7 +13,7 @@ use tidepool_repr::{DataConTable, Literal};
 static META: &[u8] = include_bytes!("../../haskell/test/suite_cbor/meta.cbor");
 
 fn table() -> DataConTable {
-    read_metadata(META).unwrap()
+    read_metadata(META).unwrap().0
 }
 
 fn eval_fixture(cbor: &[u8]) -> Value {

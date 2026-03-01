@@ -30,7 +30,7 @@ pub fn write_cbor(expr: &RecursiveTree<CoreFrame<usize>>) -> Result<Vec<u8>, Wri
     Ok(bytes)
 }
 
-/// Writes a DataConTable to CBOR-encoded metadata bytes.
+/// Writes a DataConTable to CBOR-encoded metadata bytes (new format with warnings).
 pub fn write_metadata(table: &crate::datacon_table::DataConTable) -> Result<Vec<u8>, WriteError> {
     use crate::datacon::SrcBang;
 
@@ -65,8 +65,16 @@ pub fn write_metadata(table: &crate::datacon_table::DataConTable) -> Result<Vec<
         ]));
     }
 
+    // New format: [entries_array, warnings_map]
+    let warnings_map = Value::Map(vec![(
+        Value::Text("has_io".to_string()),
+        Value::Bool(false),
+    )]);
+
+    let root = Value::Array(vec![Value::Array(entries), warnings_map]);
+
     let mut bytes = Vec::new();
-    ciborium::ser::into_writer(&Value::Array(entries), &mut bytes)
+    ciborium::ser::into_writer(&root, &mut bytes)
         .map_err(|e| WriteError::Cbor(e.to_string()))?;
     Ok(bytes)
 }

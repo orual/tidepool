@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use ast_grep_config::{DeserializeEnv, SerializableRule};
 use ast_grep_core::{Language as _, Pattern};
 use ast_grep_language::{LanguageExt, SupportLang};
+use rmcp::{model::*, service::RequestContext, ErrorData as McpError, RoleServer, ServerHandler};
 use tidepool_bridge_derive::{FromCore, ToCore};
 use tidepool_effect::dispatch::{EffectContext, EffectHandler};
 use tidepool_effect::error::EffectError;
@@ -952,6 +953,176 @@ impl EffectHandler<CapturedOutput> for MetaHandler {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Embedded Haskell stdlib — written to ~/.tidepool/prelude/ on startup
+// ---------------------------------------------------------------------------
+
+const PRELUDE_HS: &str = include_str!("../../haskell/lib/Tidepool/Prelude.hs");
+const TEXT_HS: &str = include_str!("../../haskell/lib/Tidepool/Text.hs");
+const TABLE_HS: &str = include_str!("../../haskell/lib/Tidepool/Table.hs");
+const AESON_HS: &str = include_str!("../../haskell/lib/Tidepool/Aeson.hs");
+const AESON_VALUE_HS: &str = include_str!("../../haskell/lib/Tidepool/Aeson/Value.hs");
+const AESON_KEYMAP_HS: &str = include_str!("../../haskell/lib/Tidepool/Aeson/KeyMap.hs");
+const AESON_LENS_HS: &str = include_str!("../../haskell/lib/Tidepool/Aeson/Lens.hs");
+
+const EMBEDDED_FILES: &[(&str, &str)] = &[
+    ("Tidepool/Prelude.hs", PRELUDE_HS),
+    ("Tidepool/Text.hs", TEXT_HS),
+    ("Tidepool/Table.hs", TABLE_HS),
+    ("Tidepool/Aeson.hs", AESON_HS),
+    ("Tidepool/Aeson/Value.hs", AESON_VALUE_HS),
+    ("Tidepool/Aeson/KeyMap.hs", AESON_KEYMAP_HS),
+    ("Tidepool/Aeson/Lens.hs", AESON_LENS_HS),
+];
+
+/// Ensure embedded Haskell stdlib is written to ~/.tidepool/prelude/.
+/// Returns the prelude directory path. Respects TIDEPOOL_PRELUDE_DIR override.
+fn ensure_prelude() -> PathBuf {
+    if let Some(dir) = std::env::var_os("TIDEPOOL_PRELUDE_DIR") {
+        return PathBuf::from(dir);
+    }
+
+    // In-repo development: use haskell/lib/ directly if present
+    if let Ok(cwd) = std::env::current_dir() {
+        let from_root = cwd.join("haskell").join("lib");
+        if from_root.join("Tidepool").join("Prelude.hs").exists() {
+            return from_root;
+        }
+        let from_haskell = cwd.join("lib");
+        if from_haskell.join("Tidepool").join("Prelude.hs").exists() {
+            return from_haskell;
+        }
+    }
+
+    // Installed mode: write embedded files to ~/.tidepool/prelude/
+    let base = dirs::home_dir()
+        .expect("could not determine home directory")
+        .join(".tidepool")
+        .join("prelude");
+    let stamp = base.join(".version");
+    let version = env!("CARGO_PKG_VERSION");
+    if stamp.exists() && std::fs::read_to_string(&stamp).ok().as_deref() == Some(version) {
+        return base;
+    }
+
+    for (path, content) in EMBEDDED_FILES {
+        let full = base.join(path);
+        if let Some(parent) = full.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&full, content);
+    }
+    let _ = std::fs::write(&stamp, version);
+    base
+}
+
+/// Check if tidepool-extract is available.
+fn find_tidepool_extract() -> Option<PathBuf> {
+    // 1. TIDEPOOL_EXTRACT env var
+    if let Ok(p) = std::env::var("TIDEPOOL_EXTRACT") {
+        let path = PathBuf::from(&p);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    // 2. On PATH
+    which::which("tidepool-extract").ok()
+}
+
+// ---------------------------------------------------------------------------
+// Degraded MCP server — served when tidepool-extract is missing
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct SetupServer;
+
+const INSTALL_INSTRUCTIONS: &str = "\
+Tidepool MCP server is running but the GHC toolchain is not installed.
+The Haskell compiler is needed to evaluate code.
+
+Install it with Nix:
+
+  1. Install Nix (if needed):
+     curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+
+  2. Install the tidepool GHC toolchain:
+     nix profile install github:tidepool-heavy-industries/tidepool#tidepool-extract
+
+  3. Restart this MCP server.
+
+Alternatively, set TIDEPOOL_EXTRACT to point to an existing tidepool-extract binary.";
+
+impl ServerHandler for SetupServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            instructions: Some(
+                "Tidepool MCP server (setup mode). The GHC toolchain is not installed. \
+                 Call the install_instructions tool for setup steps."
+                    .into(),
+            ),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            ..Default::default()
+        }
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {},
+        });
+        let input_schema = match schema {
+            serde_json::Value::Object(o) => Arc::new(o),
+            _ => Arc::new(serde_json::Map::new()),
+        };
+        Ok(ListToolsResult {
+            tools: vec![Tool {
+                name: "install_instructions".into(),
+                title: None,
+                description: Some(
+                    "Get instructions for installing the GHC toolchain required by Tidepool."
+                        .into(),
+                ),
+                input_schema,
+                output_schema: None,
+                annotations: None,
+                icons: None,
+                meta: None,
+                execution: None,
+            }],
+            next_cursor: None,
+            meta: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        match request.name.as_ref() {
+            "install_instructions" => Ok(CallToolResult {
+                content: vec![Content::text(INSTALL_INSTRUCTIONS)],
+                structured_content: None,
+                is_error: Some(false),
+                meta: None,
+            }),
+            _ => Err(McpError {
+                code: ErrorCode::METHOD_NOT_FOUND,
+                message: format!("Tool not found: {}", request.name).into(),
+                data: None,
+            }),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -961,6 +1132,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_writer(std::io::stderr)
         .init();
+
+    let prelude_dir = ensure_prelude();
+
+    // If tidepool-extract is not available, serve the degraded setup server.
+    if find_tidepool_extract().is_none() {
+        tracing::warn!(
+            "tidepool-extract not found — serving setup-only MCP server. \
+             Install via: nix profile install github:tidepool-heavy-industries/tidepool#tidepool-extract"
+        );
+        use rmcp::ServiceExt;
+        SetupServer
+            .serve((tokio::io::stdin(), tokio::io::stdout()))
+            .await?
+            .waiting()
+            .await?;
+        return Ok(());
+    }
 
     // Install sigsetjmp/siglongjmp signal handlers early so SIGILL/SIGSEGV
     // from JIT code returns clean errors instead of killing the server.
@@ -983,16 +1171,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         MetaHandler::new(effect_names)
     ];
 
-    // Prelude lives at haskell/lib/ relative to repo root, or via TIDEPOOL_PRELUDE_DIR.
-    // Try haskell/lib first (running from repo root), fall back to lib/ (running from haskell/).
-    let prelude_fallback = {
-        let from_root = cwd.join("haskell").join("lib");
-        if from_root.join("Tidepool").join("Prelude.hs").exists() {
-            from_root
-        } else {
-            cwd.join("lib")
-        }
-    };
-    let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_fallback);
+    let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
     server.serve_stdio().await
 }

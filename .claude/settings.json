@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "tidepool": {
-      "command": "tidepool",
+      "command": "python3",
+      "args": ["/home/inanna/dev/tidepool/tools/mcp-wrapper.py", "tidepool"],
       "env": {
         "TIDEPOOL_EXTRACT": "/home/inanna/.local/bin/tidepool-extract"
       }

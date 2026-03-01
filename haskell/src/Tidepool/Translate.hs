@@ -9,6 +9,7 @@ module Tidepool.Translate
   , dcToMeta
   , valueRepArity
   , mapBang
+  , targetBindingHasIO
   , FlatNode(..)
   , FlatAlt(..)
   , FlatAltCon(..)
@@ -25,6 +26,7 @@ import GHC.Types.Unique (getKey)
 import GHC.Core.DataCon (DataCon, dataConRepArity, dataConRepArgTys, dataConFullSig, dataConTag, dataConWorkId, dataConName, dataConSrcBangs, dataConOrigArgTys, isUnboxedTupleDataCon, HsSrcBang(..), HsBang(..), SrcUnpackedness(..), SrcStrictness(..))
 import Language.Haskell.Syntax.Basic (Boxity(..))
 import GHC.Builtin.Types (consDataCon, nilDataCon, trueDataCon, falseDataCon, charDataCon, unitDataCon, tupleDataCon, ordLTDataCon, ordEQDataCon, ordGTDataCon, intDataCon, wordDataCon, doubleDataCon, floatDataCon)
+import GHC.Builtin.Names (ioTyConKey)
 import GHC.Builtin.PrimOps
 import GHC.Types.Literal
 import GHC.Types.Name (nameOccName, isExternalName, isSystemName, nameModule_maybe)
@@ -32,7 +34,7 @@ import GHC.Types.Name.Occurrence (occNameString)
 import GHC.Unit.Module (moduleName, moduleNameString)
 import GHC.Utils.Fingerprint (fingerprintString, Fingerprint(..))
 import GHC.Core.TyCon
-import GHC.Core.Type (splitTyConApp_maybe, isCoercionTy)
+import GHC.Core.Type (splitTyConApp_maybe, splitFunTy_maybe, isCoercionTy)
 import GHC.Builtin.Types.Prim (statePrimTyCon)
 import GHC.Core.TyCo.Rep (Scaled(..))
 import GHC.Core.TyCo.FVs (tyConsOfType)
@@ -749,25 +751,10 @@ translate expr =
         recordDC unitDataCon
         emitNode $ NCon (varId (dataConWorkId unitDataCon)) []
 
-    -- runRW# @rep @ty f  →  f realWorld#
-    -- runRW# applies f to realWorld# (a State# token), which we erase.
-    -- After type-arg stripping, args = [f]. Since f is \s -> body, translate body directly.
-    Var v | isRunRWVar v -> case args of
-      [Lam _ body] -> translate body
-      [f] -> do
-        -- f is a variable reference: apply it to a dummy unit (state token erased)
-        fIdx <- translate f
-        dummyIdx <- emitNode $ NLit (LEInt 0)
-        emitNode $ NApp fIdx dummyIdx
-      [] -> do
-        -- Partial application: runRW# with only type args, no value arg yet.
-        -- Emit \f -> f 0  (state token erased to dummy 0).
-        lamVar <- freshSynthVarId
-        fIdx   <- emitNode $ NVar lamVar
-        dummyIdx <- emitNode $ NLit (LEInt 0)
-        bodyIdx  <- emitNode $ NApp fIdx dummyIdx
-        emitNode $ NLam lamVar bodyIdx
-      _   -> error $ "runRW# expected 0-1 value args, got " ++ show (length args) ++ ": " ++ showPprUnsafe expr
+    -- runRW# is the primop underlying unsafePerformIO / unsafeDupablePerformIO.
+    -- IO operations are not supported — fail at extraction time.
+    Var v | isRunRWVar v ->
+      error "runRW# detected: IO operations (unsafePerformIO, etc.) are not supported in Tidepool"
 
     -- tagToEnum# @T arg → case arg of { 0# → C0; 1# → C1; ... }
     -- We desugar here because type information is erased downstream.
@@ -1338,6 +1325,24 @@ mapPrimOp = \case
   -- Exception
   RaiseOp     -> "Raise"
   other       -> trace ("WARNING: unsupported primop: " ++ showPprUnsafe other ++ " (emitting Raise)") "Raise"
+
+-- | Check whether a named top-level binding has IO in its result type.
+targetBindingHasIO :: [CoreBind] -> String -> Bool
+targetBindingHasIO binds name =
+  case filter isTarget (concatMap bOf binds) of
+    (b:_) -> hasIOType (idType b)
+    []    -> False
+  where
+    bOf (NonRec b _) = [b]
+    bOf (Rec pairs)  = map fst pairs
+    isTarget b = occNameString (nameOccName (idName b)) == name
+
+hasIOType :: Type -> Bool
+hasIOType ty = case splitTyConApp_maybe ty of
+  Just (tc, _) | getKey (tyConUnique tc) == getKey ioTyConKey -> True
+  _ -> case splitFunTy_maybe ty of
+    Just (_, _, _, ret) -> hasIOType ret
+    Nothing -> False
 
 collectDataCons :: [TyCon] -> [(Word64, Text, Int, Int, [Text])]
 collectDataCons tycons =

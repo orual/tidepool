@@ -2,7 +2,7 @@ pub mod read;
 pub mod write;
 
 pub use read::read_cbor;
-pub use read::read_metadata;
+pub use read::{read_metadata, MetaWarnings};
 pub use write::write_cbor;
 pub use write::write_metadata;
 
@@ -349,7 +349,8 @@ mod tests {
         });
 
         let bytes = write_metadata(&table).expect("write_metadata failed");
-        let recovered = read_metadata(&bytes).expect("read_metadata failed");
+        let (recovered, warnings) = read_metadata(&bytes).expect("read_metadata failed");
         assert_eq!(table, recovered);
+        assert!(!warnings.has_io);
     }
 }

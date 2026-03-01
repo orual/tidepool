@@ -44,12 +44,12 @@ fn test_cache_hit_same_source() {
     let src = "module Test where\nval = 42";
     let target = "val";
 
-    let (expr1, _) = compile_haskell(src, target, &[pp.as_path()]).expect("First compile failed");
+    let (expr1, _, _) = compile_haskell(src, target, &[pp.as_path()]).expect("First compile failed");
     assert!(tidepool_cache.exists(), "Cache directory should be created");
     let count1 = fs::read_dir(&tidepool_cache).unwrap().count();
     assert!(count1 >= 2, "At least .cbor and .meta.cbor should be cached");
 
-    let (expr2, _) = compile_haskell(src, target, &[pp.as_path()]).expect("Second compile failed");
+    let (expr2, _, _) = compile_haskell(src, target, &[pp.as_path()]).expect("Second compile failed");
     assert_eq!(expr1, expr2);
 
     let count2 = fs::read_dir(&tidepool_cache).unwrap().count();

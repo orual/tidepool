@@ -162,7 +162,7 @@ fn expand_expr_cbor(path_lit: &LitStr) -> TokenStream {
             static __META: &[u8] = include_bytes!(#meta_path_str);
             let __expr = tidepool_repr::serial::read::read_cbor(__CBOR)
                 .expect("failed to deserialize CBOR");
-            let __table = tidepool_repr::serial::read::read_metadata(__META)
+            let (__table, _warnings) = tidepool_repr::serial::read::read_metadata(__META)
                 .expect("failed to deserialize metadata");
             (__expr, __table)
         }
@@ -242,7 +242,7 @@ fn expand_expr_hs(path_lit: &LitStr, raw_path: &str) -> TokenStream {
             static __META: &[u8] = include_bytes!(#meta_path_str);
             let __expr = tidepool_repr::serial::read::read_cbor(__CBOR)
                 .expect("failed to deserialize CBOR — re-run extraction");
-            let __table = tidepool_repr::serial::read::read_metadata(__META)
+            let (__table, _warnings) = tidepool_repr::serial::read::read_metadata(__META)
                 .expect("failed to deserialize metadata");
             (__expr, __table)
         }
@@ -447,7 +447,7 @@ pub fn expand_inline(input: TokenStream) -> TokenStream {
             static __META: &[u8] = include_bytes!(#meta_path_str);
             let __expr = tidepool_repr::serial::read::read_cbor(__CBOR)
                 .expect("failed to deserialize CBOR — re-run extraction");
-            let __table = tidepool_repr::serial::read::read_metadata(__META)
+            let (__table, _warnings) = tidepool_repr::serial::read::read_metadata(__META)
                 .expect("failed to deserialize metadata");
             (__expr, __table)
         }

@@ -23,7 +23,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Tidepool.GhcPipeline (runPipeline, PipelineResult(..), dumpCore)
-import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons, collectTransitiveDCons, wiredInDataCons, UnresolvedVar(..), dcToMeta, valueRepArity, mapBang)
+import Tidepool.Translate (translateBinds, translateModuleClosed, collectDataCons, collectUsedDataCons, collectTransitiveDCons, wiredInDataCons, UnresolvedVar(..), dcToMeta, valueRepArity, mapBang, targetBindingHasIO)
 import Tidepool.CborEncode (encodeTree, encodeMetadata)
 
 main :: IO ()
@@ -117,7 +117,8 @@ processFile args path = do
                         `Map.union` Map.fromList [(dcid, entry) | entry@(dcid, _, _, _, _) <- scanMeta]
                         `Map.union` Map.fromList [(dcid, entry) | entry@(dcid, _, _, _, _) <- transitiveMeta]
             allMeta = Map.elems mergedMap
-        let metaCbor = encodeMetadata allMeta
+            hasIO = any (targetBindingHasIO binds) uniqueNames
+        let metaCbor = encodeMetadata allMeta hasIO
         let metaFile = outDir </> "meta.cbor"
         BS.writeFile metaFile metaCbor
         putStrLn $ "  Wrote: " ++ metaFile ++ " (" ++ show (length allMeta) ++ " entries, " ++ show (BS.length metaCbor) ++ " bytes)"
@@ -152,7 +153,8 @@ processFile args path = do
                         `Map.union`
                         Map.fromList [(dcid, entry) | entry@(dcid, _, _, _, _) <- transitiveMeta]
             allMeta = Map.elems mergedMap
-        let metaCbor = encodeMetadata allMeta
+            hasIO = targetBindingHasIO binds targetName
+        let metaCbor = encodeMetadata allMeta hasIO
         let metaFile = outDir </> "meta.cbor"
         BS.writeFile metaFile metaCbor
         putStrLn $ "  Wrote: " ++ metaFile ++ " (" ++ show (length allMeta) ++ " entries, " ++ show (BS.length metaCbor) ++ " bytes)"
@@ -181,7 +183,7 @@ processFile args path = do
                         `Map.union`
                         Map.fromList [(dcid, entry) | entry@(dcid, _, _, _, _) <- transitiveMeta]
             allMeta = Map.elems mergedMap
-        let metaCbor = encodeMetadata allMeta
+        let metaCbor = encodeMetadata allMeta False
         let metaFile = outDir </> "meta.cbor"
         BS.writeFile metaFile metaCbor
         putStrLn $ "  Wrote: " ++ metaFile ++ " (" ++ show (length allMeta) ++ " entries, " ++ show (BS.length metaCbor) ++ " bytes)"

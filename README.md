@@ -10,26 +10,86 @@ Tidepool compiles [freer-simple](https://hackage.haskell.org/package/freer-simpl
 
 Haskell expands (describes what to do). Rust collapses (does it). The language boundary is the hylo boundary.
 
-## Quick Start
+## Getting Started
+
+### 1. Install the MCP server
 
 ```bash
-# Enter the dev shell (provides Rust + GHC 9.12)
-nix develop
+cargo install tidepool
+```
 
-# Run the number guessing game (JIT-compiled)
-cargo run -p tidepool-guess
+### 2. Install the GHC toolchain (requires Nix)
 
-# Run the interactive REPL
-cargo run -p tidepool-tide
+The Haskell compiler (`tidepool-extract`) is needed to evaluate code. Install it via Nix:
 
-# Run the MCP server example
-cargo run -p mcp-server-example
+```bash
+# Install Nix (if needed):
+curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+
+# Install the tidepool GHC toolchain:
+nix profile install github:tidepool-heavy-industries/tidepool#tidepool-extract
+```
+
+> **Note:** If `tidepool-extract` is not found, the server starts in setup mode and exposes only an `install_instructions` tool that tells the calling LLM what to install.
+
+### 3. Configure your MCP client
+
+The `tidepool` binary is an [MCP](https://modelcontextprotocol.io/) server that communicates over stdio.
+
+**Claude Code** (`~/.claude/settings.json` or project `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "tidepool": {
+      "command": "tidepool"
+    }
+  }
+}
+```
+
+You can also use `mcp-wrapper.py` (from the repo) to add a `__mcp_restart` tool for hot-restarting the server:
+
+```json
+{
+  "mcpServers": {
+    "tidepool": {
+      "command": "python3",
+      "args": ["/path/to/tidepool/tools/mcp-wrapper.py", "tidepool"]
+    }
+  }
+}
+```
+
+**Environment variables:**
+- `TIDEPOOL_EXTRACT` — path to the `tidepool-extract` binary (falls back to `tidepool-extract` on `$PATH`)
+- `TIDEPOOL_PRELUDE_DIR` — override the Haskell stdlib location (normally embedded in the binary)
+- `TIDEPOOL_GHC_LIBDIR` — override GHC's lib directory (avoids calling `ghc --print-libdir`)
+- `RUST_LOG` — set to `debug` or `info` for server diagnostics on stderr
+
+### Verify
+
+Once configured, your MCP client should see the `eval` tool. Try evaluating:
+
+```haskell
+pure (1 + 2 :: Int)
+-- → 3
+```
+
+### Development (from source)
+
+```bash
+git clone https://github.com/tidepool-heavy-industries/tidepool.git
+cd tidepool
+nix develop          # Provides GHC 9.12 (fat interfaces) + Rust toolchain
+cargo test --workspace
+cargo install --path tidepool
 ```
 
 ## Architecture
 
 ```
-tidepool/                   Facade crate (re-exports public API)
+tidepool/                   Facade crate + MCP server binary
 tidepool-repr/              Core IR: CoreExpr, DataConTable, CBOR serialization
 tidepool-eval/              Tree-walking interpreter: Value, Env, lazy evaluation
 tidepool-heap/              Manual heap + copying GC for JIT runtime
@@ -46,11 +106,13 @@ tidepool-mcp/               MCP server library (generic over effect handlers)
 ## How It Works
 
 1. **Write Haskell** using `freer-simple` effects (e.g. `emit "hello" >> awaitInt`)
-2. **Extract GHC Core** via a Haskell plugin (`tidepool-extract`) that serializes to CBOR
+2. **Extract GHC Core** via `tidepool-extract`, which serializes to CBOR
 3. **Load in Rust** as `CoreExpr` + `DataConTable` (the IR)
 4. **Optimize** with configurable passes (beta reduction, inlining, dead code elimination)
 5. **Compile to native** via Cranelift, producing a `JitEffectMachine`
 6. **Run with handlers** — the machine yields effect requests; Rust handlers respond
+
+### Using as a Rust library
 
 ```rust
 use tidepool_macro::haskell_inline;
@@ -69,6 +131,28 @@ greet = emit "Hello from Haskell!"
 // JIT compile and run with Rust handlers
 let mut vm = JitEffectMachine::compile(&expr, &table, 1 << 20)?;
 vm.run(&table, &mut handlers, &())?;
+```
+
+## MCP Server Effects
+
+The `tidepool` binary provides these effect handlers:
+
+| Effect | Operations |
+|--------|-----------|
+| **Console** | `Print :: Text -> Console ()` |
+| **KV** | `KvGet`, `KvSet`, `KvDelete`, `KvKeys` — persistent key-value store |
+| **Fs** | `FsRead`, `FsWrite`, `FsListDir`, `FsGlob`, `FsExists`, `FsMetadata` — sandboxed file I/O |
+| **SG** | `SgFind`, `SgPreview`, `SgReplace`, `SgRuleFind`, `SgRuleReplace` — structural code search via ast-grep |
+| **Http** | `HttpGet`, `HttpPost`, `HttpRequest` — outbound HTTP (no localhost) |
+| **Exec** | `Run`, `RunIn`, `RunJson` — shell command execution |
+| **Meta** | `MetaConstructors`, `MetaLookupCon`, `MetaPrimOps`, `MetaEffects`, `MetaDiagnostics`, `MetaVersion` |
+
+## Development
+
+```bash
+nix develop              # Enter dev shell
+cargo check --workspace  # Type check
+cargo test --workspace   # Run all tests
 ```
 
 ## License

@@ -85,9 +85,7 @@ pub fn console_decl() -> EffectDecl {
         description: "Print text output.",
         constructors: &["Print :: Text -> Console ()"],
         type_defs: &[],
-        helpers: &[
-            "say :: Text -> M ()\nsay = send . Print",
-        ],
+        helpers: &[],
     }
 }
 
@@ -308,6 +306,11 @@ pub struct EvalRequest {
     /// Optional JSON input injected as `input :: Aeson.Value` binding.
     #[serde(default)]
     pub input: Option<serde_json::Value>,
+    /// Optional maximum character budget for paginated output.
+    /// Controls both `say` output and return value truncation.
+    /// Default: 4096.
+    #[serde(default)]
+    pub max_len: Option<u32>,
 }
 
 /// Deserialize `code` from either a string (split on newlines) or array of strings.
@@ -361,6 +364,7 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
     out.push_str("import qualified Data.Text as T\n");
     out.push_str("import qualified Data.Map.Strict as Map\n");
     out.push_str("import qualified Data.Set as Set\n");
+    out.push_str("import qualified Tidepool.Aeson.KeyMap as KM\n");
     out.push_str("import Control.Monad.Freer hiding (run)\n");
     if user_library {
         out.push_str("import Library\n");
@@ -396,6 +400,137 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
                 out.push_str(h);
                 out.push('\n');
             }
+        }
+        out.push('\n');
+    }
+
+    // Pagination support — auto-truncation of large eval results
+    if !effects.is_empty() {
+        let has_ask = effects.iter().any(|e| e.type_name == "Ask");
+        let has_console = effects.iter().any(|e| e.type_name == "Console");
+        let has_kv = effects.iter().any(|e| e.type_name == "KV");
+
+        out.push_str("-- Pagination\n");
+        out.push_str(concat!(
+            "showI :: Int -> Text\n",
+            "showI n = encode (toJSON n)\n",
+        ));
+        // say: normal Print effect + char counter in KV (when available)
+        if has_console && has_kv {
+            out.push_str(concat!(
+                "say :: Text -> M ()\n",
+                "say t = do\n",
+                "  send (Print t)\n",
+                "  v <- kvGet \"__sayChars\"\n",
+                "  let cur = case v of { Just b -> case b ^? _Number of { Just n -> round n; _ -> 0 }; Nothing -> 0 }\n",
+                "  kvSet \"__sayChars\" (toJSON (cur + T.length t))\n",
+            ));
+        } else if has_console {
+            out.push_str(concat!(
+                "say :: Text -> M ()\n",
+                "say = send . Print\n",
+            ));
+        }
+
+        out.push_str(concat!(
+            "valSize :: Value -> Int\n",
+            "valSize v = case v of\n",
+            "  String t -> T.length t + 2\n",
+            "  Number _ -> 8\n",
+            "  Bool b -> if b then 4 else 5\n",
+            "  Null -> 4\n",
+            "  Array xs -> arrSz xs 2\n",
+            "  Object m -> objSz (KM.toList m) 2\n",
+        ));
+        out.push_str(concat!(
+            "arrSz :: [Value] -> Int -> Int\n",
+            "arrSz [] acc = acc\n",
+            "arrSz [x] acc = acc + valSize x\n",
+            "arrSz (x:xs) acc = arrSz xs (acc + valSize x + 2)\n",
+        ));
+        out.push_str(concat!(
+            "objSz :: [(Key, Value)] -> Int -> Int\n",
+            "objSz [] acc = acc\n",
+            "objSz [(k,v)] acc = acc + T.length (KM.toText k) + 4 + valSize v\n",
+            "objSz ((k,v):rest) acc = objSz rest (acc + T.length (KM.toText k) + 4 + valSize v + 2)\n",
+        ));
+        out.push_str(concat!(
+            "truncArr :: Int -> Int -> [Value] -> ([Value], Int, [(Int, Value)])\n",
+            "truncArr _ nid [] = ([], nid, [])\n",
+            "truncArr bud nid (x:xs)\n",
+            "  | bud <= 30 = ([marker], nid + 1, [(nid, Array (x:xs))])\n",
+            "  | sz <= bud = let (r, nid', s) = truncArr (bud - sz - 2) nid xs in (x : r, nid', s)\n",
+            "  | otherwise = let m = String (\"[~\" <> showI sz <> \" chars -> stub_\" <> showI nid <> \"]\")\n",
+            "                    (r, nid', s) = truncArr (bud - 50) (nid + 1) xs\n",
+            "                in (m : r, nid', (nid, x) : s)\n",
+            "  where sz = valSize x\n",
+            "        n = 1 + length xs\n",
+            "        tsz = sz + arrSz xs 0\n",
+            "        marker = String (\"[\" <> showI n <> \" more, ~\" <> showI tsz <> \" chars -> stub_\" <> showI nid <> \"]\")\n",
+        ));
+        out.push_str(concat!(
+            "truncKvs :: Int -> Int -> [(Key, Value)] -> ([(Key, Value)], Int, [(Int, Value)])\n",
+            "truncKvs _ nid [] = ([], nid, [])\n",
+            "truncKvs bud nid ((k,v):rest)\n",
+            "  | bud <= 30 = ([(KM.fromText \"...\", String marker)], nid + 1, [(nid, object (map (\\(k',v') -> KM.toText k' .= v') ((k,v):rest)))])\n",
+            "  | sz <= bud = let (r, nid', s) = truncKvs (bud - sz - 2) nid rest in ((k,v) : r, nid', s)\n",
+            "  | otherwise = let m = String (\"[~\" <> showI (valSize v) <> \" chars -> stub_\" <> showI nid <> \"]\")\n",
+            "                    (r, nid', s) = truncKvs (bud - 50) (nid + 1) rest\n",
+            "                in ((k, m) : r, nid', (nid, v) : s)\n",
+            "  where sz = T.length (KM.toText k) + 4 + valSize v\n",
+            "        n = 1 + length rest\n",
+            "        tsz = sz + objSz rest 0\n",
+            "        marker = \"[\" <> showI n <> \" more fields, ~\" <> showI tsz <> \" chars -> stub_\" <> showI nid <> \"]\"\n",
+        ));
+        out.push_str(concat!(
+            "truncGo :: Int -> Int -> Value -> (Value, Int, [(Int, Value)])\n",
+            "truncGo bud nid v\n",
+            "  | valSize v <= bud = (v, nid, [])\n",
+            "  | otherwise = case v of\n",
+            "      Array xs -> let (items, nid', stubs) = truncArr bud nid xs in (Array items, nid', stubs)\n",
+            "      Object m -> let (pairs, nid', stubs) = truncKvs bud nid (KM.toList m)\n",
+            "                  in (object (map (\\(k',v') -> KM.toText k' .= v') pairs), nid', stubs)\n",
+            "      String t -> let keep = max' 10 (bud - 30)\n",
+            "                  in (String (T.take keep t <> \"...[\" <> showI (T.length t) <> \" chars]\"), nid, [])\n",
+            "      _ -> (v, nid, [])\n",
+        ));
+        out.push_str(concat!(
+            "truncVal :: Int -> Value -> (Value, [(Int, Value)])\n",
+            "truncVal budget val = let (v, _, stubs) = truncGo budget 0 val in (v, stubs)\n",
+        ));
+        out.push_str(concat!(
+            "lookupStub :: Int -> [(Int, Value)] -> Maybe Value\n",
+            "lookupStub _ [] = Nothing\n",
+            "lookupStub sid ((k,v):rest) = if sid == k then Just v else lookupStub sid rest\n",
+        ));
+
+        if has_ask {
+            out.push_str(concat!(
+                "paginateResult :: Int -> Value -> M Value\n",
+                "paginateResult budget val\n",
+                "  | valSize val <= budget = pure val\n",
+                "  | otherwise = do\n",
+                "      let (truncated, stubs) = truncVal budget val\n",
+                "      case stubs of\n",
+                "        [] -> pure truncated\n",
+                "        _ -> do\n",
+                "          let stubInfo = Array (map (\\(sid, sv) -> object [\"id\" .= (\"stub_\" <> showI sid), \"size\" .= toJSON (valSize sv)]) stubs)\n",
+                "          resp <- ask (encode (object [\"paginated\" .= truncated, \"stubs\" .= stubInfo]))\n",
+                "          case resp ^? _String of\n",
+                "            Just s -> case parseIntM (T.drop 5 s) of\n",
+                "              Just sid -> case lookupStub sid stubs of\n",
+                "                Just subtree -> paginateResult budget subtree\n",
+                "                Nothing -> pure truncated\n",
+                "              Nothing -> pure truncated\n",
+                "            _ -> pure truncated\n",
+            ));
+        } else {
+            out.push_str(concat!(
+                "paginateResult :: Int -> Value -> M Value\n",
+                "paginateResult budget val\n",
+                "  | valSize val <= budget = pure val\n",
+                "  | otherwise = let (truncated, _) = truncVal budget val in pure truncated\n",
+            ));
         }
         out.push('\n');
     }
@@ -616,9 +751,13 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
         }
 
         // List built-in helpers
-        let has_helpers = effects.iter().any(|e| !e.helpers.is_empty());
+        let has_console = effects.iter().any(|e| e.type_name == "Console");
+        let has_helpers = has_console || effects.iter().any(|e| !e.helpers.is_empty());
         if has_helpers {
             desc.push_str("\nBuilt-in helpers (always available, no need to define):\n");
+            if has_console {
+                desc.push_str("  say :: Text -> M ()\n");
+            }
             for eff in effects {
                 for h in eff.helpers {
                     // Extract just the type signature line
@@ -642,6 +781,7 @@ pub fn template_haskell(
     imports: &[String],
     helpers: &[String],
     input: Option<&serde_json::Value>,
+    budget: Option<u32>,
 ) -> String {
     let mut out = String::new();
 
@@ -678,11 +818,20 @@ pub fn template_haskell(
 
     out.push_str(&format!("result :: Eff {} Value\n", effect_stack));
     out.push_str("result = do\n");
+    if budget.is_some() {
+        out.push_str("  kvSet \"__sayChars\" (toJSON (0 :: Int))\n");
+    }
     out.push_str("  _r <- do\n");
     for line in code {
         out.push_str(&format!("    {}\n", line));
     }
-    out.push_str("  pure (toJSON _r)\n");
+    if let Some(b) = budget {
+        out.push_str("  _scV <- kvGet \"__sayChars\"\n");
+        out.push_str("  let _sayC = case _scV of { Just b -> case b ^? _Number of { Just n -> round n; _ -> 0 }; Nothing -> 0 }\n");
+        out.push_str(&format!("  paginateResult (max' 100 ({} - _sayC)) (toJSON _r)\n", b));
+    } else {
+        out.push_str("  paginateResult 4096 (toJSON _r)\n");
+    }
 
     out
 }
@@ -742,6 +891,43 @@ fn format_error_with_source(title: &str, error: &str, source: &str) -> String {
         "## {}\n{}\n\n## User Code\n```haskell\n{}\n```",
         title, error, user_section
     )
+}
+
+// ---------------------------------------------------------------------------
+// Import blocklist
+// ---------------------------------------------------------------------------
+
+/// Blocked module prefixes. Returns the module name if the import should be rejected.
+fn rejected_import(import_str: &str) -> Option<&str> {
+    const BLOCKED: &[&str] = &[
+        "System.IO.Unsafe",
+        "System.IO",
+        "System.Process",
+        "System.Posix",
+        "System.Directory",
+        "System.Environment",
+        "GHC.IO",
+        "GHC.Conc",
+        "Foreign",
+        "Network",
+        "Control.Concurrent",
+    ];
+    // Extract module name (first whitespace-delimited token, or before '(')
+    let module = import_str
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .next()
+        .unwrap_or(import_str)
+        .trim_start_matches("qualified ");
+    let module = module
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .next()
+        .unwrap_or(module);
+    for prefix in BLOCKED {
+        if module.starts_with(prefix) {
+            return Some(module);
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -923,6 +1109,16 @@ impl TidepoolMcpServerImpl {
         tracing::info!(lines = req.code.len(), "eval request");
         self.cleanup_stale_continuations();
 
+        // Reject unsafe/IO imports before compilation
+        for imp in &req.imports {
+            if let Some(module) = rejected_import(imp) {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Blocked import: `{}` is not available in the Tidepool sandbox.",
+                    module,
+                ))]));
+            }
+        }
+
         let mut all_imports = aeson_imports();
         all_imports.extend(req.imports);
         let source: Arc<str> = template_haskell(
@@ -932,6 +1128,7 @@ impl TidepoolMcpServerImpl {
             &all_imports,
             &req.helpers,
             req.input.as_ref(),
+            Some(req.max_len.unwrap_or(4096)),
         )
         .into();
 
@@ -1390,6 +1587,22 @@ mod tests {
     }
 
     #[test]
+    fn test_rejected_imports() {
+        assert!(rejected_import("System.IO.Unsafe (unsafePerformIO)").is_some());
+        assert!(rejected_import("System.Process (callCommand)").is_some());
+        assert!(rejected_import("System.Posix.Signals").is_some());
+        assert!(rejected_import("GHC.IO.Handle").is_some());
+        assert!(rejected_import("Network.Socket").is_some());
+        assert!(rejected_import("Control.Concurrent (forkIO)").is_some());
+        assert!(rejected_import("Foreign.Ptr").is_some());
+        // Safe imports should pass
+        assert!(rejected_import("Data.List (sort)").is_none());
+        assert!(rejected_import("Data.Map.Strict").is_none());
+        assert!(rejected_import("Tidepool.Text").is_none());
+        assert!(rejected_import("qualified Data.Text as T").is_none());
+    }
+
+    #[test]
     fn test_build_preamble() {
         let effects = vec![
             EffectDecl {
@@ -1458,7 +1671,7 @@ mod tests {
         let stack = build_effect_stack_type(&effects);
         let source = vec!["let x = 42".into(), "pure x".into()];
 
-        let result = template_haskell(&preamble, &stack, &source, &[], &[], None);
+        let result = template_haskell(&preamble, &stack, &source, &[], &[], None, None);
 
         assert!(result.contains("module Expr where"));
         assert!(result.contains("import Control.Monad.Freer hiding (run)"));
@@ -1489,7 +1702,7 @@ mod tests {
     fn test_preamble_includes_helpers() {
         let decls = standard_decls();
         let preamble = build_preamble(&decls, false);
-        assert!(preamble.contains("say :: Text -> M ()\nsay = send . Print"));
+        assert!(preamble.contains("say :: Text -> M ()\nsay t"));
         assert!(preamble.contains("kvGet :: Text -> M (Maybe Value)\nkvGet = send . KvGet"));
         assert!(preamble.contains("fsRead :: Text -> M Text\nfsRead = send . FsRead"));
         assert!(preamble.contains("httpGet :: Text -> M Value\nhttpGet = send . HttpGet"));

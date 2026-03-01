@@ -13,7 +13,7 @@ pub use tidepool_codegen::host_fns::{drain_diagnostics, push_diagnostic};
 pub use tidepool_codegen::jit_machine::JitError;
 pub use tidepool_effect::dispatch::DispatchEffect;
 pub use tidepool_eval::value::Value;
-use tidepool_repr::serial::{read_cbor, read_metadata, ReadError};
+use tidepool_repr::serial::{read_cbor, read_metadata, MetaWarnings, ReadError};
 use tidepool_repr::{CoreExpr, DataConTable};
 
 mod cache;
@@ -21,8 +21,8 @@ mod render;
 
 pub use render::{EvalResult, value_to_json};
 
-/// Result of successful Haskell compilation: a Core expression and its associated DataCon metadata.
-pub type CompileResult = (CoreExpr, DataConTable);
+/// Result of successful Haskell compilation: a Core expression, DataCon metadata, and warnings.
+pub type CompileResult = (CoreExpr, DataConTable, MetaWarnings);
 
 /// Errors that can occur during Haskell compilation.
 #[derive(Debug)]
@@ -35,6 +35,8 @@ pub enum CompileError {
     ReadError(ReadError),
     /// A required output file (.cbor or meta.cbor) was not produced by the extractor.
     MissingOutput(PathBuf),
+    /// The target binding has IO type, which is not supported.
+    IOTypeDetected,
 }
 
 impl fmt::Display for CompileError {
@@ -45,6 +47,9 @@ impl fmt::Display for CompileError {
             CompileError::ReadError(e) => write!(f, "CBOR deserialization error: {}", e),
             CompileError::MissingOutput(path) => {
                 write!(f, "Missing output file from extractor: {}", path.display())
+            }
+            CompileError::IOTypeDetected => {
+                write!(f, "IO type detected in result binding. IO operations (unsafePerformIO, etc.) are not supported in the Tidepool sandbox.")
             }
         }
     }
@@ -136,8 +141,10 @@ pub fn compile_haskell(
     if let Some((expr_bytes, meta_bytes)) = cache::cache_load(&key) {
         // Attempt to deserialize cached data. If this fails, treat it as a cache
         // miss and fall through to recompilation instead of propagating the error.
-        if let (Ok(expr), Ok(table)) = (read_cbor(&expr_bytes), read_metadata(&meta_bytes)) {
-            return Ok((expr, table));
+        if let (Ok(expr), Ok((table, warnings))) =
+            (read_cbor(&expr_bytes), read_metadata(&meta_bytes))
+        {
+            return Ok((expr, table, warnings));
         }
     }
 
@@ -195,12 +202,12 @@ pub fn compile_haskell(
     let meta_bytes = std::fs::read(&meta_path)?;
 
     let expr = read_cbor(&expr_bytes)?;
-    let table = read_metadata(&meta_bytes)?;
+    let (table, warnings) = read_metadata(&meta_bytes)?;
 
     // Only store in cache if deserialization succeeded
     cache::cache_store(&key, &expr_bytes, &meta_bytes);
 
-    Ok((expr, table))
+    Ok((expr, table, warnings))
 }
 
 const DEFAULT_NURSERY_SIZE: usize = 1 << 26; // 64 MiB
@@ -227,7 +234,10 @@ pub fn compile_and_run_with_nursery_size<U, H: DispatchEffect<U>>(
     user: &U,
     nursery_size: usize,
 ) -> Result<EvalResult, RuntimeError> {
-    let (expr, table) = compile_haskell(source, target, include)?;
+    let (expr, table, warnings) = compile_haskell(source, target, include)?;
+    if warnings.has_io {
+        return Err(RuntimeError::Compile(CompileError::IOTypeDetected));
+    }
     let mut machine = JitEffectMachine::compile(&expr, &table, nursery_size)?;
     let value = machine.run(&table, handlers, user)?;
     Ok(EvalResult::new(value, table))
@@ -242,7 +252,10 @@ pub fn compile_and_run_pure(
     target: &str,
     include: &[&Path],
 ) -> Result<EvalResult, RuntimeError> {
-    let (expr, table) = compile_haskell(source, target, include)?;
+    let (expr, table, warnings) = compile_haskell(source, target, include)?;
+    if warnings.has_io {
+        return Err(RuntimeError::Compile(CompileError::IOTypeDetected));
+    }
     let mut machine = JitEffectMachine::compile(&expr, &table, DEFAULT_NURSERY_SIZE)?;
     let value = machine.run_pure()?;
     Ok(EvalResult::new(value, table))
@@ -286,7 +299,7 @@ mod tests {
     #[ignore] // Manual test: requires tidepool-extract on PATH
     fn test_compile_identity() {
         let source = "module Test where\nidentity x = x";
-        let (expr, _table) =
+        let (expr, _table, _warnings) =
             compile_haskell(source, "identity", &[]).expect("Failed to compile identity");
 
         // identity = \x -> x, should have 2 nodes: [Var(x), Lam(x, 0)]

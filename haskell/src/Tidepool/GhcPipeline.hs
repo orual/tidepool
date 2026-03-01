@@ -9,6 +9,7 @@ import GHC.Unit.Module.ModGuts (ModGuts(..))
 import GHC.Core (CoreBind)
 import GHC.Utils.Outputable (renderWithContext, defaultSDocContext)
 import System.Process (readProcess)
+import System.Environment (lookupEnv)
 import System.FilePath (takeBaseName)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad (forM, when)
@@ -72,5 +73,9 @@ dumpCore :: [CoreBind] -> String
 dumpCore binds = renderWithContext defaultSDocContext (pprCoreBindings binds)
 
 getLibdir :: IO FilePath
-getLibdir = trim <$> readProcess "ghc" ["--print-libdir"] ""
+getLibdir = do
+  envDir <- lookupEnv "TIDEPOOL_GHC_LIBDIR"
+  case envDir of
+    Just dir -> pure dir
+    Nothing  -> trim <$> readProcess "ghc" ["--print-libdir"] ""
   where trim = reverse . dropWhile (== '\n') . reverse

@@ -10,10 +10,10 @@ description = "Optimization passes for Tidepool Core"
 readme = "../README.md"
 
 [dependencies]
-tidepool-repr = { version = "0.0.1", path = "../tidepool-repr" }
-tidepool-eval = { version = "0.0.1", path = "../tidepool-eval" }
+tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
+tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
 
 [dev-dependencies]
-tidepool-testing = { version = "0.0.1", path = "../tidepool-testing" }
+tidepool-testing = { version = "0.1.0", path = "../tidepool-testing" }
 proptest = "1"
 serial_test = "3.4.0"
