@@ -44,7 +44,7 @@ fn test_hylo_sum() {
     let r = run_expr(
         r#"hylo (\x acc -> x + acc) (0 :: Int) (\n -> if n <= 0 then Nothing else Just (n, n-1)) 10"#,
     );
-    assert_eq!(r, serde_json::json!(55.0));
+    assert_eq!(r, serde_json::json!(55));
 }
 
 #[test]
@@ -52,13 +52,13 @@ fn test_ana_squares() {
     let r = run_expr(
         r#"ana (\n -> if n > 5 then Nothing else Just (n*n, n+1)) (1 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!([1.0, 4.0, 9.0, 16.0, 25.0]));
+    assert_eq!(r, serde_json::json!([1, 4, 9, 16, 25]));
 }
 
 #[test]
 fn test_cata_sum() {
     let r = run_expr(r#"cata (\x acc -> x + acc) (0 :: Int) [1,2,3,4,5]"#);
-    assert_eq!(r, serde_json::json!(15.0));
+    assert_eq!(r, serde_json::json!(15));
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn test_para_with_tail() {
     let r = run_expr(
         r#"para (\x xs acc -> (x, length xs) : acc) ([] :: [(Int,Int)]) [10,20,30]"#,
     );
-    assert_eq!(r, serde_json::json!([[10.0, 2.0], [20.0, 1.0], [30.0, 0.0]]));
+    assert_eq!(r, serde_json::json!([[10, 2], [20, 1], [30, 0]]));
 }
 
 #[test]
@@ -74,13 +74,13 @@ fn test_apo_short_circuit() {
     let r = run_expr(
         r#"apo (\n -> if n >= 3 then Left [99 :: Int] else Right (n, n+1)) (0 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!([0.0, 1.0, 2.0, 99.0]));
+    assert_eq!(r, serde_json::json!([0, 1, 2, 99]));
 }
 
 #[test]
 fn test_iterate_n() {
     let r = run_expr(r#"iterateN 5 (*2) (1 :: Int)"#);
-    assert_eq!(r, serde_json::json!([1.0, 2.0, 4.0, 8.0, 16.0]));
+    assert_eq!(r, serde_json::json!([1, 2, 4, 8, 16]));
 }
 
 #[test]
@@ -88,19 +88,19 @@ fn test_converge_isqrt() {
     let r = run_expr(
         r#"let isqrt n = converge (\x -> (x + n `div` x) `div` 2) n in isqrt (144 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!(12.0));
+    assert_eq!(r, serde_json::json!(12));
 }
 
 #[test]
 fn test_lens_1() {
     let r = run_expr(r#"let p = (10 :: Int, 20 :: Int) in (p ^? _1, p & _2 .~ 99)"#);
-    assert_eq!(r, serde_json::json!([10.0, [10.0, 99.0]]));
+    assert_eq!(r, serde_json::json!([10, [10, 99]]));
 }
 
 #[test]
 fn test_lens_ix() {
     let r = run_expr(r#"[1,2,3,4,5 :: Int] & ix 2 %~ (* 100)"#);
-    assert_eq!(r, serde_json::json!([1.0, 2.0, 300.0, 4.0, 5.0]));
+    assert_eq!(r, serde_json::json!([1, 2, 300, 4, 5]));
 }
 
 #[test]
@@ -108,25 +108,25 @@ fn test_lens_builder() {
     let r = run_expr(
         r#"let name = lens fst (\(_,b) a -> (a,b)); age = lens snd (\(a,_) b -> (a,b)) in ("alice" :: Text, 30 :: Int) & age %~ (+ 1) & name .~ "bob""#,
     );
-    assert_eq!(r, serde_json::json!(["bob", 31.0]));
+    assert_eq!(r, serde_json::json!(["bob", 31]));
 }
 
 #[test]
 fn test_scanl() {
     let r = run_expr(r#"scanl' (+) (0 :: Int) [1,2,3,4]"#);
-    assert_eq!(r, serde_json::json!([0.0, 1.0, 3.0, 6.0, 10.0]));
+    assert_eq!(r, serde_json::json!([0, 1, 3, 6, 10]));
 }
 
 #[test]
 fn test_iterate_while() {
     let r = run_expr(r#"iterateWhile (< 100) (* 2) (1 :: Int)"#);
-    assert_eq!(r, serde_json::json!([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]));
+    assert_eq!(r, serde_json::json!([1, 2, 4, 8, 16, 32, 64]));
 }
 
 #[test]
 fn test_until() {
     let r = run_expr(r#"until' (> 1000) (* 3) (1 :: Int)"#);
-    assert_eq!(r, serde_json::json!(2187.0));
+    assert_eq!(r, serde_json::json!(2187));
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn test_apo_m() {
     let r = run_expr(
         r#"let go n = if n >= 3 then Left [99, 100 :: Int] else Right (n, n+1) in apo go (0 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!([0.0, 1.0, 2.0, 99.0, 100.0]));
+    assert_eq!(r, serde_json::json!([0, 1, 2, 99, 100]));
 }
 
 // -----------------------------------------------------------------------
@@ -148,7 +148,7 @@ fn test_compose_producer_consumer() {
     let r = run_expr(
         r#"let digits = ana (\n -> if n == 0 then Nothing else Just (n `rem` 10, n `div` 10)) in foldl' (\acc d -> acc * 10 + d) (0 :: Int) (digits 1234)"#,
     );
-    assert_eq!(r, serde_json::json!(4321.0));
+    assert_eq!(r, serde_json::json!(4321));
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn test_compose_hylo_is_fused_ana_cata() {
     let r = run_expr(
         r#"hylo (+) (0 :: Int) (\n -> if n == 0 then Nothing else Just (n `rem` 10, n `div` 10)) 9999"#,
     );
-    assert_eq!(r, serde_json::json!(36.0)); // 9+9+9+9
+    assert_eq!(r, serde_json::json!(36)); // 9+9+9+9
 }
 
 #[test]
@@ -168,7 +168,7 @@ fn test_compose_producer_lens_consumer() {
         r#"let pairs = ana (\n -> if n > 3 then Nothing else Just ((n, n*n), n+1)) (1 :: Int) in cata (\p acc -> (p & _2 %~ (* 10)) : acc) ([] :: [(Int,Int)]) pairs"#,
     );
     // [(1,10), (2,40), (3,90)] — second elements multiplied by 10
-    assert_eq!(r, serde_json::json!([[1.0, 10.0], [2.0, 40.0], [3.0, 90.0]]));
+    assert_eq!(r, serde_json::json!([[1, 10], [2, 40], [3, 90]]));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn test_compose_scanl_is_ana_with_accumulator() {
     let r = run_expr(
         r#"foldl' (\a b -> if a > b then a else b) (0 :: Int) (scanl' (+) 0 [3,1,4,1,5])"#,
     );
-    assert_eq!(r, serde_json::json!(14.0)); // 0,3,4,8,9,14 → max is 14
+    assert_eq!(r, serde_json::json!(14)); // 0,3,4,8,9,14 → max is 14
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn test_compose_bounded_search() {
     let r = run_expr(
         r#"cata (+) (0 :: Int) (iterateWhile (< 1000) (* 2) 1)"#,
     );
-    assert_eq!(r, serde_json::json!(1023.0)); // 1+2+4+...+512
+    assert_eq!(r, serde_json::json!(1023)); // 1+2+4+...+512
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn test_compose_converge_with_scanl() {
         r#"let step x = (x + 200 `div` x) `div` 2 in last (iterateN 6 step (200 :: Int))"#,
     );
     // Should converge toward 14 (isqrt 200 = 14)
-    assert_eq!(r, serde_json::json!(14.0));
+    assert_eq!(r, serde_json::json!(14));
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn test_compose_apo_into_cata() {
         r#"cata (+) (0 :: Int) (apo (\n -> if n > 4 then Left [100, 200 :: Int] else Right (n, n+1)) 1)"#,
     );
     // 1+2+3+4+100+200 = 310
-    assert_eq!(r, serde_json::json!(310.0));
+    assert_eq!(r, serde_json::json!(310));
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn test_pipeline_pure() {
     let r = run_expr(
         r#"let f x = Just (x + 1); g x = Just (x * 2); h x = Just (x - 3) in pipeline [f, g, h] (10 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!(19.0)); // ((10+1)*2)-3 = 19
+    assert_eq!(r, serde_json::json!(19)); // ((10+1)*2)-3 = 19
 }
 
 #[test]
@@ -238,7 +238,7 @@ fn test_fan_out_pure() {
     let r = run_expr(
         r#"fanOut [\x -> Just (x*2), \x -> Just (x+100), \x -> Just (x*x)] (5 :: Int)"#,
     );
-    assert_eq!(r, serde_json::json!([10.0, 105.0, 25.0]));
+    assert_eq!(r, serde_json::json!([10, 105, 25]));
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn test_fold_early() {
     let r = run_expr(
         r#"let step acc x = if acc + x > 10 then Just (Left acc) else Just (Right (acc + x)) in foldEarlyM step (0 :: Int) [3, 4, 5, 6, 7]"#,
     );
-    assert_eq!(r, serde_json::json!(7.0)); // 3+4=7, 7+5=12>10 → bail with 7
+    assert_eq!(r, serde_json::json!(7)); // 3+4=7, 7+5=12>10 → bail with 7
 }
 
 #[test]
@@ -265,5 +265,5 @@ fn test_tree_hylo_merge_sort() {
     let r = run_expr(
         r#"let merge [] ys = ys; merge xs [] = xs; merge (x:xs) (y:ys) = if x <= y then x : merge xs (y:ys) else y : merge (x:xs) ys in treeHylo (\l _ r -> merge l r) (id :: [Int] -> [Int]) (\xs -> if length xs <= 1 then Left xs else let h = length xs `div` 2 in Right (take h xs, (), drop h xs)) ([5,3,8,1,4,2 :: Int])"#,
     );
-    assert_eq!(r, serde_json::json!([1.0, 2.0, 3.0, 4.0, 5.0, 8.0]));
+    assert_eq!(r, serde_json::json!([1, 2, 3, 4, 5, 8]));
 }

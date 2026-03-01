@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use ast_grep_config::{DeserializeEnv, SerializableRule};
 use ast_grep_core::{Language as _, Pattern};
 use ast_grep_language::{LanguageExt, SupportLang};
 use tidepool_bridge_derive::{FromCore, ToCore};
@@ -59,14 +60,31 @@ enum KvReq {
 
 #[derive(Clone)]
 struct KvHandler {
-    store: Arc<Mutex<HashMap<String, Value>>>,
+    store: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    path: PathBuf,
 }
 
 impl KvHandler {
-    fn new() -> Self {
+    fn new(path: PathBuf) -> Self {
+        let store = if path.exists() {
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+                Err(_) => HashMap::new(),
+            }
+        } else {
+            HashMap::new()
+        };
         Self {
-            store: Arc::new(Mutex::new(HashMap::new())),
+            store: Arc::new(Mutex::new(store)),
+            path,
         }
+    }
+
+    fn flush(&self, store: &HashMap<String, serde_json::Value>) {
+        if let Some(parent) = self.path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&self.path, serde_json::to_string_pretty(store).unwrap_or_default());
     }
 }
 
@@ -89,15 +107,18 @@ impl EffectHandler<CapturedOutput> for KvHandler {
             .map_err(|e| EffectError::Handler(format!("Mutex poisoned: {}", e)))?;
         match req {
             KvReq::Get(key) => {
-                let val = store.get(&key).cloned();
+                let val: Option<serde_json::Value> = store.get(&key).cloned();
                 cx.respond(val)
             }
             KvReq::Set(key, val) => {
-                store.insert(key, val);
+                let json_val = tidepool_runtime::value_to_json(&val, cx.table(), 0);
+                store.insert(key, json_val);
+                self.flush(&store);
                 cx.respond(())
             }
             KvReq::Delete(key) => {
                 store.remove(&key);
+                self.flush(&store);
                 cx.respond(())
             }
             KvReq::Keys => {
@@ -300,6 +321,10 @@ enum SgReq {
     Preview(Lang, String, String, Vec<String>),
     #[core(name = "SgReplace")]
     Replace(Lang, String, String, Vec<String>),
+    #[core(name = "SgRuleFind")]
+    RuleFind(Lang, Value, Vec<String>),
+    #[core(name = "SgRuleReplace")]
+    RuleReplace(Lang, Value, String, Vec<String>),
 }
 
 /// Rust-side Match value returned to Haskell.
@@ -457,6 +482,108 @@ impl SgHandler {
         }
         Ok(total)
     }
+
+    fn deserialize_rule(
+        &self,
+        lang: Lang,
+        rule_json: &Value,
+        table: &tidepool_repr::DataConTable,
+    ) -> Result<(SupportLang, ast_grep_config::Rule), EffectError> {
+        let sl = lang.to_support_lang()?;
+        let json_val = tidepool_runtime::value_to_json(rule_json, table, 0);
+        let serializable: SerializableRule = serde_json::from_value(json_val)
+            .map_err(|e| EffectError::Handler(format!("invalid rule JSON: {}", e)))?;
+        let env = DeserializeEnv::new(sl);
+        let rule = env
+            .deserialize_rule(serializable)
+            .map_err(|e| EffectError::Handler(format!("invalid rule: {}", e)))?;
+        Ok((sl, rule))
+    }
+
+    fn run_rule_find(
+        &self,
+        lang: Lang,
+        rule_json: &Value,
+        paths: &[String],
+        rewrite: Option<&str>,
+        table: &tidepool_repr::DataConTable,
+    ) -> Result<Vec<SgMatch>, EffectError> {
+        let (sl, rule) = self.deserialize_rule(lang, rule_json, table)?;
+        let files = self.collect_files(sl, paths)?;
+        let mut results = Vec::new();
+
+        for file_path in files {
+            let source = std::fs::read_to_string(&file_path)
+                .map_err(|e| EffectError::Handler(e.to_string()))?;
+            let grep = sl.ast_grep(&source);
+            let relative = file_path
+                .strip_prefix(&self.root)
+                .unwrap_or(&file_path)
+                .to_string_lossy()
+                .to_string();
+
+            for m in grep.root().find_all(&rule) {
+                let text = m.text().to_string();
+                let line = m.start_pos().line() as i64 + 1;
+                let env: HashMap<String, String> = m.get_env().clone().into();
+                let mut vars: Vec<(String, String)> = env.into_iter().collect();
+                vars.sort_by(|a, b| a.0.cmp(&b.0));
+
+                let replacement = if let Some(rw) = rewrite {
+                    let edit = m.replace_by(rw);
+                    String::from_utf8_lossy(&edit.inserted_text).to_string()
+                } else {
+                    String::new()
+                };
+
+                results.push(SgMatch {
+                    text,
+                    file: relative.clone(),
+                    line,
+                    vars,
+                    replacement,
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    fn run_rule_replace(
+        &self,
+        lang: Lang,
+        rule_json: &Value,
+        rewrite: &str,
+        paths: &[String],
+        table: &tidepool_repr::DataConTable,
+    ) -> Result<i64, EffectError> {
+        let (sl, rule) = self.deserialize_rule(lang, rule_json, table)?;
+        let files = self.collect_files(sl, paths)?;
+        let mut total = 0i64;
+
+        for file_path in files {
+            let source = std::fs::read_to_string(&file_path)
+                .map_err(|e| EffectError::Handler(e.to_string()))?;
+            let grep = sl.ast_grep(&source);
+            let edits = grep.root().replace_all(&rule, rewrite);
+
+            if !edits.is_empty() {
+                total += edits.len() as i64;
+                let mut new_source = source.clone();
+                // Apply edits in reverse order to preserve positions
+                let mut sorted_edits = edits;
+                sorted_edits.sort_by(|a, b| b.position.cmp(&a.position));
+                for edit in sorted_edits {
+                    let start = edit.position;
+                    let end = start + edit.deleted_length;
+                    let replacement = String::from_utf8_lossy(&edit.inserted_text);
+                    new_source.replace_range(start..end, &replacement);
+                }
+                std::fs::write(&file_path, &new_source)
+                    .map_err(|e| EffectError::Handler(e.to_string()))?;
+            }
+        }
+        Ok(total)
+    }
 }
 
 impl DescribeEffect for SgHandler {
@@ -483,6 +610,14 @@ impl EffectHandler<CapturedOutput> for SgHandler {
             }
             SgReq::Replace(lang, pattern, rewrite, paths) => {
                 let count = self.run_replace(lang, &pattern, &rewrite, &paths)?;
+                cx.respond(count)
+            }
+            SgReq::RuleFind(lang, rule_json, paths) => {
+                let matches = self.run_rule_find(lang, &rule_json, &paths, None, cx.table())?;
+                cx.respond(matches)
+            }
+            SgReq::RuleReplace(lang, rule_json, rewrite, paths) => {
+                let count = self.run_rule_replace(lang, &rule_json, &rewrite, &paths, cx.table())?;
                 cx.respond(count)
             }
         }
@@ -725,6 +860,98 @@ impl EffectHandler<CapturedOutput> for ExecHandler {
     }
 }
 
+// === Tag 6: Meta (runtime introspection) ===
+
+#[derive(FromCore)]
+enum MetaReq {
+    #[core(name = "MetaConstructors")]
+    Constructors,
+    #[core(name = "MetaLookupCon")]
+    LookupCon(String),
+    #[core(name = "MetaPrimOps")]
+    PrimOps,
+    #[core(name = "MetaEffects")]
+    Effects,
+    #[core(name = "MetaDiagnostics")]
+    Diagnostics,
+    #[core(name = "MetaVersion")]
+    Version,
+}
+
+#[derive(Clone)]
+struct MetaHandler {
+    effect_names: Vec<String>,
+}
+
+impl MetaHandler {
+    fn new(effect_names: Vec<String>) -> Self {
+        Self { effect_names }
+    }
+}
+
+impl DescribeEffect for MetaHandler {
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::meta_decl()
+    }
+}
+
+impl EffectHandler<CapturedOutput> for MetaHandler {
+    type Request = MetaReq;
+    fn handle(
+        &mut self,
+        req: MetaReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
+        match req {
+            MetaReq::Constructors => {
+                let mut pairs: Vec<(String, i64)> = cx
+                    .table()
+                    .iter()
+                    .map(|dc| (dc.name.clone(), dc.rep_arity as i64))
+                    .collect();
+                pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                cx.respond(pairs)
+            }
+            MetaReq::LookupCon(name) => {
+                let result: Option<(i64, i64)> = cx.table().get_by_name(&name).and_then(|id| {
+                    cx.table()
+                        .get(id)
+                        .map(|dc| (dc.tag as i64, dc.rep_arity as i64))
+                });
+                cx.respond(result)
+            }
+            MetaReq::PrimOps => {
+                let primops: Vec<String> = vec![
+                    "+#", "-#", "*#", "negateInt#",
+                    "==#", "/=#", "<#", "<=#", ">#", ">=#",
+                    "quotInt#", "remInt#",
+                    "andI#", "orI#", "xorI#", "notI#",
+                    "uncheckedIShiftL#", "uncheckedIShiftRA#", "uncheckedIShiftRL#",
+                    "int2Double#", "double2Int#",
+                    "+##", "-##", "*##", "/##", "negateDouble#",
+                    "==##", "/=##", "<##", "<=##", ">##", ">=##",
+                    "sqrtDouble#", "sinDouble#", "cosDouble#", "expDouble#", "logDouble#",
+                    "**##", "fabsDouble#",
+                    "chr#", "ord#",
+                    "newMutVar#", "readMutVar#", "writeMutVar#",
+                    "seq#", "tagToEnum#",
+                ].into_iter().map(String::from).collect();
+                cx.respond(primops)
+            }
+            MetaReq::Effects => {
+                cx.respond(self.effect_names.clone())
+            }
+            MetaReq::Diagnostics => {
+                let diags = tidepool_runtime::drain_diagnostics();
+                cx.respond(diags)
+            }
+            MetaReq::Version => {
+                cx.respond(env!("CARGO_PKG_VERSION").to_string())
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -740,13 +967,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tidepool_codegen::signal_safety::install();
 
     let cwd = std::env::current_dir()?;
+    let tidepool_dir = cwd.join(".tidepool");
+    let kv_path = tidepool_dir.join("kv.json");
+    let effect_names: Vec<String> = tidepool_mcp::standard_decls()
+        .iter()
+        .map(|d| d.type_name.to_string())
+        .collect();
     let handlers = frunk::hlist![
         ConsoleHandler,
-        KvHandler::new(),
+        KvHandler::new(kv_path),
         FsHandler::new(cwd.clone()),
         SgHandler::new(cwd.clone()),
         HttpHandler,
-        ExecHandler::new(cwd.clone())
+        ExecHandler::new(cwd.clone()),
+        MetaHandler::new(effect_names)
     ];
 
     // Prelude lives at haskell/lib/ relative to repo root, or via TIDEPOOL_PRELUDE_DIR.

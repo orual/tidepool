@@ -91,6 +91,8 @@ module Tidepool.Prelude
   , last
     -- * Numeric utilities
   , even, odd
+    -- * Text-to-number parsing
+  , parseIntM, parseInt, parseDoubleM, parseDouble
     -- * Char/Enum
   , ord, chr, fromEnum
     -- * Map/Set types
@@ -427,4 +429,66 @@ on f g x y = f (g x) (g y)
 comparing :: Ord b => (a -> b) -> a -> a -> Ordering
 comparing f x y = compare (f x) (f y)
 {-# INLINE comparing #-}
+
+-- ---------------------------------------------------------------------------
+-- Text-to-number parsing (avoids Read typeclass which crashes the JIT)
+-- ---------------------------------------------------------------------------
+
+-- | Parse an integer from Text, returning Nothing on failure.
+parseIntM :: Text -> Maybe Int
+parseIntM t = case T.uncons t of
+  Nothing -> Nothing
+  Just ('-', rest) -> negate <$> parseNat rest
+  Just ('+', rest) -> parseNat rest
+  Just _           -> parseNat t
+  where
+    parseNat :: Text -> Maybe Int
+    parseNat s
+      | T.null s          = Nothing
+      | T.all isDigitC s  = Just (T.foldl' (\acc c -> acc * 10 + (ord c - ord '0')) 0 s)
+      | otherwise         = Nothing
+    isDigitC :: Char -> Bool
+    isDigitC c = c >= '0' && c <= '9'
+
+-- | Parse an integer from Text, calling error on failure.
+parseInt :: Text -> Int
+parseInt t = fromMaybe (error ("parseInt: not a number: " <> T.unpack t)) (parseIntM t)
+
+-- | Parse a Double from Text, returning Nothing on failure.
+-- Handles optional sign, integer part, optional decimal part.
+parseDoubleM :: Text -> Maybe Double
+parseDoubleM t = case T.uncons t of
+  Nothing -> Nothing
+  Just ('-', rest) -> negate <$> parsePos rest
+  Just ('+', rest) -> parsePos rest
+  Just _           -> parsePos t
+  where
+    parsePos :: Text -> Maybe Double
+    parsePos s = case T.break (== '.') s of
+      (intPart, rest)
+        | T.null intPart -> Nothing
+        | not (T.all isDigitC intPart) -> Nothing
+        | T.null rest ->
+            Just (fromIntegral (parseDigits intPart))
+        | otherwise -> case T.uncons rest of
+            Just ('.', fracPart)
+              | T.null fracPart -> Just (fromIntegral (parseDigits intPart))
+              | T.all isDigitC fracPart ->
+                  let whole = fromIntegral (parseDigits intPart) :: Double
+                      frac  = fromIntegral (parseDigits fracPart) :: Double
+                      denom = fromIntegral (pow10 (T.length fracPart)) :: Double
+                  in  Just (whole + frac / denom)
+              | otherwise -> Nothing
+            _ -> Nothing
+    parseDigits :: Text -> Int
+    parseDigits = T.foldl' (\acc c -> acc * 10 + (ord c - ord '0')) 0
+    pow10 :: Int -> Int
+    pow10 0 = 1
+    pow10 !n = 10 * pow10 (n - 1)
+    isDigitC :: Char -> Bool
+    isDigitC c = c >= '0' && c <= '9'
+
+-- | Parse a Double from Text, calling error on failure.
+parseDouble :: Text -> Double
+parseDouble t = fromMaybe (error ("parseDouble: not a number: " <> T.unpack t)) (parseDoubleM t)
 

@@ -37,7 +37,7 @@ fn mcp_source(lines: &[&str]) -> String {
 
 fn mcp_source_with_helpers(lines: &[&str], helpers: &[&str]) -> String {
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let helpers: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
@@ -46,7 +46,7 @@ fn mcp_source_with_helpers(lines: &[&str], helpers: &[&str]) -> String {
 
 fn mcp_source_with_imports(lines: &[&str], helpers: &[&str], imports: &[&str]) -> String {
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let helpers: Vec<String> = helpers.iter().map(|s| s.to_string()).collect();
@@ -186,7 +186,7 @@ enum KvReq {
     #[core(name = "KvGet")]
     Get(String),
     #[core(name = "KvSet")]
-    Set(String, String),
+    Set(String, Value),
     #[core(name = "KvDelete")]
     Delete(String),
     #[core(name = "KvKeys")]
@@ -194,7 +194,7 @@ enum KvReq {
 }
 
 struct TestKv {
-    store: HashMap<String, String>,
+    store: HashMap<String, Value>,
 }
 
 impl TestKv {
@@ -210,7 +210,7 @@ impl EffectHandler for TestKv {
     fn handle(&mut self, req: KvReq, cx: &EffectContext) -> Result<Value, EffectError> {
         match req {
             KvReq::Get(k) => {
-                let val: Option<String> = self.store.get(&k).cloned();
+                let val: Option<Value> = self.store.get(&k).cloned();
                 cx.respond(val)
             }
             KvReq::Set(k, v) => {
@@ -231,6 +231,7 @@ impl EffectHandler for TestKv {
 
 // Tag 2: Fs effect (stub)
 #[derive(FromCore)]
+#[allow(dead_code)]
 enum FsReq {
     #[core(name = "FsRead")]
     Read(String),
@@ -336,7 +337,7 @@ fn run_aeson_effectful_with_input(
     input: serde_json::Value,
 ) -> (serde_json::Value, Vec<String>) {
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines_owned: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let imports: Vec<String> = aeson_import_strs().iter().map(|s| s.to_string()).collect();
@@ -365,7 +366,7 @@ fn run_aeson_effectful_with_input(
 
 fn run_aeson_with_input(lines: &[&str], input: serde_json::Value) -> serde_json::Value {
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines_owned: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let imports: Vec<String> = aeson_import_strs().iter().map(|s| s.to_string()).collect();
@@ -470,7 +471,7 @@ fn test_aeson_lens_key_integer() {
         r#"let obj = object ["x" .= (42 :: Int), "y" .= (99 :: Int)]"#,
         r#"pure (obj ^? key "x" . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(42.0));
+    assert_eq!(json, serde_json::json!(42));
 }
 
 /// Key lookup on missing field returns Nothing → null
@@ -501,7 +502,7 @@ fn test_aeson_lens_nth() {
         r#"let arr = toJSON [10, 20, 30 :: Int]"#,
         r#"pure (arr ^? nth 1 . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(20.0));
+    assert_eq!(json, serde_json::json!(20));
 }
 
 /// Use (^..) to extract all strings from an object
@@ -552,7 +553,7 @@ fn test_aeson_multistage_extract_compute() {
         ],
         &[],
     );
-    assert_eq!(json, serde_json::json!(85.0));
+    assert_eq!(json, serde_json::json!(85));
 }
 
 /// Build nested JSON, modify inner field, extract result (uses _String to avoid Scientific/GMP)
@@ -586,7 +587,7 @@ fn test_aeson_effect_print_field() {
 #[test]
 fn test_aeson_effect_kv_store_retrieve() {
     let (json, _) = run_aeson_effectful(&[
-        r#"send (KvSet "data" "hello world")"#,
+        r#"kvSet "data" (toJSON ("hello world" :: Text))"#,
         r#"raw <- send (KvGet "data")"#,
         r#"pure raw"#,
     ]);
@@ -607,7 +608,7 @@ fn test_aeson_effect_multi_print() {
         r#"  Nothing -> pure ()"#,
         r#"pure (record ^? key "age" . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(28.0));
+    assert_eq!(json, serde_json::json!(28));
     assert_eq!(console, vec!["Jane", "Doe"]);
 }
 
@@ -630,7 +631,7 @@ fn test_aeson_input_nested() {
         &[r#"pure (input ^? key "config" . key "port" . _Number)"#],
         serde_json::json!({"config": {"port": 8080, "host": "localhost"}}),
     );
-    assert_eq!(json, serde_json::json!(8080.0));
+    assert_eq!(json, serde_json::json!(8080));
 }
 
 /// Input injection with array access
@@ -653,7 +654,7 @@ fn test_aeson_input_transform() {
         ],
         serde_json::json!({"scores": [10, 20, 30]}),
     );
-    assert_eq!(json, serde_json::json!([10.0, 20.0, 30.0]));
+    assert_eq!(json, serde_json::json!([10, 20, 30]));
 }
 
 /// Input injection with effect: extract from input, print, return
@@ -662,7 +663,7 @@ fn test_aeson_input_with_effect() {
     let input_val = serde_json::json!({"greeting": "Hello from JSON!"});
     let imports: Vec<&str> = aeson_import_strs();
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines = vec![
         r#"case input ^? key "greeting" . _String of"#.to_string(),
@@ -768,7 +769,7 @@ fn test_aeson_lens_nested_deep() {
         r#"let ok = v ^? key "meta" . key "ok" . _Bool"#,
         r#"pure (ver, ok)"#,
     ]);
-    assert_eq!(json, serde_json::json!([1.0, true]));
+    assert_eq!(json, serde_json::json!([1, true]));
 }
 
 /// _Number now returns Double directly (no Scientific).
@@ -779,7 +780,7 @@ fn test_aeson_number_prism_double() {
         r#"let n = s ^? _Number"#,
         r#"pure n"#,
     ]);
-    assert_eq!(json, serde_json::json!(42.0));
+    assert_eq!(json, serde_json::json!(42));
 }
 
 /// _Double prism — now trivially wraps _Number (no Scientific).
@@ -953,6 +954,15 @@ fn test_show_maybe_string() {
 }
 
 #[test]
+fn test_show_aeson_value() {
+    // Regression: derived Show for Value crashed on Number !Double due to
+    // strict field unboxing. Hand-written Show instance fixes this.
+    let (json, logs) = run_mcp_effectful(&["let v = toJSON (42 :: Int)", "say (show v)", "pure v"]);
+    assert_eq!(json, serde_json::json!(42));
+    assert_eq!(logs, vec!["Number 42.0"]);
+}
+
+#[test]
 
 fn test_nub_string() {
     // Test list equality via the Eq [Char] specialization substitute
@@ -1076,7 +1086,9 @@ fn test_mcp_take() {
 #[test]
 
 fn test_mcp_string_append() {
-    let json = run_mcp(&["pure (\"hello\" ++ \" world\")"]);
+    // Use Text append (<>) instead of String (++) — toJSON @String uses the [a]
+    // instance which maps toJSON per-char, while toJSON @Text produces a single string.
+    let json = run_mcp(&["pure ((\"hello\" :: Text) <> \" world\")"]);
     assert_eq!(json, serde_json::json!("hello world"));
 }
 
@@ -1116,7 +1128,7 @@ fn test_mcp_inline_sort() {
 
 fn test_effect_kv_set_get() {
     // The original bug: () return from KvSet must be TAG_CON
-    let (json, _) = run_mcp_effectful(&["send (KvSet \"k\" \"v\")", "send (KvGet \"k\")"]);
+    let (json, _) = run_mcp_effectful(&["kvSet \"k\" (toJSON (\"v\" :: Text))", "send (KvGet \"k\")"]);
     assert_eq!(json, serde_json::json!("v")); // Just "v" → unwrapped
 }
 
@@ -1131,7 +1143,7 @@ fn test_effect_kv_get_missing() {
 
 fn test_effect_kv_delete_then_get() {
     let (json, _) = run_mcp_effectful(&[
-        "send (KvSet \"k\" \"v\")",
+        "kvSet \"k\" (toJSON (\"v\" :: Text))",
         "send (KvDelete \"k\")",
         "send (KvGet \"k\")",
     ]);
@@ -1142,9 +1154,9 @@ fn test_effect_kv_delete_then_get() {
 
 fn test_effect_kv_keys() {
     let (json, _) = run_mcp_effectful(&[
-        "send (KvSet \"a\" \"1\")",
-        "send (KvSet \"b\" \"2\")",
-        "send (KvSet \"c\" \"3\")",
+        "kvSet \"a\" (toJSON (\"1\" :: Text))",
+        "kvSet \"b\" (toJSON (\"2\" :: Text))",
+        "kvSet \"c\" (toJSON (\"3\" :: Text))",
         "send KvKeys",
     ]);
     // Keys come back as a list, order may vary
@@ -1184,7 +1196,7 @@ fn test_effect_console_multi_print() {
 fn test_effect_mixed_console_kv() {
     let (json, lines) = run_mcp_effectful(&[
         "send (Print \"storing\")",
-        "send (KvSet \"x\" \"42\")",
+        "kvSet \"x\" (toJSON (\"42\" :: Text))",
         "v <- send (KvGet \"x\")",
         "send (Print \"loaded\")",
         "pure v",
@@ -1197,9 +1209,9 @@ fn test_effect_mixed_console_kv() {
 
 fn test_effect_kv_conditional() {
     let (json, _) = run_mcp_effectful(&[
-        "send (KvSet \"flag\" \"yes\")",
+        "kvSet \"flag\" (toJSON (\"yes\" :: Text))",
         "v <- send (KvGet \"flag\")",
-        "case v of { Just _ -> send (KvSet \"result\" \"found\"); Nothing -> send (KvSet \"result\" \"missing\") }",
+        "case v of { Just _ -> kvSet \"result\" (toJSON (\"found\" :: Text)); Nothing -> kvSet \"result\" (toJSON (\"missing\" :: Text)) }",
         "send (KvGet \"result\")",
     ]);
     assert_eq!(json, serde_json::json!("found")); // Just "found" → unwrapped
@@ -1209,8 +1221,8 @@ fn test_effect_kv_conditional() {
 
 fn test_effect_kv_overwrite() {
     let (json, _) = run_mcp_effectful(&[
-        "send (KvSet \"k\" \"old\")",
-        "send (KvSet \"k\" \"new\")",
+        "kvSet \"k\" (toJSON (\"old\" :: Text))",
+        "kvSet \"k\" (toJSON (\"new\" :: Text))",
         "send (KvGet \"k\")",
     ]);
     assert_eq!(json, serde_json::json!("new")); // Just "new" → unwrapped
@@ -1238,16 +1250,16 @@ fn test_effect_words_custom() {
 fn test_effect_helper_two_args() {
     // Reproducer: two-arg helper function that calls KvGet + case + KvSet/FsWrite.
     // Panicked with "no entry found for key" (HashMap Index on missing VarId).
-    let (json, console) = run_mcp_effectful_with_helpers(
+    let (json, _console) = run_mcp_effectful_with_helpers(
         &[
-            "send (KvSet \"a\" \"data\")",
+            "kvSet \"a\" (toJSON (\"data\" :: Text))",
             "persist \"a\" \"out.txt\"",
             "pure \"done\"",
         ],
         &[r#"persist :: Text -> Text -> Eff '[Console, KV, Fs] ()
 persist key filename = do
   val <- send (KvGet key)
-  case val of
+  case val >>= (^? _String) of
     Nothing -> send (Print "nothing")
     Just content -> send (FsWrite filename content)"#],
     );
@@ -1428,7 +1440,9 @@ fn test_map_filter_with_key() {
 
 #[test]
 fn test_map_over_string_literal() {
-    let json = run_mcp(&["pure (map (\\c -> chr (ord c + 1)) \"Hello\")"]);
+    // Use T.pack to convert [Char] result to Text before toJSON serializes it.
+    // Without this, toJSON @[Char] maps per-char → Array of single-char strings.
+    let json = run_mcp(&["pure (T.pack (map (\\c -> chr (ord c + 1)) (T.unpack \"Hello\")))"]);
     assert_eq!(json, serde_json::json!("Ifmmp"));
 }
 
@@ -1634,7 +1648,7 @@ fn test_diag_map_run_twice_big_nursery() {
 #[test]
 fn test_kv_keys_text_length() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.length keys)"#,
     ]);
@@ -1648,7 +1662,7 @@ fn test_kv_keys_text_length() {
 #[test]
 fn test_kv_keys_text_drop() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.drop 2) keys)"#,
     ]);
@@ -1661,7 +1675,7 @@ fn test_kv_keys_text_drop() {
 #[test]
 fn test_kv_keys_text_take() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.take 3) keys)"#,
     ]);
@@ -1673,8 +1687,8 @@ fn test_kv_keys_text_take() {
 #[test]
 fn test_kv_keys_strip_namespace_prefix() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "ns:foo" "v1")"#,
-        r#"send (KvSet "ns:bar" "v2")"#,
+        r#"kvSet "ns:foo" (toJSON ("v1" :: Text))"#,
+        r#"kvSet "ns:bar" (toJSON ("v2" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let stripped = sort (map (T.drop 3) keys)"#,
         r#"pure stripped"#,
@@ -1687,7 +1701,7 @@ fn test_kv_keys_strip_namespace_prefix() {
 #[test]
 fn test_kv_keys_text_split_at() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.splitAt 3) keys)"#,
     ]);
@@ -1699,7 +1713,7 @@ fn test_kv_keys_text_split_at() {
 #[test]
 fn test_kv_keys_text_null() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "nonempty" "v")"#,
+        r#"kvSet "nonempty" (toJSON ("v" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.null keys)"#,
     ]);
@@ -1711,7 +1725,7 @@ fn test_kv_keys_text_null() {
 #[test]
 fn test_kv_keys_text_reverse() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.reverse keys)"#,
     ]);
@@ -1723,7 +1737,7 @@ fn test_kv_keys_text_reverse() {
 #[test]
 fn test_kv_keys_text_append() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (\k -> T.append k "!") keys)"#,
     ]);
@@ -1734,7 +1748,7 @@ fn test_kv_keys_text_append() {
 #[test]
 fn test_kv_keys_text_split_on() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "a:b:c" "v")"#,
+        r#"kvSet "a:b:c" (toJSON ("v" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (splitOn ":") keys)"#,
     ]);
@@ -1746,7 +1760,7 @@ fn test_kv_keys_text_split_on() {
 #[test]
 fn test_kv_keys_text_eq() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (== "hello") keys)"#,
     ]);
@@ -1758,8 +1772,8 @@ fn test_kv_keys_text_eq() {
 #[test]
 fn test_kv_keys_text_is_prefix_of() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "prefix:a" "v1")"#,
-        r#"send (KvSet "other:b" "v2")"#,
+        r#"kvSet "prefix:a" (toJSON ("v1" :: Text))"#,
+        r#"kvSet "other:b" (toJSON ("v2" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let matching = filter (T.isPrefixOf "prefix:") keys"#,
         r#"pure (length matching)"#,
@@ -1772,7 +1786,7 @@ fn test_kv_keys_text_is_prefix_of() {
 #[test]
 fn test_kv_keys_text_words() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "foo bar baz" "v")"#,
+        r#"kvSet "foo bar baz" (toJSON ("v" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (concatMap words keys)"#,
     ]);
@@ -1784,7 +1798,7 @@ fn test_kv_keys_text_words() {
 #[test]
 fn test_kv_keys_text_to_upper() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "world")"#,
+        r#"kvSet "hello" (toJSON ("world" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map toUpper keys)"#,
     ]);
@@ -1798,9 +1812,10 @@ fn test_kv_keys_text_to_upper() {
 #[test]
 fn test_kv_get_value_text_length() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "k" "hello")"#,
-        r#"v <- send (KvGet "k")"#,
-        r#"pure (maybe (-999) T.length v)"#,
+        r#"kvSet "k" (toJSON ("hello" :: Text))"#,
+        r#"v <- kvGet "k""#,
+        r#"let t = v >>= (^? _String)"#,
+        r#"pure (maybe (-999) T.length t)"#,
     ]);
     assert_eq!(json, serde_json::json!(5));
 }
@@ -1810,9 +1825,10 @@ fn test_kv_get_value_text_length() {
 #[test]
 fn test_kv_get_value_text_drop() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "k" "hello")"#,
-        r#"v <- send (KvGet "k")"#,
-        r#"pure (maybe "none" (T.drop 2) v)"#,
+        r#"kvSet "k" (toJSON ("hello" :: Text))"#,
+        r#"v <- kvGet "k""#,
+        r#"let t = v >>= (^? _String)"#,
+        r#"pure (maybe "none" (T.drop 2) t)"#,
     ]);
     assert_eq!(json, serde_json::json!("llo"));
 }
@@ -1822,7 +1838,7 @@ fn test_kv_get_value_text_drop() {
 #[test]
 fn test_kv_keys_namespace_roundtrip() {
     let (json, _) = run_mcp_effectful(&[
-        r#"mapM_ (\(k,v) -> send (KvSet k v)) [("cache:one","1"),("cache:two","2"),("cache:three","3")]"#,
+        r#"mapM_ (\(k,v) -> kvSet k (toJSON v)) [("cache:one","1"),("cache:two","2"),("cache:three","3")]"#,
         r#"keys <- send KvKeys"#,
         r#"let cacheKeys = filter (T.isPrefixOf "cache:") keys"#,
         r#"let names = sort (map (T.drop 6) cacheKeys)"#,
@@ -1844,7 +1860,7 @@ fn test_kv_keys_namespace_roundtrip() {
 #[test]
 fn test_primop_measure_off_length_ascii() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.length keys)"#,
     ]);
@@ -1855,7 +1871,7 @@ fn test_primop_measure_off_length_ascii() {
 #[test]
 fn test_primop_measure_off_length_empty() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "" "x")"#,
+        r#"kvSet "" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.length keys)"#,
     ]);
@@ -1867,7 +1883,7 @@ fn test_primop_measure_off_length_empty() {
 #[test]
 fn test_primop_measure_off_take_ascii() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.take 3) keys)"#,
     ]);
@@ -1878,7 +1894,7 @@ fn test_primop_measure_off_take_ascii() {
 #[test]
 fn test_primop_measure_off_take_all() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hi" "x")"#,
+        r#"kvSet "hi" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.take 10) keys)"#,
     ]);
@@ -1889,7 +1905,7 @@ fn test_primop_measure_off_take_all() {
 #[test]
 fn test_primop_measure_off_drop_ascii() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.drop 2) keys)"#,
     ]);
@@ -1900,7 +1916,7 @@ fn test_primop_measure_off_drop_ascii() {
 #[test]
 fn test_primop_measure_off_drop_all() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hi" "x")"#,
+        r#"kvSet "hi" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.drop 10) keys)"#,
     ]);
@@ -1911,7 +1927,7 @@ fn test_primop_measure_off_drop_all() {
 #[test]
 fn test_primop_measure_off_split_at() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.splitAt 2) keys)"#,
     ]);
@@ -1922,7 +1938,7 @@ fn test_primop_measure_off_split_at() {
 #[test]
 fn test_primop_measure_off_consistency() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "abcde" "x")"#,
+        r#"kvSet "abcde" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let k = head keys"#,
         r#"pure (T.length k, T.take 3 k, T.drop 3 k, T.take 3 k `T.append` T.drop 3 k == k)"#,
@@ -1936,7 +1952,7 @@ fn test_primop_measure_off_consistency() {
 #[test]
 fn test_primop_reverse_ascii() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.reverse keys)"#,
     ]);
@@ -1947,7 +1963,7 @@ fn test_primop_reverse_ascii() {
 #[test]
 fn test_primop_reverse_single() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "x" "v")"#,
+        r#"kvSet "x" (toJSON ("v" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map T.reverse keys)"#,
     ]);
@@ -1958,7 +1974,7 @@ fn test_primop_reverse_single() {
 #[test]
 fn test_primop_reverse_involution() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "abcde" "x")"#,
+        r#"kvSet "abcde" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (\k -> T.reverse (T.reverse k) == k) keys)"#,
     ]);
@@ -1971,7 +1987,7 @@ fn test_primop_reverse_involution() {
 #[test]
 fn test_primop_index_word8_to_upper() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map toUpper keys)"#,
     ]);
@@ -1982,7 +1998,7 @@ fn test_primop_index_word8_to_upper() {
 #[test]
 fn test_primop_index_word8_to_lower() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "WORLD" "x")"#,
+        r#"kvSet "WORLD" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map toLower keys)"#,
     ]);
@@ -1993,7 +2009,7 @@ fn test_primop_index_word8_to_lower() {
 #[test]
 fn test_primop_index_word8_filter() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "a1b2c3" "x")"#,
+        r#"kvSet "a1b2c3" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let isAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')"#,
         r#"pure (map (T.filter isAlpha) keys)"#,
@@ -2007,7 +2023,7 @@ fn test_primop_index_word8_filter() {
 #[test]
 fn test_primop_compare_eq() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (== "hello") keys)"#,
     ]);
@@ -2018,7 +2034,7 @@ fn test_primop_compare_eq() {
 #[test]
 fn test_primop_compare_ordering() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "banana" "x")"#,
+        r#"kvSet "banana" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let k = head keys"#,
         r#"pure (compare k "apple", compare k "banana", compare k "cherry")"#,
@@ -2031,9 +2047,9 @@ fn test_primop_compare_ordering() {
 #[test]
 fn test_primop_compare_sort() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "cherry" "1")"#,
-        r#"send (KvSet "apple" "2")"#,
-        r#"send (KvSet "banana" "3")"#,
+        r#"kvSet "cherry" (toJSON ("1" :: Text))"#,
+        r#"kvSet "apple" (toJSON ("2" :: Text))"#,
+        r#"kvSet "banana" (toJSON ("3" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (sort keys)"#,
     ]);
@@ -2046,7 +2062,7 @@ fn test_primop_compare_sort() {
 #[test]
 fn test_primop_memchr_find() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.find (== 'l')) keys)"#,
     ]);
@@ -2057,7 +2073,7 @@ fn test_primop_memchr_find() {
 #[test]
 fn test_primop_memchr_find_missing() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.find (== 'z')) keys)"#,
     ]);
@@ -2070,7 +2086,7 @@ fn test_primop_memchr_find_missing() {
 #[test]
 fn test_primop_composite_take_reverse() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.take 3 . T.reverse) keys)"#,
     ]);
@@ -2081,7 +2097,7 @@ fn test_primop_composite_take_reverse() {
 #[test]
 fn test_primop_composite_length_after_drop() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello" "x")"#,
+        r#"kvSet "hello" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (map (T.length . T.drop 2) keys)"#,
     ]);
@@ -2092,7 +2108,7 @@ fn test_primop_composite_length_after_drop() {
 #[test]
 fn test_primop_composite_words() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "hello world foo" "x")"#,
+        r#"kvSet "hello world foo" (toJSON ("x" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"pure (concatMap words keys)"#,
     ]);
@@ -2103,9 +2119,10 @@ fn test_primop_composite_words() {
 #[test]
 fn test_primop_kvget_measure_off() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "k" "hello world")"#,
-        r#"v <- send (KvGet "k")"#,
-        r#"pure (fmap (\t -> (T.length t, T.take 5 t, T.drop 6 t)) v)"#,
+        r#"kvSet "k" (toJSON ("hello world" :: Text))"#,
+        r#"v <- kvGet "k""#,
+        r#"let t = v >>= (^? _String)"#,
+        r#"pure (fmap (\s -> (T.length s, T.take 5 s, T.drop 6 s)) t)"#,
     ]);
     assert_eq!(json, serde_json::json!([11, "hello", "world"]));
 }
@@ -2114,9 +2131,10 @@ fn test_primop_kvget_measure_off() {
 #[test]
 fn test_primop_kvget_reverse() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "k" "abcde")"#,
-        r#"v <- send (KvGet "k")"#,
-        r#"pure (fmap T.reverse v)"#,
+        r#"kvSet "k" (toJSON ("abcde" :: Text))"#,
+        r#"v <- kvGet "k""#,
+        r#"let t = v >>= (^? _String)"#,
+        r#"pure (fmap T.reverse t)"#,
     ]);
     assert_eq!(json, serde_json::json!("edcba"));
 }
@@ -2125,9 +2143,10 @@ fn test_primop_kvget_reverse() {
 #[test]
 fn test_primop_kvget_to_upper() {
     let (json, _) = run_mcp_effectful(&[
-        r#"send (KvSet "k" "hello")"#,
-        r#"v <- send (KvGet "k")"#,
-        r#"pure (fmap toUpper v)"#,
+        r#"kvSet "k" (toJSON ("hello" :: Text))"#,
+        r#"v <- kvGet "k""#,
+        r#"let t = v >>= (^? _String)"#,
+        r#"pure (fmap toUpper t)"#,
     ]);
     assert_eq!(json, serde_json::json!("HELLO"));
 }
@@ -2254,7 +2273,7 @@ fn test_vendored_object_nested() {
         r#"let outer = object ["point" .= inner, "label" .= ("origin" :: Text)]"#,
         r#"pure (outer ^? key "point" . key "x" . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(1.0));
+    assert_eq!(json, serde_json::json!(1));
 }
 
 /// Object with array values
@@ -2301,7 +2320,7 @@ fn test_vendored_lens_nth_nested() {
         r#"let arr = toJSON [toJSON [10 :: Int, 20], toJSON [30 :: Int, 40]]"#,
         r#"pure (arr ^? nth 1 . nth 0 . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(30.0));
+    assert_eq!(json, serde_json::json!(30));
 }
 
 /// ^.. with _Array to get all elements
@@ -2430,7 +2449,7 @@ fn test_vendored_effect_json_to_kv() {
     let (json, _) = run_aeson_effectful(&[
         r#"let person = object ["name" .= ("Eve" :: Text)]"#,
         r#"case person ^? key "name" . _String of"#,
-        r#"  Just n -> send (KvSet "cached_name" n)"#,
+        r#"  Just n -> kvSet "cached_name" (toJSON n)"#,
         r#"  Nothing -> pure ()"#,
         r#"result <- send (KvGet "cached_name")"#,
         r#"pure result"#,
@@ -2454,7 +2473,7 @@ fn test_vendored_effect_json_driven_kv_batch() {
              storeAll [] = pure ()\n\
              storeAll (u:us) = do\n\
              \x20 case u ^? key \"name\" . _String of\n\
-             \x20   Just n -> send (KvSet n n)\n\
+             \x20   Just n -> kvSet n (toJSON n)\n\
              \x20   Nothing -> pure ()\n\
              \x20 storeAll us",
         ],
@@ -2492,7 +2511,7 @@ fn test_vendored_input_multi_field() {
         ],
         serde_json::json!({"name": "Alice", "age": 30}),
     );
-    assert_eq!(json, serde_json::json!(["Alice", 30.0]));
+    assert_eq!(json, serde_json::json!(["Alice", 30]));
 }
 
 /// Inject deeply nested JSON
@@ -2559,7 +2578,7 @@ fn test_vendored_input_number() {
         &[r#"pure (input ^? _Number)"#],
         serde_json::json!(42),
     );
-    assert_eq!(json, serde_json::json!(42.0));
+    assert_eq!(json, serde_json::json!(42));
 }
 
 /// Inject array of primitives, sum them via _Number
@@ -2676,7 +2695,7 @@ fn test_vendored_pipeline_inspect_branch() {
         r#"             _           -> object ["status" .= (405 :: Int), "body" .= ("not allowed" :: Text)]"#,
         r#"pure (resp ^? key "status" . _Number)"#,
     ]);
-    assert_eq!(json, serde_json::json!(200.0));
+    assert_eq!(json, serde_json::json!(200));
 }
 
 /// Multiple independent extractions from same value
@@ -2715,7 +2734,7 @@ fn test_vendored_effect_full_pipeline() {
     let (json, console) = run_aeson_effectful(&[
         r#"let user = object ["name" .= ("Dave" :: Text), "role" .= ("admin" :: Text)]"#,
         r#"case user ^? key "name" . _String of"#,
-        r#"  Just n -> do { send (Print n); send (KvSet "user" n) }"#,
+        r#"  Just n -> do { send (Print n); kvSet "user" (toJSON n) }"#,
         r#"  Nothing -> pure ()"#,
         r#"stored <- send (KvGet "user")"#,
         r#"pure stored"#,
@@ -2761,7 +2780,7 @@ fn test_vendored_input_with_effects() {
     let input_val = serde_json::json!({"items": ["task1", "task2", "task3"]});
     let imports: Vec<&str> = aeson_import_strs();
     let decls = test_decls();
-    let preamble = tidepool_mcp::build_preamble(&decls);
+    let preamble = tidepool_mcp::build_preamble(&decls, false);
     let stack = tidepool_mcp::build_effect_stack_type(&decls);
     let lines = vec![
         r#"let items = input ^.. key "items" . _Array . traverse . _String"#.to_string(),
@@ -2865,7 +2884,7 @@ fn test_vendored_edge_many_keys() {
         ],
         &[],
     );
-    assert_eq!(json, serde_json::json!(5.0));
+    assert_eq!(json, serde_json::json!(5));
 }
 
 /// Nested modification preserves other fields
@@ -2988,7 +3007,7 @@ fn test_orchestrate_json_command_interpreter() {
              \x20 let v   = fromMaybe \"\" (cmd ^? key \"value\" . _String)\n\
              \x20 case op of\n\
              \x20   \"set\" -> do\n\
-             \x20     send (KvSet k v)\n\
+             \x20     kvSet k (toJSON v)\n\
              \x20     send (Print (\"SET \" `T.append` k `T.append` \"=\" `T.append` v))\n\
              \x20     pure (object [\"status\" .= (\"ok\" :: Text)])\n\
              \x20   \"get\" -> do\n\
@@ -3015,7 +3034,7 @@ fn test_orchestrate_json_command_interpreter() {
 /// and builds a summary JSON object.
 #[test]
 fn test_orchestrate_transaction_ledger() {
-    let (json, logs) = run_aeson_effectful_with_helpers(
+    let (_json, logs) = run_aeson_effectful_with_helpers(
         &[
             r#"let txns = [ object ["item" .= ("apple" :: Text), "qty" .= (3 :: Int)]"#,
             r#"            , object ["item" .= ("banana" :: Text), "qty" .= (7 :: Int)]"#,
@@ -3033,9 +3052,9 @@ fn test_orchestrate_transaction_ledger() {
              \x20 let item = fromMaybe \"\" (txn ^? key \"item\" . _String)\n\
              \x20 let qty  = fromMaybe 0 (txn ^? key \"qty\" . _Int)\n\
              \x20 prev <- send (KvGet item)\n\
-             \x20 let old = case prev of { Just p -> maybe 0 fromIntegral (readMaybeInt p); Nothing -> 0 :: Int }\n\
+             \x20 let old = case prev >>= (^? _String) of { Just p -> maybe 0 fromIntegral (readMaybeInt p); Nothing -> 0 :: Int }\n\
              \x20 let new_ = old + fromIntegral qty\n\
-             \x20 send (KvSet item (show new_))\n\
+             \x20 kvSet item (toJSON (show new_))\n\
              \x20 send (Print (item `T.append` \": \" `T.append` show new_))",
             "readMaybeInt :: Text -> Maybe Int\n\
              readMaybeInt t = case unpack t of\n\
@@ -3059,7 +3078,7 @@ fn test_orchestrate_schema_validator() {
         "email": null,
         "active": true
     });
-    let (json, logs) = run_aeson_effectful_with_input(
+    let (_json, logs) = run_aeson_effectful_with_input(
         &[
             r#"let schema = [ ("name", "string"), ("age", "number"), ("email", "string"), ("active", "bool") ] :: [(Text, Text)]"#,
             r#"errors <- mapM (checkField input) schema"#,
@@ -3118,14 +3137,14 @@ fn test_orchestrate_serialize_to_kv_and_reconstruct() {
              \x20                   Nothing -> case v ^? _Int of\n\
              \x20                     Just n -> show (fromIntegral n :: Int)\n\
              \x20                     Nothing -> \"null\"\n\
-             \x20       send (KvSet fieldKey val)\n\
+             \x20       kvSet fieldKey (toJSON val)\n\
              \x20       ) pairs",
             "reconstructObject :: Text -> [Text] -> M Aeson.Value\n\
              reconstructObject prefix fields = do\n\
              \x20 pairs <- mapM (\\f -> do\n\
              \x20   let fieldKey = prefix `T.append` \":\" `T.append` f\n\
              \x20   mval <- send (KvGet fieldKey)\n\
-             \x20   pure (f .= fromMaybe \"\" mval)\n\
+             \x20   pure (f .= fromMaybe \"\" (mval >>= (^? _String)))\n\
              \x20   ) fields\n\
              \x20 pure (object pairs)",
         ],
@@ -3271,7 +3290,7 @@ fn test_orchestrate_full_etl_pipeline() {
         ],
         "threshold": 50
     });
-    let (json, logs) = run_aeson_effectful_with_input(
+    let (_json, logs) = run_aeson_effectful_with_input(
         &[
             r#"let users = input ^.. key "users" . _Array . traverse"#,
             r#"let thresh = fromMaybe 50 (input ^? key "threshold" . _Int)"#,
@@ -3280,7 +3299,7 @@ fn test_orchestrate_full_etl_pipeline() {
             r#"let passing = filter (\u -> maybe False (>= thresh) (u ^? key "score" . _Int)) users"#,
             r#"let names = catMaybes (map (\u -> u ^? key "name" . _String) passing)"#,
             // Persist each passing user
-            r#"mapM_ (\n -> send (KvSet ("pass:" `T.append` n) "true")) names"#,
+            r#"mapM_ (\n -> kvSet ("pass:" `T.append` n) (toJSON ("true" :: Text))) names"#,
             r#"send (Print ("passing: " `T.append` show (length names)))"#,
             r#"pure (object ["count" .= length names, "names" .= names])"#,
         ],
@@ -3295,7 +3314,7 @@ fn test_orchestrate_full_etl_pipeline() {
 /// incrementally and logging each step.
 #[test]
 fn test_orchestrate_fold_build_json() {
-    let (json, logs) = run_aeson_effectful_with_helpers(
+    let (_json, logs) = run_aeson_effectful_with_helpers(
         &[
             r#"let items = [("x", 10), ("y", 20), ("z", 30)] :: [(Text, Int)]"#,
             r#"result <- foldM buildStep (object []) items"#,
@@ -3325,7 +3344,7 @@ fn test_orchestrate_dispatch_on_type() {
         "type": "greeting",
         "payload": {"name": "World", "lang": "en"}
     });
-    let (json, logs) = run_aeson_effectful_with_input(
+    let (_json, logs) = run_aeson_effectful_with_input(
         &[
             r#"let typ = fromMaybe "" (input ^? key "type" . _String)"#,
             r#"let payload = fromMaybe (object []) (input ^? key "payload")"#,
@@ -3339,7 +3358,7 @@ fn test_orchestrate_dispatch_on_type() {
              \x20   let name = fromMaybe \"stranger\" (payload ^? key \"name\" . _String)\n\
              \x20   let msg = \"Hello, \" `T.append` name `T.append` \"!\"\n\
              \x20   send (Print msg)\n\
-             \x20   send (KvSet \"last_greeting\" msg)\n\
+             \x20   kvSet \"last_greeting\" (toJSON msg)\n\
              \x20   pure (object [\"response\" .= msg])\n\
              \x20 \"farewell\" -> do\n\
              \x20   send (Print \"Goodbye!\")\n\
@@ -3378,13 +3397,13 @@ fn test_orchestrate_two_pass_enrich() {
              \x20 let cat = fromMaybe \"\" (rec ^? key \"cat\" . _String)\n\
              \x20 let k = \"count:\" `T.append` cat\n\
              \x20 prev <- send (KvGet k)\n\
-             \x20 let n = case prev of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
-             \x20 send (KvSet k (show (n + 1)))",
+             \x20 let n = case prev >>= (^? _String) of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
+             \x20 kvSet k (toJSON (show (n + 1)))",
             "enrichRecord :: Aeson.Value -> M Aeson.Value\n\
              enrichRecord rec = do\n\
              \x20 let cat = fromMaybe \"\" (rec ^? key \"cat\" . _String)\n\
              \x20 cnt <- send (KvGet (\"count:\" `T.append` cat))\n\
-             \x20 let cntVal = case cnt of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
+             \x20 let cntVal = case cnt >>= (^? _String) of { Just p -> readInt p; Nothing -> 0 :: Int }\n\
              \x20 pure (rec & key \"catCount\" . _Int .~ fromIntegral cntVal)",
             "readInt :: Text -> Int\n\
              readInt t = foldl' (\\acc c -> acc * 10 + fromEnum c - 48) 0 (unpack t)",
@@ -3428,7 +3447,7 @@ fn test_orchestrate_graceful_degradation() {
         "required": {"name": "test"},
         "optional": null
     });
-    let (json, logs) = run_aeson_effectful_with_input(
+    let (_json, logs) = run_aeson_effectful_with_input(
         &[
             // Required field — will succeed
             r#"let name = fromMaybe "unnamed" (input ^? key "required" . key "name" . _String)"#,
@@ -3455,15 +3474,16 @@ fn test_orchestrate_graceful_degradation() {
 /// from KV, applies a transition, persists the new state.
 #[test]
 fn test_orchestrate_kv_state_machine() {
-    let (json, logs) = run_aeson_effectful_with_helpers(
+    let (_json, logs) = run_aeson_effectful_with_helpers(
         &[
             // Initialize state
             r#"let init = object ["step" .= (0 :: Int), "data" .= ([] :: [Int])]"#,
-            r#"send (KvSet "state" (encodeSimple init))"#,
+            r#"kvSet "state" (toJSON (encodeSimple init))"#,
             // Run 5 transitions
             r#"mapM_ (\_ -> transition) [1..5 :: Int]"#,
             // Read final state
-            r#"finalStr <- send (KvGet "state")"#,
+            r#"finalRaw <- send (KvGet "state")"#,
+            r#"let finalStr = finalRaw >>= (^? _String)"#,
             r#"send (Print ("final: " `T.append` fromMaybe "" finalStr))"#,
             r#"pure (fromMaybe "" finalStr)"#,
         ],
@@ -3471,13 +3491,13 @@ fn test_orchestrate_kv_state_machine() {
             "transition :: M ()\n\
              transition = do\n\
              \x20 ms <- send (KvGet \"state\")\n\
-             \x20 case ms of\n\
+             \x20 case ms >>= (^? _String) of\n\
              \x20   Nothing -> pure ()\n\
              \x20   Just s -> do\n\
              \x20     let step = readInt (T.takeWhile (\\c -> c /= ',') (T.drop 1 s))\n\
              \x20     let newStep = step + 1\n\
              \x20     let newState = \"(\" `T.append` show newStep `T.append` \")\"\n\
-             \x20     send (KvSet \"state\" newState)\n\
+             \x20     kvSet \"state\" (toJSON newState)\n\
              \x20     send (Print (\"step -> \" `T.append` show newStep))",
             "encodeSimple :: Aeson.Value -> Text\n\
              encodeSimple v = case v ^? key \"step\" . _Int of\n\
@@ -3539,7 +3559,7 @@ fn test_orchestrate_instruction_dsl() {
              \x20   \"store\" -> do\n\
              \x20     let k = fromMaybe \"\" (instr ^? key \"k\" . _String)\n\
              \x20     let v = fromMaybe \"\" (instr ^? key \"v\" . _String)\n\
-             \x20     send (KvSet k v)\n\
+             \x20     kvSet k (toJSON v)\n\
              \x20     pure Nothing\n\
              \x20   \"load\" -> do\n\
              \x20     let k = fromMaybe \"\" (instr ^? key \"k\" . _String)\n\
@@ -3611,7 +3631,7 @@ fn test_orchestrate_moderate_scale() {
 #[test]
 fn test_ir_dump_pap() {
     let src = mcp_source(&[
-        r#"send (KvSet "xx1" "v1")"#,
+        r#"kvSet "xx1" (toJSON ("v1" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let results = map (T.drop 2) keys"#,
         r#"pure (T.length (head results))"#,
@@ -3631,7 +3651,7 @@ fn test_ir_dump_pap() {
 #[test]
 fn test_ir_dump_eta() {
     let src = mcp_source(&[
-        r#"send (KvSet "xx1" "v1")"#,
+        r#"kvSet "xx1" (toJSON ("v1" :: Text))"#,
         r#"keys <- send KvKeys"#,
         r#"let results = map (\x -> T.drop 2 x) keys"#,
         r#"pure (T.length (head results))"#,
@@ -3655,7 +3675,7 @@ fn test_group_b_simple_thunk() {
         r#"case head xs of { True -> pure (toJSON (1.0 :: Double)); False -> pure (toJSON (0.0 :: Double)) }"#,
     ]);
     // Aeson Number now renders directly as a number
-    assert_eq!(json, serde_json::json!(1.0));
+    assert_eq!(json, serde_json::json!(1));
 }
 
 // ---------------------------------------------------------------------------

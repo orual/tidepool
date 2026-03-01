@@ -165,15 +165,21 @@ pub fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_j
                 // Scientific (Data.Scientific) — coefficient × 10^exponent
                 ("Scientific", [coeff, exp_val]) => {
                     let c = match value_to_json(coeff, table, d) {
-                        serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.0),
-                        _ => 0.0,
+                        serde_json::Value::Number(n) => n.as_i64().unwrap_or(0),
+                        _ => 0,
                     };
                     let e = match value_to_json(exp_val, table, d) {
                         serde_json::Value::Number(n) => n.as_i64().unwrap_or(0),
                         _ => 0,
                     };
-                    let val = c * 10f64.powi(e as i32);
-                    json!(val)
+                    // When exponent >= 0, produce an integer JSON number
+                    if e >= 0 {
+                        let val = c * 10i64.pow(e as u32);
+                        json!(val)
+                    } else {
+                        let val = c as f64 * 10f64.powi(e as i32);
+                        json!(val)
+                    }
                 }
 
                 // Aeson Value constructors
@@ -295,6 +301,53 @@ fn extract_boxed_int(val: &Value, table: &DataConTable) -> Option<i64> {
     }
 }
 
+/// Try to extract a single char from a Value.
+/// Handles: LitChar, C#(LitChar), C#(Text(ByteArray(1 byte), 0, 1)).
+fn extract_char(val: &Value, table: &DataConTable) -> Option<char> {
+    match val {
+        Value::Lit(Literal::LitChar(c)) => Some(*c),
+        Value::Con(id, fields) if con_name(*id, table) == "C#" && fields.len() == 1 => {
+            extract_char_inner(&fields[0], table)
+        }
+        _ => None,
+    }
+}
+
+/// Extract a char from the inner value of a C# constructor (or bare value).
+fn extract_char_inner(val: &Value, table: &DataConTable) -> Option<char> {
+    match val {
+        Value::Lit(Literal::LitChar(c)) => Some(*c),
+        // Text(ByteArray#, off, len) where len == 1 — single-byte char
+        Value::Con(id, fields) if con_name(*id, table) == "Text" && fields.len() == 3 => {
+            let len = extract_boxed_int(&fields[2], table)?;
+            if len != 1 {
+                return None;
+            }
+            let off = extract_boxed_int(&fields[1], table).unwrap_or(0) as usize;
+            // Unwrap ByteArray layers to get the raw bytes
+            let raw_ba = {
+                let mut cur = &fields[0];
+                loop {
+                    match cur {
+                        Value::ByteArray(bs) => break Some(bs.clone()),
+                        Value::Con(cid, cfields)
+                            if con_name(*cid, table) == "ByteArray" && cfields.len() == 1 =>
+                        {
+                            cur = &cfields[0];
+                        }
+                        _ => break None,
+                    }
+                }
+            };
+            let bs = raw_ba?;
+            let borrowed = bs.lock().unwrap();
+            let byte = *borrowed.get(off)?;
+            Some(byte as char)
+        }
+        _ => None,
+    }
+}
+
 fn literal_to_json(lit: &Literal) -> serde_json::Value {
     match lit {
         Literal::LitInt(n) => json!(n),
@@ -306,15 +359,24 @@ fn literal_to_json(lit: &Literal) -> serde_json::Value {
         },
         Literal::LitFloat(bits) => {
             let f = f32::from_bits(*bits as u32) as f64;
-            serde_json::Number::from_f64(f)
-                .map(serde_json::Value::Number)
-                .unwrap_or(json!(null))
+            if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                json!(f as i64)
+            } else {
+                serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(json!(null))
+            }
         }
         Literal::LitDouble(bits) => {
             let f = f64::from_bits(*bits);
-            serde_json::Number::from_f64(f)
-                .map(serde_json::Value::Number)
-                .unwrap_or(json!(null))
+            // If the double is integral and fits in i64, emit as integer
+            if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                json!(f as i64)
+            } else {
+                serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(json!(null))
+            }
         }
     }
 }
@@ -373,24 +435,19 @@ fn collect_list(
         }
     }
 
-    // Check if all elements are chars → render as string
+    // Check if all elements are chars → render as string.
+    // Chars can appear as:
+    //   1. LitChar(c) — bare char literal
+    //   2. Con(C#, [LitChar(c)]) — boxed char
+    //   3. Con(C#, [Con(Text, [ByteArray(1 byte), 0, 1])]) — char as single-byte Text
     let mut all_chars = true;
     let mut char_buf = String::new();
     for e in &elems {
-        match e {
-            Value::Lit(Literal::LitChar(c)) => char_buf.push(*c),
-            Value::Con(id, fields) if con_name(*id, table) == "C#" && fields.len() == 1 => {
-                if let Value::Lit(Literal::LitChar(c)) = &fields[0] {
-                    char_buf.push(*c);
-                } else {
-                    all_chars = false;
-                    break;
-                }
-            }
-            _ => {
-                all_chars = false;
-                break;
-            }
+        if let Some(c) = extract_char(e, table) {
+            char_buf.push(c);
+        } else {
+            all_chars = false;
+            break;
         }
     }
 

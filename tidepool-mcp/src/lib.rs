@@ -150,18 +150,44 @@ pub fn sg_decl() -> EffectDecl {
         type_defs: &[
             "data Lang = Rust | Python | TypeScript | JavaScript | Go | Java | C | Cpp | Haskell | Nix | Html | Css | Json | Yaml | Toml",
             "data Match = Match { mText :: Text, mFile :: Text, mLine :: Int, mVars :: [(Text, Text)], mReplacement :: Text }",
+            "instance ToJSON Match where\n  toJSON (Match t f l vs r) = object ([\"text\" .= t, \"file\" .= f, \"line\" .= l] ++ (if null vs then [] else [\"vars\" .= toJSON (Map.fromList vs)]) ++ (if T.null r then [] else [\"replacement\" .= r]))",
             "var :: Match -> Text -> Text",
             "var (Match _ _ _ vs _) k = case [v | (k', v) <- vs, k' == k] of { (x:_) -> x; _ -> \"\" }",
         ],
         constructors: &[
-            "SgFind :: Lang -> Text -> [Text] -> SG [Match]",
+            "SgFind    :: Lang -> Text -> [Text] -> SG [Match]",
             "SgPreview :: Lang -> Text -> Text -> [Text] -> SG [Match]",
             "SgReplace :: Lang -> Text -> Text -> [Text] -> SG Int",
+            "SgRuleFind    :: Lang -> Value -> [Text] -> SG [Match]",
+            "SgRuleReplace :: Lang -> Value -> Text -> [Text] -> SG Int",
         ],
         helpers: &[
             "sgFind :: Lang -> Text -> [Text] -> M [Match]\nsgFind l p fs = send (SgFind l p fs)",
             "sgPreview :: Lang -> Text -> Text -> [Text] -> M [Match]\nsgPreview l p r fs = send (SgPreview l p r fs)",
             "sgReplace :: Lang -> Text -> Text -> [Text] -> M Int\nsgReplace l p r fs = send (SgReplace l p r fs)",
+            "sgRuleFind :: Lang -> Value -> [Text] -> M [Match]\nsgRuleFind l r fs = send (SgRuleFind l r fs)",
+            "sgRuleReplace :: Lang -> Value -> Text -> [Text] -> M Int\nsgRuleReplace l r rw fs = send (SgRuleReplace l r rw fs)",
+            "rPat :: Text -> Value\nrPat p = object [\"pattern\" .= p]",
+            "rKind :: Text -> Value\nrKind k = object [\"kind\" .= k]",
+            "rRegex :: Text -> Value\nrRegex r = object [\"regex\" .= r]",
+            "rHas :: Value -> Value\nrHas r = object [\"has\" .= r]",
+            "rInside :: Value -> Value\nrInside r = object [\"inside\" .= r]",
+            "rFollows :: Value -> Value\nrFollows r = object [\"follows\" .= r]",
+            "rPrecedes :: Value -> Value\nrPrecedes r = object [\"precedes\" .= r]",
+            "rAll :: [Value] -> Value\nrAll rs = object [\"all\" .= rs]",
+            "rAny :: [Value] -> Value\nrAny rs = object [\"any\" .= rs]",
+            "rNot :: Value -> Value\nrNot r = object [\"not\" .= r]",
+            // Object merge (primary combinator) — left-biased key union
+            "infixr 6 .+.\n(.+.) :: Value -> Value -> Value\n(.+.) (Aeson.Object a) (Aeson.Object b) = Aeson.Object (KM.unionWith const a b)\n(.+.) a _ = a",
+            // Conjunction / Disjunction
+            "infixr 5 .&.\n(.&.) :: Value -> Value -> Value\na .&. b = object [\"all\" .= [a, b]]",
+            "infixr 4 .|.\n(.|.) :: Value -> Value -> Value\na .|. b = object [\"any\" .= [a, b]]",
+            // Relational operators
+            "infixl 7 ?>\n(?>) :: Value -> Value -> Value\nparent ?> child = parent .+. rHas child",
+            "infixl 7 <?\n(<?) :: Value -> Value -> Value\nchild <? ancestor = child .+. rInside ancestor",
+            // Extra field helpers
+            "rField :: Text -> Value\nrField name = object [\"field\" .= name]",
+            "rStopBy :: Text -> Value\nrStopBy s = object [\"stopBy\" .= s]",
         ],
     }
 }
@@ -203,6 +229,31 @@ pub fn exec_decl() -> EffectDecl {
     }
 }
 
+/// Meta effect: self-mirror for querying runtime metadata.
+pub fn meta_decl() -> EffectDecl {
+    EffectDecl {
+        type_name: "Meta",
+        description: "Self-mirror for the runtime. Query constructors, primops, effects, diagnostics.",
+        constructors: &[
+            "MetaConstructors :: Meta [(Text, Int)]",
+            "MetaLookupCon    :: Text -> Meta (Maybe (Int, Int))",
+            "MetaPrimOps      :: Meta [Text]",
+            "MetaEffects      :: Meta [Text]",
+            "MetaDiagnostics  :: Meta [Text]",
+            "MetaVersion      :: Meta Text",
+        ],
+        type_defs: &[],
+        helpers: &[
+            "metaConstructors :: M [(Text, Int)]\nmetaConstructors = send MetaConstructors",
+            "metaLookupCon :: Text -> M (Maybe (Int, Int))\nmetaLookupCon = send . MetaLookupCon",
+            "metaPrimOps :: M [Text]\nmetaPrimOps = send MetaPrimOps",
+            "metaEffects :: M [Text]\nmetaEffects = send MetaEffects",
+            "metaDiagnostics :: M [Text]\nmetaDiagnostics = send MetaDiagnostics",
+            "metaVersion :: M Text\nmetaVersion = send MetaVersion",
+        ],
+    }
+}
+
 /// Ask effect: suspend execution to ask the calling LLM a question.
 pub fn ask_decl() -> EffectDecl {
     EffectDecl {
@@ -225,6 +276,7 @@ pub fn standard_decls() -> Vec<EffectDecl> {
         sg_decl(),
         http_decl(),
         exec_decl(),
+        meta_decl(),
         ask_decl(),
     ]
 }
@@ -303,7 +355,7 @@ pub struct ResumeRequest {
 
 pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
     let mut out = String::new();
-    out.push_str("{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, DataKinds, TypeOperators, FlexibleContexts, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}\n");
+    out.push_str("{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, DataKinds, TypeOperators, FlexibleContexts, FlexibleInstances, GADTs, PartialTypeSignatures, ScopedTypeVariables #-}\n");
     out.push_str("module Expr where\n");
     out.push_str("import Tidepool.Prelude hiding (error)\n");
     out.push_str("import qualified Data.Text as T\n");
@@ -567,6 +619,9 @@ pub fn template_haskell(
         out.push_str(preamble);
     }
 
+    // Marker for user code section (used by error formatting to trim preamble)
+    out.push_str("-- [user]\n");
+
     for helper in helpers {
         out.push_str(helper);
         out.push('\n');
@@ -638,9 +693,14 @@ fn format_panic_payload(payload: Box<dyn std::any::Any + Send>) -> String {
 }
 
 fn format_error_with_source(title: &str, error: &str, source: &str) -> String {
+    // Extract user-written code: everything after the "-- [user]" marker.
+    let user_section = source
+        .find("-- [user]\n")
+        .map(|pos| &source[pos + "-- [user]\n".len()..])
+        .unwrap_or(source);
     format!(
-        "## {}\n{}\n\n## Compiled Source\n```haskell\n{}\n```",
-        title, error, source
+        "## {}\n{}\n\n## User Code\n```haskell\n{}\n```",
+        title, error, user_section
     )
 }
 
@@ -1393,6 +1453,8 @@ mod tests {
         assert!(preamble.contains("kvGet :: Text -> M (Maybe Value)\nkvGet = send . KvGet"));
         assert!(preamble.contains("fsRead :: Text -> M Text\nfsRead = send . FsRead"));
         assert!(preamble.contains("httpGet :: Text -> M Value\nhttpGet = send . HttpGet"));
+        assert!(preamble.contains("metaConstructors :: M [(Text, Int)]\nmetaConstructors = send MetaConstructors"));
+        assert!(preamble.contains("metaVersion :: M Text\nmetaVersion = send MetaVersion"));
         assert!(preamble.contains("ask :: Text -> M Value\nask = send . Ask"));
     }
 
@@ -1416,13 +1478,21 @@ mod tests {
     fn test_format_error_with_source() {
         let title = "Error";
         let error = "Type mismatch";
-        let source = "main = pure ()";
+        let source = "preamble stuff\n-- [user]\nresult = do\n  pure 42\n";
         let formatted = format_error_with_source(title, error, source);
 
         assert!(formatted.contains("## Error"));
         assert!(formatted.contains("Type mismatch"));
-        assert!(formatted.contains("## Compiled Source"));
-        assert!(formatted.contains("```haskell\nmain = pure ()\n```"));
+        assert!(formatted.contains("## User Code"));
+        assert!(formatted.contains("```haskell\nresult = do\n  pure 42\n\n```"));
+        // Preamble should be trimmed
+        assert!(!formatted.contains("preamble stuff"));
+    }
+
+    #[test]
+    fn test_format_error_no_marker_shows_full() {
+        let formatted = format_error_with_source("Error", "oops", "full source");
+        assert!(formatted.contains("full source"));
     }
 
     #[test]
@@ -1436,10 +1506,11 @@ mod tests {
     #[test]
     fn test_standard_decls_includes_ask() {
         let decls = standard_decls();
-        assert_eq!(decls.len(), 7);
+        assert_eq!(decls.len(), 8);
         assert_eq!(decls[4].type_name, "Http");
         assert_eq!(decls[5].type_name, "Exec");
-        assert_eq!(decls[6].type_name, "Ask");
+        assert_eq!(decls[6].type_name, "Meta");
+        assert_eq!(decls[7].type_name, "Ask");
     }
 
     #[test]
@@ -1459,14 +1530,14 @@ mod tests {
         let preamble = build_preamble(&decls, false);
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Value"));
-        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Ask]"));
+        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Meta, Ask]"));
     }
 
     #[test]
     fn test_ask_in_effect_stack_type() {
         let decls = standard_decls();
         let stack = build_effect_stack_type(&decls);
-        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Ask]");
+        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Meta, Ask]");
     }
 
     #[test]
@@ -1516,5 +1587,24 @@ mod tests {
         // Orchestration helpers only appear with user_library=true
         assert!(!preamble.contains("runChecked"));
         assert!(!preamble.contains("runJson :: Text -> M Value"));
+    }
+
+    #[test]
+    fn test_preamble_sg_rule_operators() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, false);
+        // Object merge operator
+        assert!(preamble.contains("infixr 6 .+."));
+        assert!(preamble.contains("(.+.) :: Value -> Value -> Value"));
+        assert!(preamble.contains("KM.unionWith const"));
+        // Conjunction / disjunction
+        assert!(preamble.contains("infixr 5 .&."));
+        assert!(preamble.contains("infixr 4 .|."));
+        // Relational operators
+        assert!(preamble.contains("infixl 7 ?>"));
+        assert!(preamble.contains("infixl 7 <?"));
+        // Extra helpers
+        assert!(preamble.contains("rField :: Text -> Value"));
+        assert!(preamble.contains("rStopBy :: Text -> Value"));
     }
 }

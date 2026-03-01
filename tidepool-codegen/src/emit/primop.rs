@@ -1524,7 +1524,6 @@ pub fn emit_primop(
             Ok(SsaVal::Raw(builder.ins().ctz(with_sentinel), LIT_TAG_WORD))
         }
 
-        _ => Err(EmitError::NotYetImplemented(format!("{:?}", op))),
     }
 }
 
@@ -1567,7 +1566,7 @@ fn emit_float_compare(
 }
 
 /// Unbox an Addr# value recursively.
-fn unbox_addr(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
+fn unbox_addr(_pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
     match val {
         SsaVal::Raw(v, _) => v,
         SsaVal::HeapPtr(v) => {
@@ -1618,7 +1617,7 @@ fn unbox_addr(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val
 }
 
 /// Extract the raw ByteArray pointer from a Lit(BYTEARRAY) heap object recursively.
-fn unbox_bytearray(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
+fn unbox_bytearray(_pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
     match val {
         SsaVal::Raw(v, _) => v,
         SsaVal::HeapPtr(v) => {
@@ -1665,7 +1664,7 @@ fn unbox_bytearray(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder
     }
 }
 
-pub fn unbox_int(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
+pub fn unbox_int(_pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
     match val {
         SsaVal::Raw(v, _) => v,
         SsaVal::HeapPtr(v) => {
@@ -1701,7 +1700,7 @@ pub fn unbox_int(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, 
     }
 }
 
-pub fn unbox_double(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
+pub fn unbox_double(_pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
     match val {
         SsaVal::Raw(v, _) => v,
         SsaVal::HeapPtr(v) => {
@@ -1737,7 +1736,7 @@ pub fn unbox_double(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilde
     }
 }
 
-pub fn unbox_float(pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
+pub fn unbox_float(_pipeline: &mut CodegenPipeline, builder: &mut FunctionBuilder, val: SsaVal) -> Value {
     match val {
         SsaVal::Raw(v, _) => v,
         SsaVal::HeapPtr(v) => {

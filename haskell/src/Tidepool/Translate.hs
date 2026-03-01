@@ -200,6 +200,27 @@ emitRuntimeUnpackAppendCString addrIdx suffixIdx = do
     -- letrec go = \a -> ... in go addrIdx
     emitNode $ NLetRec [(goId, lamA)] appIdx
 
+-- | Emit a safe replacement body for $fShowDouble_$sshowSignedFloat.
+-- The original body pulls in floatToDigits/Integer arithmetic which the JIT
+-- can't handle. We replace it with:
+--   \fmt -> \minExpt -> \d -> \rest -> unpackAppendCString# (ShowDoubleAddr d) rest
+-- This preserves the ShowS continuation (rest) for correct behavior in
+-- composed show expressions like derived Show instances.
+emitShowDoubleSpecBody :: Id -> TransM Int
+emitShowDoubleSpecBody binder = do
+    fmtId      <- freshSynthVarId
+    minExptId  <- freshSynthVarId
+    dId        <- freshSynthVarId
+    restId     <- freshSynthVarId
+    dRef       <- emitNode $ NVar dId
+    addrIdx    <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [dRef]
+    restRef    <- emitNode $ NVar restId
+    resultIdx  <- emitRuntimeUnpackAppendCString addrIdx restRef
+    lam4       <- emitNode $ NLam restId resultIdx
+    lam3       <- emitNode $ NLam dId lam4
+    lam2       <- emitNode $ NLam minExptId lam3
+    emitNode $ NLam fmtId lam2
+
 translateBinds :: [CoreBind] -> [(String, Seq FlatNode)]
 translateBinds binds = concatMap translateBind binds
   where
@@ -306,6 +327,13 @@ translateModule allBinds targetName unresolvedIds =
     wrapAllBinds [] target = emitNode (NVar (varId target))
     wrapAllBinds (NonRec b rhs : rest) target
       | isTyVar b = wrapAllBinds rest target  -- skip type bindings
+      | isShowDoubleSpecVar b = do
+          -- Replace body with safe lambda wrapper instead of compiling the
+          -- original body which pulls in floatToDigits/Integer arithmetic.
+          -- \fmt -> \minExpt -> \d -> \rest -> unpackAppendCString (ShowDoubleAddr d) rest
+          rhsIdx <- emitShowDoubleSpecBody b
+          bodyIdx <- wrapAllBinds rest target
+          emitNode (NLetNonRec (varId b) rhsIdx bodyIdx)
       | otherwise = do
           rhsIdx <- translate rhs
           bodyIdx <- wrapAllBinds rest target
@@ -319,13 +347,15 @@ translateModule allBinds targetName unresolvedIds =
           let recJoins = [varId b | (b, _) <- valPairs, isJoinId b]
           modify' $ \s -> s { tsRecJoinIds = tsRecJoinIds s `Set.union` Set.fromList recJoins }
           pairIdxs <- forM valPairs $ \(b, rhs) -> do
-            rhs' <- case isJoinId_maybe b of
-              Just arity -> do
-                let (params, joinBody) = collectValueBinders arity rhs
-                joinBodyIdx <- translate joinBody
-                foldM (\inner p -> emitNode $ NLam (varId p) inner)
-                      joinBodyIdx (reverse params)
-              Nothing -> translate rhs
+            rhs' <- if isShowDoubleSpecVar b
+              then emitShowDoubleSpecBody b
+              else case isJoinId_maybe b of
+                Just arity -> do
+                  let (params, joinBody) = collectValueBinders arity rhs
+                  joinBodyIdx <- translate joinBody
+                  foldM (\inner p -> emitNode $ NLam (varId p) inner)
+                        joinBodyIdx (reverse params)
+                Nothing -> translate rhs
             return (varId b, rhs')
           bodyIdx <- wrapAllBinds rest target
           emitNode (NLetRec pairIdxs bodyIdx)
@@ -482,20 +512,25 @@ translate expr =
 
     -- Intercept $fShowDouble_$sshowSignedFloat (GHC's specialized show for Double).
     -- Takes 4 args: (fmt, minExpt, d :: Double, rest :: String).
-    -- We only need the Double (arg 3); rest is always [] at top level.
+    -- We use ShowDoubleAddr for the Double, and append rest via unpackAppendCString.
     Var v | isShowDoubleSpecVar v -> do
         case drop 2 args of  -- skip fmt, minExpt → [d, rest, ...]
-          (dArg : _) -> do
+          (dArg : restArg : _) -> do
             argIdx <- translate dArg
             addrIdx <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [argIdx]
-            emitRuntimeUnpackCString addrIdx
+            restIdx <- translate restArg
+            emitRuntimeUnpackAppendCString addrIdx restIdx
+          [dArg] -> do
+            -- 3 args applied (fmt, minExpt, d); returns ShowS = String -> String
+            argIdx <- translate dArg
+            addrIdx <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [argIdx]
+            restParamId <- freshSynthVarId
+            restRef <- emitNode $ NVar restParamId
+            resultIdx <- emitRuntimeUnpackAppendCString addrIdx restRef
+            emitNode $ NLam restParamId resultIdx
           [] -> do
-            -- Partial application / eta-reduced: emit lambda wrapper
-            let paramVarId = varId v .|. 0x01
-            paramRef <- emitNode $ NVar paramVarId
-            addrIdx <- emitNode $ NPrimOp (T.pack "ShowDoubleAddr") [paramRef]
-            resultIdx <- emitRuntimeUnpackCString addrIdx
-            emitNode $ NLam paramVarId resultIdx
+            -- Partial application / eta-reduced: emit full lambda wrapper
+            emitShowDoubleSpecBody v
 
     -- Desugar unpackCString#/unpackCStringUtf8# to cons-cell chain:
     -- GHC represents string literals as (unpackCString# "addr"#) in Core.
