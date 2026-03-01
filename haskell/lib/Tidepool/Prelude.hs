@@ -22,7 +22,7 @@ module Tidepool.Prelude
     -- * Typeclasses (re-exported from base)
   , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional(..), Floating(..), Show
   , Semigroup(..), Monoid(..)
-  , fromIntegral, realToFrac, truncate, ceiling, floor
+  , fromIntegral, realToFrac, truncate, ceiling, floor, round
   , Functor(..), Applicative(..), Monad(..)
   , (<$>)
     -- * show (Text-returning shadow)
@@ -418,6 +418,21 @@ even n = n `rem` 2 == 0
 odd :: Int -> Bool
 odd n = n `rem` 2 /= 0
 {-# INLINE odd #-}
+
+-- | Monomorphic round :: Double -> Int.
+-- The polymorphic Prelude round goes through RealFrac/properFraction which
+-- pulls in dictionary error branches. This uses truncate (which works) and
+-- manual fractional-part checking for banker's rounding.
+round :: Double -> Int
+round d =
+  let n = truncate d :: Int
+      f = d - fromIntegral n  -- fractional part
+      af = if f < 0.0 then negate f else f
+  in if af < 0.5 then n
+     else if af > 0.5 then (if f > 0.0 then n + 1 else n - 1)
+     else if even n then n  -- banker's rounding: round to even on .5
+          else (if f > 0.0 then n + 1 else n - 1)
+{-# INLINE round #-}
 
 -- | Zip three lists with a function.
 zipWith3 :: (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
