@@ -376,12 +376,10 @@ intercalate _   [x]    = x
 intercalate sep (x:xs) = x `append` (sep `append` intercalate sep xs)
 {-# INLINE intercalate #-}
 
--- | Is the first list a prefix of the second?
-isPrefixOf :: Eq a => [a] -> [a] -> Bool
-isPrefixOf []     _      = True
-isPrefixOf _      []     = False
-isPrefixOf (x:xs) (y:ys) = x == y && isPrefixOf xs ys
-{-# INLINABLE isPrefixOf #-}
+-- | Is the first Text a prefix of the second?
+isPrefixOf :: Text -> Text -> Bool
+isPrefixOf = T.isPrefixOf
+{-# INLINE isPrefixOf #-}
 
 -- | Insert an element between every pair of elements.
 intersperse :: a -> [a] -> [a]
