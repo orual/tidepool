@@ -13,18 +13,35 @@ mod inner {
     use std::ptr::{self, null_mut};
     use std::sync::atomic::{AtomicPtr, Ordering};
 
-    // glibc's sigjmp_buf is `struct __jmp_buf_tag[1]`, 200 bytes on x86_64.
-    // We use a raw byte array + extern "C" FFI to avoid libc crate's missing
-    // sigsetjmp/siglongjmp bindings (they're macros in glibc).
-    #[repr(C, align(8))]
+    // sigjmp_buf sizes vary by platform:
+    //   - Linux x86_64 (glibc): __jmp_buf_tag[1] = 200 bytes
+    //   - macOS x86_64: 37 ints + signal mask ≈ 296 bytes
+    //   - macOS aarch64: similar, ~304 bytes
+    // Use 512 bytes to cover all platforms with headroom.
+    #[repr(C, align(16))]
     pub struct SigJmpBuf {
-        _buf: [u8; 200],
+        _buf: [u8; 512],
     }
 
     extern "C" {
-        // glibc: sigsetjmp is a macro for __sigsetjmp
+        // On Linux (glibc), sigsetjmp is a macro that calls __sigsetjmp.
+        // On macOS, sigsetjmp is a real function.
+        #[cfg(target_os = "linux")]
         fn __sigsetjmp(env: *mut SigJmpBuf, savesigs: libc::c_int) -> libc::c_int;
+        #[cfg(not(target_os = "linux"))]
+        fn sigsetjmp(env: *mut SigJmpBuf, savesigs: libc::c_int) -> libc::c_int;
+
         fn siglongjmp(env: *mut SigJmpBuf, val: libc::c_int) -> !;
+    }
+
+    #[cfg(target_os = "linux")]
+    unsafe fn platform_sigsetjmp(env: *mut SigJmpBuf, savesigs: libc::c_int) -> libc::c_int {
+        unsafe { __sigsetjmp(env, savesigs) }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    unsafe fn platform_sigsetjmp(env: *mut SigJmpBuf, savesigs: libc::c_int) -> libc::c_int {
+        unsafe { sigsetjmp(env, savesigs) }
     }
 
     /// Signal number that caused the jump.
@@ -61,7 +78,7 @@ mod inner {
         F: FnOnce() -> R,
     {
         let mut buf: SigJmpBuf = std::mem::zeroed();
-        let val = __sigsetjmp(&mut buf, 1); // savesigs=1
+        let val = platform_sigsetjmp(&mut buf, 1); // savesigs=1
         if val != 0 {
             // Jumped back from signal handler
             JMP_BUF.store(null_mut(), Ordering::Relaxed);
