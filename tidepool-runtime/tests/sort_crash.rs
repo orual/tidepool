@@ -3826,3 +3826,83 @@ fn test_tocore_json_array_lens_works() {
     // Should extract the three strings
     assert_eq!(json, serde_json::json!(["keep", "refactor", "skip"]));
 }
+
+// ===========================================================================
+// JSON decode tests
+// ===========================================================================
+
+#[test]
+fn test_decode_object() {
+    let json = run_aeson(&[
+        r#"let t = "{\"name\": \"alice\", \"age\": 30}" :: Text"#,
+        r#"case decode t of { Just v -> pure v; Nothing -> pure Null }"#,
+    ]);
+    // Age is a Double in our Value type, extract and check
+    assert_eq!(json.get("name"), Some(&serde_json::json!("alice")));
+    let age = json.get("age").unwrap().as_f64().unwrap();
+    assert!((age - 30.0).abs() < 0.001);
+}
+
+#[test]
+fn test_decode_array() {
+    let json = run_aeson(&[
+        r#"let t = "[true, null, \"hi\"]" :: Text"#,
+        r#"pure (decode t)"#,
+    ]);
+    assert_eq!(json, serde_json::json!([true, null, "hi"]));
+}
+
+#[test]
+fn test_decode_invalid() {
+    let json = run_aeson(&[
+        r#"pure (decode "{bad}" :: Maybe Value)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(null));
+}
+
+#[test]
+fn test_decode_nested_then_lens() {
+    let json = run_aeson(&[
+        r#"let t = "{\"items\": [{\"x\": 1}, {\"x\": 2}]}" :: Text"#,
+        r#"case decode t of"#,
+        r#"  Just v -> do"#,
+        r#"    let xs = v ^.. key "items" . _Array . traverse . key "x" . _Int"#,
+        r#"    pure (map fromIntegral xs :: [Int])"#,
+        r#"  Nothing -> pure ([] :: [Int])"#,
+    ]);
+    assert_eq!(json, serde_json::json!([1, 2]));
+}
+
+#[test]
+fn test_decode_escapes() {
+    let json = run_aeson(&[
+        r#"let t = "{\"msg\": \"line1\\nline2\\ttab\"}" :: Text"#,
+        r#"case decode t of { Just v -> pure (v ?. "msg"); Nothing -> pure Nothing }"#,
+    ]);
+    assert_eq!(json, serde_json::json!("line1\nline2\ttab"));
+}
+
+#[test]
+fn test_decode_empty_structures() {
+    let json = run_aeson(&[
+        r#"pure (decode "{}" :: Maybe Value, decode "[]" :: Maybe Value)"#,
+    ]);
+    assert_eq!(json, serde_json::json!([{}, []]));
+}
+
+#[test]
+fn test_decode_scientific_notation() {
+    let json = run_aeson(&[
+        r#"case decode "1.5e2" of { Just (Number d) -> pure (truncate d :: Int); _ -> pure (0 :: Int) }"#,
+    ]);
+    assert_eq!(json, serde_json::json!(150));
+}
+
+#[test]
+fn test_sort_values() {
+    let json = run_aeson(&[
+        r#"let vs = [String "c", String "a", String "b"]"#,
+        r#"pure (sort vs)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(["a", "b", "c"]));
+}

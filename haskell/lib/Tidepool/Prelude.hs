@@ -101,6 +101,7 @@ module Tidepool.Prelude
   , Value(..), Key, object, (.=), toJSON, Result(..)
   , ToJSON
   , encode
+  , decode, eitherDecode
     -- * JSON lenses (Tidepool.Aeson.Lens + Control.Lens)
   , key, nth, _String, _Number, _Bool, _Array, _Object, _Int, _Double
   , members, values, _Null
@@ -156,7 +157,7 @@ import Control.Monad
   , (=<<), (>=>), (<=<)
   , foldM, foldM_
   )
-import Tidepool.Aeson (Value(..), Key, object, (.=), toJSON, Result(..), ToJSON, encode, fromText)
+import Tidepool.Aeson (Value(..), Key, object, (.=), toJSON, Result(..), ToJSON, encode, decode, eitherDecode, fromText)
 import Tidepool.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Int, _Double, members, values, _Null)
 import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)
 import qualified Data.Map.Strict as Map
