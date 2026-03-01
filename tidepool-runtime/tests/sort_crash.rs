@@ -956,10 +956,51 @@ fn test_show_maybe_string() {
 #[test]
 fn test_show_aeson_value() {
     // Regression: derived Show for Value crashed on Number !Double due to
-    // strict field unboxing. Hand-written Show instance fixes this.
+    // $fShowDouble_$sshowSignedFloat pulling in floatToDigits/Integer.
+    // Fixed by intercepting at binding level in Translate.hs.
     let (json, logs) = run_mcp_effectful(&["let v = toJSON (42 :: Int)", "say (show v)", "pure v"]);
     assert_eq!(json, serde_json::json!(42));
     assert_eq!(logs, vec!["Number 42.0"]);
+}
+
+#[test]
+fn test_show_value_in_list() {
+    // ShowS continuation must be preserved for show on lists of Values.
+    let (json, _logs) = run_mcp_effectful(&[
+        r#"let vs = [toJSON (1 :: Int), toJSON True]"#,
+        r#"pure (toJSON (show vs))"#,
+    ]);
+    assert_eq!(json, serde_json::json!("[Number 1.0,Bool True]"));
+}
+
+#[test]
+fn test_tojson_string() {
+    // toJSON @String should produce String "hello", not Array of chars.
+    let (json, _logs) = run_mcp_effectful(&[
+        r#"pure (toJSON ("hello" :: String))"#,
+    ]);
+    assert_eq!(json, serde_json::json!("hello"));
+}
+
+#[test]
+fn test_value_safe_lookup() {
+    // (?.) operator for safe key lookup on Value objects.
+    let (json, _logs) = run_mcp_effectful(&[
+        r#"let v = object ["x" .= (42 :: Int), "y" .= True]"#,
+        r#"pure (toJSON (v ?. "x", v ?. "missing"))"#,
+    ]);
+    assert_eq!(json, serde_json::json!([42, null]));
+}
+
+#[test]
+fn test_lookupkey_nested() {
+    // Monadic chaining with lookupKey for deep access.
+    let (json, _logs) = run_mcp_effectful(&[
+        r#"let v = object ["a" .= object ["b" .= (99 :: Int)]]"#,
+        r#"let r = do { a <- lookupKey "a" v; lookupKey "b" a }"#,
+        r#"pure (toJSON r)"#,
+    ]);
+    assert_eq!(json, serde_json::json!(99));
 }
 
 #[test]

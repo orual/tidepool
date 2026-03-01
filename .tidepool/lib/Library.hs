@@ -80,7 +80,9 @@ _2 f (a, b) = (\b' -> (a, b')) <$> f b
 ix :: Int -> Functor f => (a -> f a) -> [a] -> f [a]
 ix i f xs = case splitAt i xs of
   (before, x:after) -> (\x' -> before ++ [x'] ++ after) <$> f x
-  _                 -> (\_ -> xs) <$> f (head xs)
+  _ -> case xs of
+    (x:_) -> (\_ -> xs) <$> f x
+    []    -> (\_ -> xs) <$> f (error "ix: empty list")
 
 -- ===========================================================================
 -- § Bounded Iteration
