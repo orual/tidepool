@@ -240,6 +240,7 @@ pub fn meta_decl() -> EffectDecl {
             "MetaEffects      :: Meta [Text]",
             "MetaDiagnostics  :: Meta [Text]",
             "MetaVersion      :: Meta Text",
+            "MetaHelp         :: Meta [Text]",
         ],
         type_defs: &[],
         helpers: &[
@@ -249,6 +250,7 @@ pub fn meta_decl() -> EffectDecl {
             "metaEffects :: M [Text]\nmetaEffects = send MetaEffects",
             "metaDiagnostics :: M [Text]\nmetaDiagnostics = send MetaDiagnostics",
             "metaVersion :: M Text\nmetaVersion = send MetaVersion",
+            "metaHelp :: M [Text]\nmetaHelp = send MetaHelp",
         ],
     }
 }
@@ -297,11 +299,11 @@ pub struct EvalRequest {
     #[serde(deserialize_with = "deserialize_code")]
     pub code: Vec<String>,
     /// Additional Haskell imports, one per line (e.g. "Data.List (sort)").
-    /// Accepts a string (one import per line) or array of strings.
+    /// Accepts a string (one import per line, preferred) or array of strings.
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub imports: Vec<String>,
     /// Top-level helper definitions placed before the main do-block.
-    /// Accepts a string (raw Haskell) or array of definition strings.
+    /// Accepts a string (raw Haskell, preferred) or array of definition strings.
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub helpers: Vec<String>,
     /// Optional JSON input injected as `input :: Aeson.Value` binding.
@@ -372,6 +374,9 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
     out.push_str("import qualified Data.Map.Strict as Map\n");
     out.push_str("import qualified Data.Set as Set\n");
     out.push_str("import qualified Tidepool.Aeson.KeyMap as KM\n");
+    out.push_str("import qualified Data.List as L\n");
+    out.push_str("import qualified Tidepool.Text as TT\n");
+    out.push_str("import qualified Tidepool.Table as Tab\n");
     out.push_str("import Control.Monad.Freer hiding (run)\n");
     if user_library {
         out.push_str("import Library\n");
@@ -774,6 +779,11 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
                 "\nPrefer helpers over raw `send`: `say \"hi\"` not `send (Print \"hi\")`.\n",
             );
             desc.push_str("Use `>>=` chains and `<$>`/`<*>` for dense composition. Named bindings as escape hatch.\n");
+            desc.push_str("\n");
+            desc.push_str(concat!(
+                "User library: `Library` is auto-imported from `.tidepool/lib/Library.hs`. ",
+                "Other modules in `.tidepool/lib/` can be imported explicitly via the `imports` field.",
+            ));
         }
     }
 

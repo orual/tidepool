@@ -13,8 +13,8 @@
 
 #[cfg(unix)]
 mod inner {
+    use std::cell::Cell;
     use std::ptr::{self, null_mut};
-    use std::sync::atomic::{AtomicPtr, Ordering};
 
     // sigjmp_buf sizes vary by platform:
     //   - Linux x86_64 (glibc): __jmp_buf_tag[1] = 200 bytes
@@ -54,9 +54,13 @@ mod inner {
         }
     }
 
-    /// Global jump buffer pointer. Only one JIT execution at a time
-    /// (MCP server is single-eval).
-    static JMP_BUF: AtomicPtr<SigJmpBuf> = AtomicPtr::new(ptr::null_mut());
+    // Thread-local jump buffer pointer. Synchronous signals (SIGILL, SIGSEGV,
+    // SIGBUS) are delivered to the faulting thread, so per-thread storage is
+    // correct. The `const` initializer avoids any lazy-init allocation, making
+    // the thread-local read async-signal-safe in practice.
+    thread_local! {
+        static JMP_BUF: Cell<*mut SigJmpBuf> = const { Cell::new(ptr::null_mut()) };
+    }
 
     /// Trampoline called from C after sigsetjmp returns 0.
     /// Casts userdata back to a `Box<dyn FnOnce()>` and calls it.
@@ -102,8 +106,7 @@ mod inner {
         let mut buf: SigJmpBuf = std::mem::zeroed();
 
         // Store the jump buffer so the signal handler can find it.
-        // Release ensures the zeroed buf is visible before the handler reads it.
-        JMP_BUF.store(&mut buf, Ordering::Release);
+        JMP_BUF.with(|cell| cell.set(&mut buf as *mut SigJmpBuf));
 
         // Double-box: outer Box for the fat pointer, inner Box<dyn FnOnce()>.
         let boxed: Box<Box<dyn FnOnce()>> = Box::new(wrapper);
@@ -111,7 +114,7 @@ mod inner {
 
         let val = tidepool_sigsetjmp_call(&mut buf, trampoline, userdata);
 
-        JMP_BUF.store(null_mut(), Ordering::Release);
+        JMP_BUF.with(|cell| cell.set(null_mut()));
 
         if val != 0 {
             // Signal was caught. The closure was interrupted by siglongjmp,
@@ -124,7 +127,9 @@ mod inner {
     }
 
     extern "C" fn handler(sig: libc::c_int, _info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
-        let buf = JMP_BUF.load(Ordering::Acquire);
+        // Synchronous signals (SIGILL, SIGSEGV, SIGBUS) are delivered to the
+        // faulting thread, so the thread-local read returns this thread's buf.
+        let buf = JMP_BUF.with(|cell| cell.get());
         if !buf.is_null() {
             // In JIT context — jump back to sigsetjmp
             unsafe {

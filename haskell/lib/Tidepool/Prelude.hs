@@ -8,7 +8,6 @@ module Tidepool.Prelude
   ( -- * Types (re-exported from base)
     Int, Integer, Word, Char, Bool(..), Double, Float
   , String, Ordering(..), Maybe(..), Either(..)
-  , IO
     -- * Text type (re-exported from Data.Text)
   , Text
   , pack, unpack
@@ -26,7 +25,7 @@ module Tidepool.Prelude
   , Functor(..), Applicative(..), Monad(..)
   , (<$>)
     -- * show (Text-returning shadow)
-  , show
+  , show, showT
   , showDouble
     -- * Basic functions (re-exported from base)
   , id, const, flip, (.), ($), ($!)
@@ -124,13 +123,12 @@ module Tidepool.Prelude
   , Map.singleton, Map.empty
   , Map.findWithDefault, Map.adjust
   , Map.unionWith, Map.intersectionWith
-    -- * Set type (use qualified Set.xxx via `import qualified Data.Set as Set`)
+    -- * Set type (use qualified Set.xxx via preamble's `import qualified Data.Set as Set`)
   ) where
 
 import Prelude
   ( Int, Integer, Word, Char, Bool(..), Double, Float
   , String, Ordering(..), Maybe(..), Either(..)
-  , IO
   , Eq(..), Ord(..), Num(..), Integral(..), Real, Fractional(..), Floating(..), Show
   , Semigroup(..), Monoid(..)
   , fromIntegral, realToFrac, truncate, ceiling, floor
@@ -183,6 +181,10 @@ showDouble d = case d of !_ -> error "showDouble: should be intercepted by Trans
 -- | Text-returning show: @show x@ gives @Text@ instead of @String@.
 show :: Show a => a -> Text
 show = T.pack . P.show
+
+-- | Alias for 'show' (for discoverability, since our @show@ returns @Text@).
+showT :: Show a => a -> Text
+showT = show
 
 -- Re-export Data.Text functions unqualified (non-colliding names)
 pack :: String -> Text

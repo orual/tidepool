@@ -882,16 +882,22 @@ enum MetaReq {
     Diagnostics,
     #[core(name = "MetaVersion")]
     Version,
+    #[core(name = "MetaHelp")]
+    Help,
 }
 
 #[derive(Clone)]
 struct MetaHandler {
     effect_names: Vec<String>,
+    helper_sigs: Vec<String>,
 }
 
 impl MetaHandler {
-    fn new(effect_names: Vec<String>) -> Self {
-        Self { effect_names }
+    fn new(effect_names: Vec<String>, helper_sigs: Vec<String>) -> Self {
+        Self {
+            effect_names,
+            helper_sigs,
+        }
     }
 }
 
@@ -986,6 +992,7 @@ impl EffectHandler<CapturedOutput> for MetaHandler {
                 cx.respond(diags)
             }
             MetaReq::Version => cx.respond(env!("CARGO_PKG_VERSION").to_string()),
+            MetaReq::Help => cx.respond(self.helper_sigs.clone()),
         }
     }
 }
@@ -1194,10 +1201,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cwd = std::env::current_dir()?;
     let tidepool_dir = cwd.join(".tidepool");
     let kv_path = tidepool_dir.join("kv.json");
-    let effect_names: Vec<String> = tidepool_mcp::standard_decls()
-        .iter()
-        .map(|d| d.type_name.to_string())
-        .collect();
+    let decls = tidepool_mcp::standard_decls();
+    let effect_names: Vec<String> = decls.iter().map(|d| d.type_name.to_string()).collect();
+    let mut helper_sigs: Vec<String> = Vec::new();
+    // Preamble-generated helpers
+    helper_sigs.push("say :: Text -> M ()".into());
+    helper_sigs.push("showI :: Int -> Text".into());
+    // Effect-declared helpers
+    for decl in &decls {
+        for h in decl.helpers {
+            if let Some(sig) = h.lines().next() {
+                helper_sigs.push(sig.to_string());
+            }
+        }
+    }
     let handlers = frunk::hlist![
         ConsoleHandler,
         KvHandler::new(kv_path),
@@ -1205,7 +1222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SgHandler::new(cwd.clone()),
         HttpHandler,
         ExecHandler::new(cwd.clone()),
-        MetaHandler::new(effect_names)
+        MetaHandler::new(effect_names, helper_sigs)
     ];
 
     let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
