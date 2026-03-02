@@ -1557,7 +1557,7 @@ fn eval_haskell_show_double(d: f64) -> String {
         return if d.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
     }
     let abs = d.abs();
-    if abs >= 0.1 && abs < 1.0e7 {
+    if (0.1..1.0e7).contains(&abs) {
         let s = format!("{}", d);
         if s.contains('.') { s } else { format!("{}.0", s) }
     } else {

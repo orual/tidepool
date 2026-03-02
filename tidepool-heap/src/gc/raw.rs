@@ -75,7 +75,7 @@ pub unsafe fn for_each_pointer_field(obj: *mut u8, mut f: impl FnMut(*mut *mut u
                 _ => {}
             }
         }
-        TAG_LIT | _ => {}
+        _ => {}
     }
 }
 

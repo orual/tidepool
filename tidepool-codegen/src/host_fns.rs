@@ -107,6 +107,7 @@ pub fn clear_gc_state() {
 ///
 /// The frame walker in gc_trigger reads RBP to walk the JIT stack.
 #[inline(never)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn gc_trigger(vmctx: *mut VMContext) {
     // Force a frame to be created
     let mut _dummy = [0u64; 2];
@@ -227,6 +228,7 @@ pub extern "C" fn heap_alloc(_vmctx: *mut VMContext, _size: u64) -> *mut u8 {
 }
 
 /// Force a thunk to WHNF.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn heap_force(vmctx: *mut VMContext, obj: *mut u8) -> *mut u8 {
     if obj.is_null() {
         return obj;
@@ -499,7 +501,6 @@ pub unsafe extern "C" fn debug_app_check(fun_ptr: *const u8) {
         RUNTIME_ERROR.with(|cell| {
             *cell.borrow_mut() = Some(RuntimeError::BadFunPtrTag(tag));
         });
-        return;
     }
 }
 
@@ -894,7 +895,7 @@ fn haskell_show_double(d: f64) -> String {
         return if d.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
     }
     let abs = d.abs();
-    if abs >= 0.1 && abs < 1.0e7 {
+    if (0.1..1.0e7).contains(&abs) {
         let s = format!("{}", d);
         if s.contains('.') { s } else { format!("{}.0", s) }
     } else {

@@ -497,7 +497,7 @@ fn emit_lam(
         let mut sig = Signature::new(pipeline.isa.default_call_conv());
         sig.returns.push(AbiParam::new(types::I64));
         let func_id = pipeline.module.declare_function("runtime_oom", Linkage::Import, &sig).unwrap();
-        pipeline.module.declare_func_in_func(func_id, &mut inner_builder.func)
+        pipeline.module.declare_func_in_func(func_id, inner_builder.func)
     };
 
     let mut inner_emit = EmitContext::new(ctx.prefix.clone());
@@ -652,7 +652,7 @@ pub fn compile_expr(
         let mut sig = Signature::new(pipeline.isa.default_call_conv());
         sig.returns.push(AbiParam::new(types::I64));
         let func_id = pipeline.module.declare_function("runtime_oom", Linkage::Import, &sig).unwrap();
-        pipeline.module.declare_func_in_func(func_id, &mut builder.func)
+        pipeline.module.declare_func_in_func(func_id, builder.func)
     };
 
     let mut emit_ctx = EmitContext::new(name.to_string());
@@ -1008,7 +1008,7 @@ impl EmitContext {
         let mut sig = Signature::new(pipeline.isa.default_call_conv());
         sig.returns.push(AbiParam::new(types::I64));
         let func_id = pipeline.module.declare_function("runtime_oom", Linkage::Import, &sig).unwrap();
-        pipeline.module.declare_func_in_func(func_id, &mut inner_builder.func)
+        pipeline.module.declare_func_in_func(func_id, inner_builder.func)
     };
 
                         let mut inner_emit = EmitContext::new(self.prefix.clone());
