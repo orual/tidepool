@@ -1,8 +1,15 @@
 use bumpalo::Bump;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use thiserror::Error;
 use tidepool_eval::value::Value;
 use tidepool_eval::{Heap, ThunkId, ThunkState};
 use tidepool_repr::CoreExpr;
+
+#[derive(Debug, Error)]
+pub enum HeapError {
+    #[error("Nursery exhausted: requested {requested}, available {available}")]
+    NurseryExhausted { requested: usize, available: usize },
+}
 
 /// Arena-based heap for Tidepool.
 ///
@@ -46,15 +53,10 @@ impl ArenaHeap {
 
     /// Allocate raw bytes in the arena.
     ///
-    /// # Panics
-    ///
-    /// If the allocation exceeds the nursery limit. Callers should check
-    /// `nursery_has_space` and call `collect_garbage` before retrying.
-    ///
     /// # Safety
     ///
     /// The returned pointer is 8-byte aligned and valid for `size` bytes.
-    pub fn alloc_raw(&self, size: usize) -> *mut u8 {
+    pub fn alloc_raw(&self, size: usize) -> Result<*mut u8, HeapError> {
         // Round up to 8-byte alignment, check for overflow.
         let aligned_size = size
             .checked_add(7)
@@ -68,7 +70,10 @@ impl ArenaHeap {
                 .checked_add(aligned_size)
                 .is_none_or(|new_used| new_used > self.nursery_limit)
             {
-                panic!("Nursery exhausted: call collect_garbage then retry");
+                return Err(HeapError::NurseryExhausted {
+                    requested: aligned_size,
+                    available: self.nursery_limit - prev_used,
+                });
             }
             match self.used.compare_exchange_weak(
                 prev_used,
@@ -86,7 +91,7 @@ impl ArenaHeap {
         let layout = std::alloc::Layout::from_size_align(aligned_size, 8)
             .expect("Invalid layout for alloc_raw");
 
-        self.arena.alloc_layout(layout).as_ptr()
+        Ok(self.arena.alloc_layout(layout).as_ptr())
     }
 
     /// Bytes currently used in the nursery.
@@ -224,7 +229,7 @@ mod tests {
         let heap = ArenaHeap::new();
 
         for _ in 0..10 {
-            let ptr = heap.alloc_raw(13);
+            let ptr = heap.alloc_raw(13).unwrap();
             assert_eq!(
                 ptr as usize % 8,
                 0,
@@ -238,7 +243,7 @@ mod tests {
     fn test_alloc_raw_roundtrip() {
         let heap = ArenaHeap::new();
         let size = 16;
-        let ptr = heap.alloc_raw(size);
+        let ptr = heap.alloc_raw(size).unwrap();
 
         unsafe {
             write_header(ptr, TAG_CLOSURE, size as u16);
@@ -253,19 +258,18 @@ mod tests {
         assert_eq!(heap.nursery_limit(), 1024);
         assert_eq!(heap.bytes_used(), 0);
 
-        heap.alloc_raw(128);
+        heap.alloc_raw(128).unwrap();
         assert_eq!(heap.bytes_used(), 128);
     }
 
     #[test]
-    #[should_panic(expected = "Nursery exhausted")]
     fn test_nursery_exhaustion() {
         let heap = ArenaHeap::with_capacity(128);
         // Fill up to the limit (note: bumpalo might have small internal overhead per alloc but usually zero for bump-pointer)
         // With 8-byte alignment, 128 should be exactly possible.
-        heap.alloc_raw(128);
-        // Next allocation should panic.
-        heap.alloc_raw(8);
+        heap.alloc_raw(128).unwrap();
+        // Next allocation should return error.
+        assert!(heap.alloc_raw(8).is_err());
     }
 
     #[test]
@@ -274,7 +278,7 @@ mod tests {
         assert!(heap.nursery_has_space(64));
         assert!(heap.nursery_has_space(128));
         assert!(!heap.nursery_has_space(129));
-        heap.alloc_raw(64);
+        heap.alloc_raw(64).unwrap();
         assert!(heap.nursery_has_space(64));
         assert!(!heap.nursery_has_space(65));
     }
@@ -301,8 +305,8 @@ mod tests {
         assert_eq!(heap.thunk_count(), 2);
 
         // Forwarding table maps old -> new
-        let new_id0 = table.lookup(id0);
-        let new_id2 = table.lookup(id2);
+        let new_id0 = table.lookup(id0).unwrap();
+        let new_id2 = table.lookup(id2).unwrap();
         assert_eq!(new_id0, ThunkId(0));
         assert_eq!(new_id2, ThunkId(1));
 
@@ -335,11 +339,11 @@ mod tests {
         let table = heap.collect_garbage(&[id1]);
 
         assert_eq!(heap.thunk_count(), 2);
-        let new_id1 = table.lookup(id1);
+        let new_id1 = table.lookup(id1).unwrap();
         match heap.read(new_id1) {
             ThunkState::Unevaluated(env, _) => {
                 // The ThunkRef should point to the NEW id for id0
-                let new_id0 = table.lookup(id0);
+                let new_id0 = table.lookup(id0).unwrap();
                 match env.get(&VarId(42)).unwrap() {
                     Value::ThunkRef(id) => assert_eq!(*id, new_id0),
                     _ => panic!("Expected ThunkRef"),
@@ -352,8 +356,8 @@ mod tests {
     #[test]
     fn test_no_overlap() {
         let heap = ArenaHeap::new();
-        let ptr1 = heap.alloc_raw(8);
-        let ptr2 = heap.alloc_raw(8);
+        let ptr1 = heap.alloc_raw(8).unwrap();
+        let ptr2 = heap.alloc_raw(8).unwrap();
 
         assert_ne!(ptr1, ptr2);
         let diff = (ptr2 as usize).abs_diff(ptr1 as usize);

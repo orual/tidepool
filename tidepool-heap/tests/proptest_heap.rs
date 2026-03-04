@@ -20,7 +20,7 @@ proptest! {
         let heap = ArenaHeap::new();
         // Ensure size is 8-byte aligned as required by alloc_raw and layout
         let aligned_size = (size + 7) & !7;
-        let ptr = heap.alloc_raw(aligned_size as usize);
+        let ptr = heap.alloc_raw(aligned_size as usize).unwrap();
 
         unsafe {
             write_header(ptr, tag, aligned_size);
@@ -36,7 +36,7 @@ proptest! {
         let mut ptrs = Vec::with_capacity(n);
 
         for _ in 0..n {
-            let ptr = heap.alloc_raw(16);
+            let ptr = heap.alloc_raw(16).unwrap();
             ptrs.push(ptr as usize);
         }
 
@@ -53,7 +53,7 @@ proptest! {
     #[test]
     fn prop_allocation_respects_alignment(size in 1..256usize) {
         let heap = ArenaHeap::new();
-        let ptr = heap.alloc_raw(size);
+        let ptr = heap.alloc_raw(size).unwrap();
         assert_eq!(ptr as usize % 8, 0, "Pointer {:?} is not 8-byte aligned for size {}", ptr, size);
     }
 
@@ -62,7 +62,7 @@ proptest! {
     fn prop_tag_preserved(tag in any_tag()) {
         let heap = ArenaHeap::new();
         let size = 24;
-        let ptr = heap.alloc_raw(size);
+        let ptr = heap.alloc_raw(size).unwrap();
         unsafe {
             write_header(ptr, tag, size as u16);
             assert_eq!(read_tag(ptr), tag);
@@ -74,7 +74,7 @@ proptest! {
     fn prop_field_count_matches_arity(num_fields in 0..20u16) {
         let heap = ArenaHeap::new();
         let size = CON_FIELDS_OFFSET + (num_fields as usize * FIELD_STRIDE);
-        let ptr = heap.alloc_raw(size);
+        let ptr = heap.alloc_raw(size).unwrap();
 
         unsafe {
             write_header(ptr, TAG_CON, size as u16);
@@ -122,7 +122,7 @@ proptest! {
 
         for &id in &roots {
             assert!(table.is_reachable(id));
-            let new_id = table.lookup(id);
+            let new_id = table.lookup(id).unwrap();
             // Verify we can still read the thunk
             match heap.read(new_id) {
                 ThunkState::Unevaluated(_, _) => (),
@@ -191,16 +191,16 @@ proptest! {
         }
 
         // Verify the chain structure is preserved
-        let mut current_new_id = table.lookup(root);
+        let mut current_new_id = table.lookup(root).unwrap();
         for i in (1..chain_len).rev() {
             match heap.read(current_new_id) {
                 ThunkState::Unevaluated(env, _) => {
                     let prev_old_id = ids[i-1];
-                    let expected_new_id = table.lookup(prev_old_id);
+                    let expected_new_id = table.lookup(prev_old_id).unwrap();
                     match env.get(&VarId(i as u64)).expect("Value not found in env") {
                         Value::ThunkRef(id) => {
                             prop_assert_eq!(*id, expected_new_id, "Chain link broken at index {}", i);
-                            current_new_id = *id;
+                            current_new_id = table.lookup(prev_old_id).unwrap();
                         }
                         _ => panic!("Expected ThunkRef"),
                     }
@@ -236,7 +236,7 @@ proptest! {
             // Update roots with their new IDs
             let mut new_roots = Vec::new();
             for &old_root in &roots {
-                new_roots.push(table.lookup(old_root));
+                new_roots.push(table.lookup(old_root).unwrap());
             }
             roots = new_roots;
 
@@ -270,7 +270,7 @@ proptest! {
         }
 
         // Also allocate some raw memory in nursery
-        let raw_ptr = heap.alloc_raw(1024);
+        let raw_ptr = heap.alloc_raw(1024).unwrap();
         unsafe { write_header(raw_ptr, TAG_LIT, 1024); }
         let used_before = heap.bytes_used();
         prop_assert!(used_before >= 1024);
@@ -290,7 +290,7 @@ proptest! {
         // We should be able to allocate at least as many as we had before in the nursery
         // (and more, since it's empty now)
         prop_assert!(heap.nursery_has_space(used_before));
-        let new_raw_ptr = heap.alloc_raw(used_before);
+        let new_raw_ptr = heap.alloc_raw(used_before).unwrap();
         prop_assert_eq!(heap.bytes_used(), used_before);
         unsafe { write_header(new_raw_ptr, TAG_LIT, used_before as u16); }
     }

@@ -34,7 +34,7 @@ fn bench_heap(c: &mut Criterion) {
             b.iter(|| {
                 let heap = ArenaHeap::with_capacity(size * 128); // Ensure enough space
                 for _ in 0..size {
-                    black_box(heap.alloc_raw(64));
+                    black_box(heap.alloc_raw(64).unwrap());
                 }
             });
         });

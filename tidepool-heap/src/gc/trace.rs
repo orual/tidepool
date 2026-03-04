@@ -1,7 +1,29 @@
 use std::collections::VecDeque;
+use std::error::Error;
+use std::fmt;
 use tidepool_eval::env::Env;
 use tidepool_eval::heap::{Heap, ThunkState};
 use tidepool_eval::value::{ThunkId, Value};
+
+/// Error during garbage collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcError {
+    ThunkNotReachable(ThunkId),
+}
+
+impl fmt::Display for GcError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GcError::ThunkNotReachable(id) => write!(
+                f,
+                "ThunkId {:?} not in forwarding table (not reachable during trace)",
+                id
+            ),
+        }
+    }
+}
+
+impl Error for GcError {}
 
 /// Maps old ThunkIds to new ThunkIds.
 pub struct ForwardingTable {
@@ -10,13 +32,13 @@ pub struct ForwardingTable {
 
 impl ForwardingTable {
     /// Look up the new ID for an old ID.
-    /// Panics if the old ID was not reachable during trace.
-    pub fn lookup(&self, old_id: ThunkId) -> ThunkId {
+    /// Returns Err if the old ID was not reachable during trace.
+    pub fn lookup(&self, old_id: ThunkId) -> Result<ThunkId, GcError> {
         let idx = old_id.0 as usize;
         if idx >= self.mapping.len() {
-            panic!("ThunkId not in forwarding table (not reachable during trace)");
+            return Err(GcError::ThunkNotReachable(old_id));
         }
-        self.mapping[idx].expect("ThunkId not in forwarding table (not reachable during trace)")
+        self.mapping[idx].ok_or(GcError::ThunkNotReachable(old_id))
     }
 
     /// Check if an old ID is reachable.
@@ -123,7 +145,7 @@ mod tests {
         let mut heap = VecHeap::new();
         let id = heap.alloc(Env::new(), empty_expr());
         let table = trace(&[id], &heap);
-        assert_eq!(table.lookup(id), ThunkId(0));
+        assert_eq!(table.lookup(id).unwrap(), ThunkId(0));
     }
 
     #[test]
@@ -136,8 +158,8 @@ mod tests {
         let id1 = heap.alloc(env1, empty_expr());
 
         let table = trace(&[id1], &heap);
-        assert_eq!(table.lookup(id1), ThunkId(0));
-        assert_eq!(table.lookup(id2), ThunkId(1));
+        assert_eq!(table.lookup(id1).unwrap(), ThunkId(0));
+        assert_eq!(table.lookup(id2).unwrap(), ThunkId(1));
     }
 
     #[test]
@@ -154,9 +176,9 @@ mod tests {
         let id2 = heap.alloc(env2, empty_expr());
 
         let table = trace(&[id1, id2], &heap);
-        assert_eq!(table.lookup(id1), ThunkId(0));
-        assert_eq!(table.lookup(id2), ThunkId(1));
-        assert_eq!(table.lookup(id_shared), ThunkId(2));
+        assert_eq!(table.lookup(id1).unwrap(), ThunkId(0));
+        assert_eq!(table.lookup(id2).unwrap(), ThunkId(1));
+        assert_eq!(table.lookup(id_shared).unwrap(), ThunkId(2));
 
         // Ensure no other IDs are in the table (max 3 reachable)
         let reachable_count = table.mapping.iter().flatten().count();
@@ -170,7 +192,7 @@ mod tests {
         heap.write(id, ThunkState::BlackHole);
 
         let table = trace(&[id], &heap);
-        assert_eq!(table.lookup(id), ThunkId(0));
+        assert_eq!(table.lookup(id).unwrap(), ThunkId(0));
     }
 
     #[test]
@@ -192,8 +214,8 @@ mod tests {
         heap.write(id1, ThunkState::Evaluated(val));
 
         let table = trace(&[id1], &heap);
-        assert_eq!(table.lookup(id1), ThunkId(0));
-        assert_eq!(table.lookup(id2), ThunkId(1));
-        assert_eq!(table.lookup(id3), ThunkId(2));
+        assert_eq!(table.lookup(id1).unwrap(), ThunkId(0));
+        assert_eq!(table.lookup(id2).unwrap(), ThunkId(1));
+        assert_eq!(table.lookup(id3).unwrap(), ThunkId(2));
     }
 }
