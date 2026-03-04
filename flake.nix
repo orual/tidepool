@@ -1,6 +1,11 @@
 {
   description = "tidepool - compile freer-simple effect stacks into Cranelift-backed state machines";
 
+  nixConfig = {
+    extra-substituters = [ "https://tidepool.cachix.org" ];
+    extra-trusted-public-keys = [ "tidepool.cachix.org-1:jnYeaWymP+9/MeAECROfi4+/l7X1ilkOqM5Nrr5Lo1w=" ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";

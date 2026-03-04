@@ -15,7 +15,8 @@ tidepool-runtime = { version = "0.1.0", path = "../tidepool-runtime" }
 tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
 tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
 tidepool-effect = { version = "0.1.0", path = "../tidepool-effect" }
-rmcp = { version = "0.16", features = ["server", "transport-io"] }
+rmcp = { version = "0.16", features = ["server", "transport-io", "transport-streamable-http-server"] }
+axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"

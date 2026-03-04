@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -387,10 +388,8 @@ impl SgHandler {
             let entry = entry.map_err(|e| EffectError::Handler(e.to_string()))?;
             let path = entry.path();
             if path.is_dir() {
-                if path
-                    .file_name()
-                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
-                {
+                let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                if name.starts_with('.') || matches!(name.as_ref(), "target" | "node_modules") {
                     continue;
                 }
                 self.walk_dir(&path, lang, files)?;
@@ -866,6 +865,246 @@ impl EffectHandler<CapturedOutput> for ExecHandler {
     }
 }
 
+// === Tag 7: Git (repository access) ===
+
+#[derive(FromCore)]
+enum GitReq {
+    #[core(name = "GitLog")]
+    Log(String, i64),
+    #[core(name = "GitShow")]
+    Show(String),
+    #[core(name = "GitDiff")]
+    Diff(String),
+    #[core(name = "GitBlame")]
+    Blame(String, i64, i64),
+    #[core(name = "GitTree")]
+    Tree(String, String),
+    #[core(name = "GitBranches")]
+    Branches,
+}
+
+#[derive(Clone)]
+struct GitHandler {
+    root: PathBuf,
+}
+
+impl GitHandler {
+    fn new(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    fn open_repo(&self) -> Result<git2::Repository, EffectError> {
+        git2::Repository::open(&self.root)
+            .map_err(|e| EffectError::Handler(format!("git: failed to open repo: {}", e)))
+    }
+}
+
+impl DescribeEffect for GitHandler {
+    fn effect_decl() -> EffectDecl {
+        tidepool_mcp::git_decl()
+    }
+}
+
+impl EffectHandler<CapturedOutput> for GitHandler {
+    type Request = GitReq;
+    fn handle(
+        &mut self,
+        req: GitReq,
+        cx: &EffectContext<'_, CapturedOutput>,
+    ) -> Result<Value, EffectError> {
+        let repo = self.open_repo()?;
+        match req {
+            GitReq::Log(refspec, count) => {
+                let obj = repo
+                    .revparse_single(&refspec)
+                    .map_err(|e| EffectError::Handler(format!("git log: bad ref '{}': {}", refspec, e)))?;
+                let mut revwalk = repo
+                    .revwalk()
+                    .map_err(|e| EffectError::Handler(format!("git log: revwalk: {}", e)))?;
+                revwalk
+                    .push(obj.id())
+                    .map_err(|e| EffectError::Handler(format!("git log: push: {}", e)))?;
+                revwalk.set_sorting(git2::Sort::TIME).ok();
+                let mut entries = Vec::new();
+                for (i, oid_result) in revwalk.enumerate() {
+                    if i >= count.max(0) as usize {
+                        break;
+                    }
+                    let oid = oid_result
+                        .map_err(|e| EffectError::Handler(format!("git log: walk: {}", e)))?;
+                    let commit = repo.find_commit(oid)
+                        .map_err(|e| EffectError::Handler(format!("git log: find commit: {}", e)))?;
+                    entries.push(serde_json::json!({
+                        "hash": oid.to_string(),
+                        "subject": commit.summary().unwrap_or(""),
+                        "author": commit.author().name().unwrap_or(""),
+                        "date": commit.time().seconds(),
+                    }));
+                }
+                cx.respond(entries)
+            }
+            GitReq::Show(hash) => {
+                let oid = repo
+                    .revparse_single(&hash)
+                    .map_err(|e| EffectError::Handler(format!("git show: bad ref '{}': {}", hash, e)))?
+                    .id();
+                let commit = repo.find_commit(oid)
+                    .map_err(|e| EffectError::Handler(format!("git show: {}", e)))?;
+                let parents: Vec<String> = commit.parent_ids().map(|id| id.to_string()).collect();
+                let result = serde_json::json!({
+                    "hash": oid.to_string(),
+                    "subject": commit.summary().unwrap_or(""),
+                    "author": commit.author().name().unwrap_or(""),
+                    "date": commit.time().seconds(),
+                    "body": commit.body().unwrap_or(""),
+                    "parents": parents,
+                });
+                cx.respond(result)
+            }
+            GitReq::Diff(hash) => {
+                let oid = repo
+                    .revparse_single(&hash)
+                    .map_err(|e| EffectError::Handler(format!("git diff: bad ref '{}': {}", hash, e)))?
+                    .id();
+                let commit = repo.find_commit(oid)
+                    .map_err(|e| EffectError::Handler(format!("git diff: {}", e)))?;
+                let tree = commit.tree()
+                    .map_err(|e| EffectError::Handler(format!("git diff: tree: {}", e)))?;
+                let parent_tree = if commit.parent_count() > 0 {
+                    Some(commit.parent(0)
+                        .map_err(|e| EffectError::Handler(format!("git diff: parent: {}", e)))?
+                        .tree()
+                        .map_err(|e| EffectError::Handler(format!("git diff: parent tree: {}", e)))?)
+                } else {
+                    None
+                };
+                let diff = repo
+                    .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+                    .map_err(|e| EffectError::Handler(format!("git diff: diff: {}", e)))?;
+                let mut files = Vec::new();
+                for delta in diff.deltas() {
+                    let status_char = match delta.status() {
+                        git2::Delta::Added => "A",
+                        git2::Delta::Deleted => "D",
+                        git2::Delta::Modified => "M",
+                        git2::Delta::Renamed => "R",
+                        git2::Delta::Copied => "C",
+                        _ => "?",
+                    };
+                    let path = delta
+                        .new_file()
+                        .path()
+                        .or_else(|| delta.old_file().path())
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    files.push(serde_json::json!({
+                        "path": path,
+                        "status": status_char,
+                    }));
+                }
+                cx.respond(files)
+            }
+            GitReq::Blame(file, start, end) => {
+                let mut opts = git2::BlameOptions::new();
+                if start > 0 && end > 0 {
+                    opts.min_line(start as usize);
+                    opts.max_line(end as usize);
+                }
+                let blame = repo
+                    .blame_file(std::path::Path::new(&file), Some(&mut opts))
+                    .map_err(|e| EffectError::Handler(format!("git blame '{}': {}", file, e)))?;
+                // Read file content to get line text
+                let file_path = self.root.join(&file);
+                let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+                let lines: Vec<&str> = content.lines().collect();
+                let mut hunks = Vec::new();
+                for hunk_idx in 0..blame.len() {
+                    let hunk = blame.get_index(hunk_idx).unwrap();
+                    let sig = hunk.final_signature();
+                    let line_start = hunk.final_start_line();
+                    let line_count = hunk.lines_in_hunk();
+                    for offset in 0..line_count {
+                        let line_no = line_start + offset;
+                        let line_text = if line_no > 0 && line_no <= lines.len() {
+                            lines[line_no - 1]
+                        } else {
+                            ""
+                        };
+                        hunks.push(serde_json::json!({
+                            "commit": hunk.final_commit_id().to_string(),
+                            "author": sig.name().unwrap_or(""),
+                            "line": line_no,
+                            "content": line_text,
+                        }));
+                    }
+                }
+                cx.respond(hunks)
+            }
+            GitReq::Tree(commitish, path) => {
+                let obj = repo
+                    .revparse_single(&commitish)
+                    .map_err(|e| EffectError::Handler(format!("git tree: bad ref '{}': {}", commitish, e)))?;
+                let commit = obj
+                    .peel_to_commit()
+                    .map_err(|e| EffectError::Handler(format!("git tree: peel: {}", e)))?;
+                let tree = commit.tree()
+                    .map_err(|e| EffectError::Handler(format!("git tree: {}", e)))?;
+                let target_tree = if path == "." || path.is_empty() {
+                    tree
+                } else {
+                    let entry = tree
+                        .get_path(std::path::Path::new(&path))
+                        .map_err(|e| EffectError::Handler(format!("git tree: path '{}': {}", path, e)))?;
+                    repo.find_tree(entry.id())
+                        .map_err(|e| EffectError::Handler(format!("git tree: subtree: {}", e)))?
+                };
+                let mut entries = Vec::new();
+                for entry in target_tree.iter() {
+                    let kind = match entry.kind() {
+                        Some(git2::ObjectType::Blob) => "blob",
+                        Some(git2::ObjectType::Tree) => "tree",
+                        _ => "other",
+                    };
+                    entries.push(serde_json::json!({
+                        "name": entry.name().unwrap_or(""),
+                        "type": kind,
+                        "oid": entry.id().to_string(),
+                    }));
+                }
+                cx.respond(entries)
+            }
+            GitReq::Branches => {
+                let branches = repo
+                    .branches(None)
+                    .map_err(|e| EffectError::Handler(format!("git branches: {}", e)))?;
+                let mut result = Vec::new();
+                for branch_result in branches {
+                    let (branch, _branch_type) = branch_result
+                        .map_err(|e| EffectError::Handler(format!("git branches: iter: {}", e)))?;
+                    let name = branch
+                        .name()
+                        .ok()
+                        .flatten()
+                        .unwrap_or("")
+                        .to_string();
+                    let is_head = branch.is_head();
+                    let commit_hash = branch
+                        .get()
+                        .peel_to_commit()
+                        .map(|c| c.id().to_string())
+                        .unwrap_or_default();
+                    result.push(serde_json::json!({
+                        "name": name,
+                        "is_head": is_head,
+                        "commit": commit_hash,
+                    }));
+                }
+                cx.respond(result)
+            }
+        }
+    }
+}
+
 // === Tag 6: Meta (runtime introspection) ===
 
 #[derive(FromCore)]
@@ -1164,11 +1403,33 @@ impl ServerHandler for SetupServer {
 }
 
 // ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+#[derive(clap::Parser)]
+#[command(name = "tidepool", about = "Tidepool MCP server")]
+struct Args {
+    /// Serve over streamable HTTP instead of stdio. Example: --http 0.0.0.0:8080
+    #[arg(long, conflicts_with = "port")]
+    http: Option<SocketAddr>,
+
+    /// Serve over HTTP on 0.0.0.0:<PORT>. Shorthand for --http 0.0.0.0:<PORT>
+    #[arg(long, conflicts_with = "http")]
+    port: Option<u16>,
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use clap::Parser;
+    let args = Args::parse();
+    let http_addr = args
+        .http
+        .or(args.port.map(|p| SocketAddr::from(([0, 0, 0, 0], p))));
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -1186,11 +1447,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              Install via: nix profile install github:tidepool-heavy-industries/tidepool#tidepool-extract"
         );
         use rmcp::ServiceExt;
-        SetupServer
-            .serve((tokio::io::stdin(), tokio::io::stdout()))
-            .await?
-            .waiting()
-            .await?;
+        if let Some(addr) = http_addr {
+            use rmcp::transport::streamable_http_server::{
+                StreamableHttpService, StreamableHttpServerConfig,
+                session::local::LocalSessionManager,
+            };
+            let config = StreamableHttpServerConfig::default();
+            let cancel = config.cancellation_token.clone();
+            let service = StreamableHttpService::new(
+                || Ok(SetupServer),
+                Arc::new(LocalSessionManager::default()),
+                config,
+            );
+            async fn health() -> axum::Json<serde_json::Value> {
+                axum::Json(serde_json::json!({"status": "ok"}))
+            }
+            let router = axum::Router::new()
+                .route("/health", axum::routing::get(health))
+                .nest_service("/mcp", service);
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            eprintln!(
+                "Tidepool MCP v{} listening on http://{}/mcp (setup mode)",
+                env!("CARGO_PKG_VERSION"),
+                addr,
+            );
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async move {
+                    tokio::signal::ctrl_c().await.ok();
+                    cancel.cancel();
+                })
+                .await?;
+        } else {
+            SetupServer
+                .serve((tokio::io::stdin(), tokio::io::stdout()))
+                .await?
+                .waiting()
+                .await?;
+        }
         return Ok(());
     }
 
@@ -1222,9 +1515,952 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SgHandler::new(cwd.clone()),
         HttpHandler,
         ExecHandler::new(cwd.clone()),
-        MetaHandler::new(effect_names, helper_sigs)
+        MetaHandler::new(effect_names, helper_sigs),
+        GitHandler::new(cwd.clone())
     ];
 
     let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
-    server.serve_stdio().await
+    if let Some(addr) = http_addr {
+        server.serve_http(addr).await
+    } else {
+        server.serve_stdio().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tidepool_bridge::{FromCore, ToCore};
+    use tidepool_effect::dispatch::DispatchEffect;
+    use tidepool_repr::{DataCon, DataConId, DataConTable, Literal};
+
+    /// Prelude include path for JIT tests.
+    fn prelude_include() -> PathBuf {
+        let mut dir = repo_root();
+        dir.push("haskell");
+        dir.push("lib");
+        dir
+    }
+
+    /// Build full Haskell source for a JIT effect test.
+    fn jit_test_source(code: &[&str]) -> String {
+        let decls = tidepool_mcp::standard_decls();
+        let preamble = tidepool_mcp::build_preamble(&decls, false);
+        let stack = tidepool_mcp::build_effect_stack_type(&decls);
+        let code_lines: Vec<String> = code.iter().map(|s| s.to_string()).collect();
+        tidepool_mcp::template_haskell(&preamble, &stack, &code_lines, &[], &[], None, None)
+    }
+
+    /// Compile and run a Haskell snippet through the JIT with the full handler stack.
+    /// Returns the result as serde_json::Value, or panics on error.
+    fn jit_eval(code: &[&str]) -> serde_json::Value {
+        let source = jit_test_source(code);
+        let include = prelude_include();
+        let include_paths: Vec<&std::path::Path> = vec![include.as_path()];
+        let kv_path = std::env::temp_dir().join("tidepool_jit_test_kv.json");
+        let cwd = repo_root();
+        let captured = CapturedOutput::new();
+        let mut handlers = frunk::hlist![
+            ConsoleHandler,
+            KvHandler::new(kv_path),
+            FsHandler::new(cwd.clone()),
+            SgHandler::new(cwd.clone()),
+            HttpHandler,
+            ExecHandler::new(cwd.clone()),
+            MetaHandler::new(vec![], vec![]),
+            GitHandler::new(cwd)
+        ];
+        let result = tidepool_runtime::compile_and_run(
+            &source,
+            "result",
+            &include_paths,
+            &mut handlers,
+            &captured,
+        );
+        match result {
+            Ok(eval_result) => eval_result.to_json(),
+            Err(e) => panic!("JIT eval failed: {:?}", e),
+        }
+    }
+
+    /// Helper: find repo root.
+    fn repo_root() -> PathBuf {
+        let mut dir = std::env::current_dir().unwrap();
+        loop {
+            if dir.join(".git").exists() {
+                return dir;
+            }
+            if !dir.pop() {
+                panic!("not inside a git repo");
+            }
+        }
+    }
+
+    /// Helper: open the repo at the workspace root and run a GitHandler operation.
+    fn git_handler() -> (GitHandler, git2::Repository) {
+        let dir = repo_root();
+        let repo = git2::Repository::open(&dir).unwrap();
+        (GitHandler::new(dir), repo)
+    }
+
+    /// Build a DataConTable with standard types + all effect constructors + response types.
+    /// Auto-generated from `standard_decls()` so it never goes stale.
+    fn full_effect_test_table() -> DataConTable {
+        let mut t = tidepool_testing::gen::datacon_table::standard_datacon_table();
+        let decls = tidepool_mcp::standard_decls();
+        let mut next_id = 100u64;
+
+        // Auto-add all effect constructors from declarations
+        for decl in &decls {
+            for con_str in decl.constructors {
+                let parsed = tidepool_mcp::parse_constructor(con_str);
+                if t.get_by_name(&parsed.name).is_some() {
+                    continue;
+                }
+                t.insert(DataCon {
+                    id: DataConId(next_id),
+                    name: parsed.name,
+                    tag: 1,
+                    rep_arity: parsed.arity,
+                    field_bangs: vec![],
+                });
+                next_id += 1;
+            }
+        }
+
+        // Response-type constructors used by handlers
+        let response_extras: &[(&str, u32)] = &[
+            ("Object", 1),
+            ("Array", 1),
+            ("String", 1),
+            ("Number", 1),
+            ("Bool", 1),
+            ("Null", 0),
+            ("Bin", 5),
+            ("Tip", 0),
+            ("()", 0),
+            ("(,,)", 3),
+            // SG types
+            ("Match", 5),
+            ("Rust", 0),
+            ("Python", 0),
+            ("TypeScript", 0),
+            ("JavaScript", 0),
+            ("Go", 0),
+            ("Java", 0),
+            ("C", 0),
+            ("Cpp", 0),
+            ("Haskell", 0),
+            ("Nix", 0),
+            ("Html", 0),
+            ("Css", 0),
+            ("Json", 0),
+            ("Yaml", 0),
+            ("Toml", 0),
+        ];
+        for &(name, arity) in response_extras {
+            if t.get_by_name(name).is_some() {
+                continue;
+            }
+            t.insert(DataCon {
+                id: DataConId(next_id),
+                name: name.into(),
+                tag: 1,
+                rep_arity: arity,
+                field_bangs: vec![],
+            });
+            next_id += 1;
+        }
+        t
+    }
+
+    /// Walk a Value and assert it's a valid Haskell cons-list ([] or : _ _).
+    fn assert_is_haskell_list(val: &Value, table: &DataConTable) {
+        match val {
+            Value::Con(id, fields) => {
+                let name = table.name_of(*id).unwrap();
+                match name {
+                    "[]" => assert!(fields.is_empty()),
+                    ":" => {
+                        assert_eq!(fields.len(), 2, "cons cell should have 2 fields");
+                        assert_is_json_value(&fields[0], table);
+                        assert_is_haskell_list(&fields[1], table);
+                    }
+                    other => panic!("Expected list constructor, got {}", other),
+                }
+            }
+            other => panic!("Expected Con (list), got {:?}", other),
+        }
+    }
+
+    /// Assert a Value is a valid JSON Value constructor.
+    fn assert_is_json_value(val: &Value, table: &DataConTable) {
+        match val {
+            Value::Con(id, _) => {
+                let name = table.name_of(*id).unwrap();
+                assert!(
+                    ["Object", "Array", "String", "Number", "Bool", "Null"].contains(&name),
+                    "Expected JSON Value constructor, got {}",
+                    name
+                );
+            }
+            _ => panic!("Expected Con (JSON Value), got {:?}", val),
+        }
+    }
+
+    /// Get HEAD commit hash for tests that need a valid oid.
+    fn head_hash() -> String {
+        let repo = git2::Repository::open(repo_root()).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        head.id().to_string()
+    }
+
+    // === Request FromCore tests ===
+
+    #[test]
+    fn test_git_req_from_core_branches() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitBranches").unwrap();
+        let val = Value::Con(con_id, vec![]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Branches));
+    }
+
+    #[test]
+    fn test_git_req_from_core_log() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitLog").unwrap();
+        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
+        let count_val = Value::Lit(Literal::LitInt(5));
+        let val = Value::Con(con_id, vec![ref_val, count_val]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Log(ref s, 5) if s == "HEAD"));
+    }
+
+    #[test]
+    fn test_git_req_from_core_show() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitShow").unwrap();
+        let hash = head_hash();
+        let hash_val = hash.clone().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![hash_val]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Show(ref s) if s == &hash));
+    }
+
+    #[test]
+    fn test_git_req_from_core_diff() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitDiff").unwrap();
+        let hash = head_hash();
+        let hash_val = hash.clone().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![hash_val]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Diff(ref s) if s == &hash));
+    }
+
+    #[test]
+    fn test_git_req_from_core_blame() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitBlame").unwrap();
+        let file_val = "Cargo.toml".to_string().to_value(&table).unwrap();
+        let start_val = Value::Lit(Literal::LitInt(1));
+        let end_val = Value::Lit(Literal::LitInt(5));
+        let val = Value::Con(con_id, vec![file_val, start_val, end_val]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Blame(ref f, 1, 5) if f == "Cargo.toml"));
+    }
+
+    #[test]
+    fn test_git_req_from_core_tree() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("GitTree").unwrap();
+        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
+        let path_val = ".".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![ref_val, path_val]);
+        let req = GitReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, GitReq::Tree(ref r, ref p) if r == "HEAD" && p == "."));
+    }
+
+    // === Response structure tests ===
+
+    #[test]
+    fn test_git_response_branches_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let result = handler.handle(GitReq::Branches, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_response_log_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let result = handler.handle(GitReq::Log("HEAD".into(), 3), &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_response_show_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let hash = head_hash();
+        let result = handler.handle(GitReq::Show(hash), &cx).unwrap();
+        // Show returns a single JSON Object, not a list
+        assert_is_json_value(&result, &table);
+    }
+
+    #[test]
+    fn test_git_response_diff_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let hash = head_hash();
+        let result = handler.handle(GitReq::Diff(hash), &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_response_tree_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let result = handler.handle(GitReq::Tree("HEAD".into(), ".".into()), &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_response_blame_structure() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let (mut handler, _) = git_handler();
+        let result = handler.handle(GitReq::Blame("Cargo.toml".into(), 1, 5), &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    // === Full dispatch round-trip tests ===
+
+    #[test]
+    fn test_git_dispatch_roundtrip_branches() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitBranches").unwrap();
+        let request = Value::Con(con_id, vec![]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_dispatch_roundtrip_log() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitLog").unwrap();
+        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
+        let count_val = Value::Lit(Literal::LitInt(3));
+        let request = Value::Con(con_id, vec![ref_val, count_val]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_dispatch_roundtrip_show() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitShow").unwrap();
+        let hash = head_hash();
+        let hash_val = hash.to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![hash_val]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_json_value(&result, &table);
+    }
+
+    #[test]
+    fn test_git_dispatch_roundtrip_diff() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitDiff").unwrap();
+        let hash = head_hash();
+        let hash_val = hash.to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![hash_val]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_dispatch_roundtrip_tree() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitTree").unwrap();
+        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
+        let path_val = ".".to_string().to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![ref_val, path_val]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    #[test]
+    fn test_git_dispatch_roundtrip_blame() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
+        let con_id = table.get_by_name("GitBlame").unwrap();
+        let file_val = "Cargo.toml".to_string().to_value(&table).unwrap();
+        let start_val = Value::Lit(Literal::LitInt(1));
+        let end_val = Value::Lit(Literal::LitInt(5));
+        let request = Value::Con(con_id, vec![file_val, start_val, end_val]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    // === Structural guard tests ===
+
+    #[test]
+    fn all_effect_constructors_in_table() {
+        let table = full_effect_test_table();
+        for decl in &tidepool_mcp::standard_decls() {
+            for con_str in decl.constructors {
+                let parsed = tidepool_mcp::parse_constructor(con_str);
+                let id = table.get_by_name(&parsed.name).unwrap_or_else(|| {
+                    panic!(
+                        "Constructor '{}' from effect '{}' missing from test DataConTable",
+                        parsed.name, decl.type_name
+                    )
+                });
+                let dc = table.get(id).unwrap();
+                assert_eq!(
+                    dc.rep_arity, parsed.arity,
+                    "Arity mismatch for '{}': decl says {} but table has {}",
+                    parsed.name, parsed.arity, dc.rep_arity
+                );
+            }
+        }
+    }
+
+    const EFFECTS_WITH_ROUNDTRIP_TESTS: &[&str] = &[
+        "Console", "KV", "Fs", "SG", "Http", "Exec", "Meta", "Git", "Ask",
+    ];
+
+    #[test]
+    fn all_effects_have_roundtrip_coverage() {
+        let declared: Vec<&str> = tidepool_mcp::standard_decls()
+            .iter()
+            .map(|d| d.type_name)
+            .collect();
+        let missing: Vec<&&str> = declared
+            .iter()
+            .filter(|name| !EFFECTS_WITH_ROUNDTRIP_TESTS.contains(name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "Effects in standard_decls() without roundtrip tests: {:?}\n\
+             Add roundtrip tests and update EFFECTS_WITH_ROUNDTRIP_TESTS.",
+            missing
+        );
+    }
+
+    #[test]
+    fn handler_order_matches_standard_decls() {
+        let decls = tidepool_mcp::standard_decls();
+        // HList order from main(): Console(0), KV(1), Fs(2), SG(3), Http(4), Exec(5), Meta(6), Git(7)
+        // Ask(8) is handled by MCP server, not in main HList
+        let expected = [
+            "Console", "KV", "Fs", "SG", "Http", "Exec", "Meta", "Git",
+        ];
+        for (i, name) in expected.iter().enumerate() {
+            assert_eq!(
+                decls[i].type_name, *name,
+                "Tag {} should be '{}' but standard_decls has '{}'",
+                i, name, decls[i].type_name
+            );
+        }
+    }
+
+    // === Console roundtrip tests ===
+
+    #[test]
+    fn test_console_from_core_print() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("Print").unwrap();
+        let msg = "hello".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![msg]);
+        let req = ConsoleReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, ConsoleReq::Print(ref s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_console_dispatch_roundtrip() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![ConsoleHandler];
+        let con_id = table.get_by_name("Print").unwrap();
+        let msg = "test output".to_string().to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![msg]);
+        let _result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_eq!(captured.drain(), vec!["test output".to_string()]);
+    }
+
+    // === KV roundtrip tests ===
+
+    #[test]
+    fn test_kv_from_core_keys() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("KvKeys").unwrap();
+        let val = Value::Con(con_id, vec![]);
+        let req = KvReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, KvReq::Keys));
+    }
+
+    #[test]
+    fn test_kv_from_core_get() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("KvGet").unwrap();
+        let key = "mykey".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![key]);
+        let req = KvReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, KvReq::Get(ref k) if k == "mykey"));
+    }
+
+    #[test]
+    fn test_kv_dispatch_roundtrip_keys() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let tmp = std::env::temp_dir().join("tidepool_test_kv.json");
+        let mut handlers = frunk::hlist![KvHandler::new(tmp)];
+        let con_id = table.get_by_name("KvKeys").unwrap();
+        let request = Value::Con(con_id, vec![]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        assert_is_haskell_list(&result, &table);
+    }
+
+    // === Fs roundtrip tests ===
+
+    #[test]
+    fn test_fs_from_core_exists() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("FsExists").unwrap();
+        let path = "Cargo.toml".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![path]);
+        let req = FsReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, FsReq::Exists(ref p) if p == "Cargo.toml"));
+    }
+
+    #[test]
+    fn test_fs_dispatch_roundtrip_exists() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![FsHandler::new(repo_root())];
+        let con_id = table.get_by_name("FsExists").unwrap();
+        let path = "Cargo.toml".to_string().to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![path]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        // Should return True constructor
+        match &result {
+            Value::Con(id, _) => {
+                let name = table.name_of(*id).unwrap();
+                assert_eq!(name, "True", "Cargo.toml should exist");
+            }
+            other => panic!("Expected Con (Bool), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fs_dispatch_roundtrip_listdir() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![FsHandler::new(repo_root())];
+        let con_id = table.get_by_name("FsListDir").unwrap();
+        let path = ".".to_string().to_value(&table).unwrap();
+        let request = Value::Con(con_id, vec![path]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        // Returns [Text] — a cons-list of Text values
+        assert_is_cons_list(&result, &table);
+    }
+
+    // === SG FromCore tests (side-effectful, no dispatch) ===
+
+    #[test]
+    fn test_sg_from_core_find() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("SgFind").unwrap();
+        let lang_id = table.get_by_name("Rust").unwrap();
+        let lang = Value::Con(lang_id, vec![]);
+        let pattern = "fn $NAME".to_string().to_value(&table).unwrap();
+        // Empty file list
+        let nil_id = table.get_by_name("[]").unwrap();
+        let files = Value::Con(nil_id, vec![]);
+        let val = Value::Con(con_id, vec![lang, pattern, files]);
+        let req = SgReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, SgReq::Find(_, ref p, ref f) if p == "fn $NAME" && f.is_empty()));
+    }
+
+    // === Http FromCore tests (network side effects, no dispatch) ===
+
+    #[test]
+    fn test_http_from_core_get() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("HttpGet").unwrap();
+        let url = "https://example.com".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![url]);
+        let req = HttpReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, HttpReq::Get(ref u) if u == "https://example.com"));
+    }
+
+    #[test]
+    fn test_http_from_core_post() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("HttpPost").unwrap();
+        let url = "https://example.com/api".to_string().to_value(&table).unwrap();
+        // Use a Null JSON value as body
+        let null_id = table.get_by_name("Null").unwrap();
+        let body = Value::Con(null_id, vec![]);
+        let val = Value::Con(con_id, vec![url, body]);
+        let req = HttpReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, HttpReq::Post(ref u, _) if u == "https://example.com/api"));
+    }
+
+    // === Exec FromCore tests (shell side effects, no dispatch) ===
+
+    #[test]
+    fn test_exec_from_core_run() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("Run").unwrap();
+        let cmd = "echo hello".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![cmd]);
+        let req = ExecReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, ExecReq::Run(ref c) if c == "echo hello"));
+    }
+
+    #[test]
+    fn test_exec_from_core_run_in() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("RunIn").unwrap();
+        let dir = "/tmp".to_string().to_value(&table).unwrap();
+        let cmd = "ls".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![dir, cmd]);
+        let req = ExecReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, ExecReq::RunIn(ref d, ref c) if d == "/tmp" && c == "ls"));
+    }
+
+    // === Meta roundtrip tests ===
+
+    #[test]
+    fn test_meta_from_core_version() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("MetaVersion").unwrap();
+        let val = Value::Con(con_id, vec![]);
+        let req = MetaReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, MetaReq::Version));
+    }
+
+    #[test]
+    fn test_meta_from_core_constructors() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("MetaConstructors").unwrap();
+        let val = Value::Con(con_id, vec![]);
+        let req = MetaReq::from_value(&val, &table).unwrap();
+        assert!(matches!(req, MetaReq::Constructors));
+    }
+
+    /// Assert a Value is a cons-list ([] or : _ _) without checking element types.
+    fn assert_is_cons_list(val: &Value, table: &DataConTable) {
+        match val {
+            Value::Con(id, fields) => {
+                let name = table.name_of(*id).unwrap();
+                match name {
+                    "[]" => assert!(fields.is_empty()),
+                    ":" => {
+                        assert_eq!(fields.len(), 2, "cons cell should have 2 fields");
+                        assert_is_cons_list(&fields[1], table);
+                    }
+                    other => panic!("Expected list constructor, got {}", other),
+                }
+            }
+            other => panic!("Expected Con (list), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_meta_dispatch_roundtrip_version() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![MetaHandler::new(vec![], vec![])];
+        let con_id = table.get_by_name("MetaVersion").unwrap();
+        let request = Value::Con(con_id, vec![]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        // MetaVersion returns a Text value
+        match &result {
+            Value::Con(id, _) => {
+                let name = table.name_of(*id).unwrap();
+                assert_eq!(name, "Text", "MetaVersion should return a Text");
+            }
+            _ => panic!("Expected Con (Text), got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_meta_dispatch_roundtrip_primops() {
+        let table = full_effect_test_table();
+        let captured = CapturedOutput::new();
+        let cx = EffectContext::with_user(&table, &captured);
+        let mut handlers = frunk::hlist![MetaHandler::new(vec![], vec![])];
+        let con_id = table.get_by_name("MetaPrimOps").unwrap();
+        let request = Value::Con(con_id, vec![]);
+        let result = handlers.dispatch(0, &request, &cx).unwrap();
+        // Returns [Text] — list of strings (each string is a cons-list of chars)
+        assert_is_cons_list(&result, &table);
+    }
+
+    // === Ask construction test (Ask is handled by MCP AskDispatcher, no FromCore type) ===
+
+    #[test]
+    fn test_ask_constructor_in_table() {
+        let table = full_effect_test_table();
+        let con_id = table.get_by_name("Ask").unwrap();
+        let dc = table.get(con_id).unwrap();
+        // Ask :: Text -> Ask Value  →  arity 1
+        assert_eq!(dc.rep_arity, 1, "Ask should have arity 1");
+        // Verify we can construct a well-formed Ask request Value
+        let prompt = "What is your name?".to_string().to_value(&table).unwrap();
+        let val = Value::Con(con_id, vec![prompt]);
+        match &val {
+            Value::Con(id, fields) => {
+                assert_eq!(table.name_of(*id).unwrap(), "Ask");
+                assert_eq!(fields.len(), 1);
+            }
+            _ => panic!("Expected Con"),
+        }
+    }
+
+    // === JIT-level roundtrip tests ===
+    // These compile Haskell through GHC + Cranelift JIT with the full handler stack.
+    // They catch case trap (SIGILL) bugs that tree-walking eval misses.
+
+    #[test]
+    fn test_jit_console_roundtrip() {
+        let result = jit_eval(&["say \"hello from JIT\"", "pure (toJSON True)"]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_kv_roundtrip() {
+        let result = jit_eval(&[
+            "kvSet \"jit_test\" (toJSON (42 :: Int))",
+            "v <- kvGet \"jit_test\"",
+            "pure (toJSON v)",
+        ]);
+        assert_eq!(result, serde_json::json!(42));
+    }
+
+    #[test]
+    fn test_jit_fs_exists_roundtrip() {
+        let result = jit_eval(&["b <- fsExists \"Cargo.toml\"", "pure (toJSON b)"]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_fs_listdir_roundtrip() {
+        let result = jit_eval(&[
+            "entries <- fsListDir \".\"",
+            "pure (toJSON (length entries > 0))",
+        ]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_meta_version_roundtrip() {
+        let result = jit_eval(&["v <- metaVersion", "pure (toJSON v)"]);
+        assert!(result.is_string(), "metaVersion should return a string, got {:?}", result);
+    }
+
+    #[test]
+    fn test_jit_meta_primops_roundtrip() {
+        let result = jit_eval(&[
+            "ops <- metaPrimOps",
+            "pure (toJSON (length ops > 0))",
+        ]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_git_log_roundtrip() {
+        let result = jit_eval(&[
+            "commits <- gitLog \"HEAD\" 3",
+            "pure (toJSON (length commits))",
+        ]);
+        let n = result.as_i64().unwrap();
+        assert!(n > 0 && n <= 3, "gitLog should return 1-3 commits, got {}", n);
+    }
+
+    #[test]
+    fn test_jit_git_show_roundtrip() {
+        let result = jit_eval(&[
+            "c <- gitShow \"HEAD\"",
+            "pure (toJSON (c ^? key \"subject\" . _String))",
+        ]);
+        assert!(result.is_string(), "gitShow HEAD subject should be a string, got {:?}", result);
+    }
+
+    #[test]
+    fn test_jit_git_diff_roundtrip() {
+        let result = jit_eval(&[
+            "diffs <- gitDiff \"HEAD\"",
+            "pure (toJSON (length diffs))",
+        ]);
+        assert!(result.is_number(), "gitDiff should return a count, got {:?}", result);
+    }
+
+    #[test]
+    fn test_jit_git_branches_roundtrip() {
+        let result = jit_eval(&[
+            "bs <- gitBranches",
+            "pure (toJSON (length bs > 0))",
+        ]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_git_tree_roundtrip() {
+        let result = jit_eval(&[
+            "entries <- gitTree \"HEAD\" \".\"",
+            "pure (toJSON (length entries > 0))",
+        ]);
+        assert_eq!(result, serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_jit_git_blame_roundtrip() {
+        let result = jit_eval(&[
+            "hunks <- gitBlame \"Cargo.toml\" 1 3",
+            "pure (toJSON (length hunks))",
+        ]);
+        let n = result.as_i64().unwrap();
+        assert!(n > 0, "gitBlame should return at least 1 hunk, got {}", n);
+    }
+
+    // === Raw git2 tests ===
+
+    #[test]
+    fn test_git_open_repo() {
+        let (handler, _) = git_handler();
+        handler.open_repo().expect("should open repo");
+    }
+
+    #[test]
+    fn test_git_branches() {
+        let (_, repo) = git_handler();
+        let branches = repo.branches(None).unwrap();
+        let names: Vec<String> = branches
+            .filter_map(|b| b.ok())
+            .filter_map(|(b, _)| b.name().ok().flatten().map(String::from))
+            .collect();
+        assert!(!names.is_empty(), "should have at least one branch");
+        assert!(
+            names.iter().any(|n| n == "main" || n == "master"),
+            "should have main or master branch, got: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn test_git_log() {
+        let (_, repo) = git_handler();
+        let obj = repo.revparse_single("HEAD").unwrap();
+        let mut revwalk = repo.revwalk().unwrap();
+        revwalk.push(obj.id()).unwrap();
+        revwalk.set_sorting(git2::Sort::TIME).ok();
+        let commits: Vec<git2::Oid> = revwalk.take(3).filter_map(|r| r.ok()).collect();
+        assert!(!commits.is_empty(), "should have at least one commit");
+        let commit = repo.find_commit(commits[0]).unwrap();
+        assert!(
+            commit.summary().is_some(),
+            "HEAD commit should have a summary"
+        );
+    }
+
+    #[test]
+    fn test_git_show() {
+        let (_, repo) = git_handler();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let oid = head.id();
+        let commit = repo.find_commit(oid).unwrap();
+        assert!(commit.summary().is_some());
+        assert!(commit.author().name().is_some());
+    }
+
+    #[test]
+    fn test_git_diff() {
+        let (_, repo) = git_handler();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = head.tree().unwrap();
+        if head.parent_count() > 0 {
+            let parent_tree = head.parent(0).unwrap().tree().unwrap();
+            let diff = repo
+                .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+                .unwrap();
+            // Just verify it doesn't panic — diff may be empty for merge commits
+            let _count = diff.deltas().count();
+        }
+    }
+
+    #[test]
+    fn test_git_tree() {
+        let (_, repo) = git_handler();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = head.tree().unwrap();
+        let entries: Vec<String> = tree
+            .iter()
+            .filter_map(|e| e.name().map(String::from))
+            .collect();
+        assert!(!entries.is_empty(), "root tree should have entries");
+        assert!(
+            entries.iter().any(|e| e == "Cargo.toml" || e == "CLAUDE.md"),
+            "root tree should contain known files, got: {:?}",
+            entries
+        );
+    }
+
+    #[test]
+    fn test_git_blame() {
+        let (handler, repo) = git_handler();
+        let mut opts = git2::BlameOptions::new();
+        opts.min_line(1);
+        opts.max_line(5);
+        let blame = repo
+            .blame_file(std::path::Path::new("Cargo.toml"), Some(&mut opts))
+            .unwrap();
+        assert!(blame.len() > 0, "blame should have at least one hunk");
+        let hunk = blame.get_index(0).unwrap();
+        assert!(
+            hunk.final_signature().name().is_some(),
+            "blame hunk should have an author"
+        );
+        // Verify file content reading works
+        let content = std::fs::read_to_string(handler.root.join("Cargo.toml")).unwrap();
+        assert!(!content.is_empty());
+    }
 }

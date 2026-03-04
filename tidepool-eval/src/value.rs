@@ -76,6 +76,16 @@ impl std::fmt::Display for Value {
     }
 }
 
+impl Value {
+    /// Count total nodes in a Value tree. O(n) walk used for size checks.
+    pub fn node_count(&self) -> usize {
+        match self {
+            Value::Con(_, fields) => 1 + fields.iter().map(|f| f.node_count()).sum::<usize>(),
+            _ => 1,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

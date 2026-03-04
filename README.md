@@ -26,6 +26,9 @@ The Haskell compiler (`tidepool-extract`) is needed to evaluate code. Install it
 # Install Nix (if needed):
 curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
 
+# Optional: use binary cache (skip 30min GHC build)
+nix run nixpkgs#cachix -- use tidepool
+
 # Install the tidepool GHC toolchain:
 nix profile install github:tidepool-heavy-industries/tidepool#tidepool-extract
 ```
@@ -145,7 +148,9 @@ The `tidepool` binary provides these effect handlers:
 | **SG** | `SgFind`, `SgPreview`, `SgReplace`, `SgRuleFind`, `SgRuleReplace` — structural code search via ast-grep |
 | **Http** | `HttpGet`, `HttpPost`, `HttpRequest` — outbound HTTP (no localhost) |
 | **Exec** | `Run`, `RunIn`, `RunJson` — shell command execution |
-| **Meta** | `MetaConstructors`, `MetaLookupCon`, `MetaPrimOps`, `MetaEffects`, `MetaDiagnostics`, `MetaVersion` |
+| **Meta** | `MetaConstructors`, `MetaLookupCon`, `MetaPrimOps`, `MetaEffects`, `MetaDiagnostics`, `MetaVersion`, `MetaHelp` |
+| **Git** | `GitLog`, `GitShow`, `GitDiff`, `GitBlame`, `GitTree`, `GitBranches` — native git access via libgit2 |
+| **Ask** | `Ask :: Text -> Ask Value` — suspend execution and ask the calling LLM a question |
 
 ## Development
 

@@ -19,6 +19,7 @@ pub enum JitError {
     Effect(EffectError),
     Yield(crate::yield_type::YieldError),
     HeapBridge(crate::heap_bridge::BridgeError),
+    EffectResponseTooLarge { nodes: usize, limit: usize },
 }
 
 impl std::fmt::Display for JitError {
@@ -32,6 +33,11 @@ impl std::fmt::Display for JitError {
             JitError::Effect(e) => write!(f, "effect dispatch error: {}", e),
             JitError::Yield(e) => write!(f, "yield error: {}", e),
             JitError::HeapBridge(e) => write!(f, "heap bridge error: {}", e),
+            JitError::EffectResponseTooLarge { nodes, limit } => write!(
+                f,
+                "Effect handler response too large ({nodes} value nodes, max {limit}). \
+                 Narrow your query to return fewer results."
+            ),
         }
     }
 }
@@ -124,6 +130,14 @@ impl JitEffectMachine {
                         .map_err(JitError::HeapBridge)?;
                     let cx = EffectContext::with_user(table, user);
                     let resp_val = handlers.dispatch(tag, &req_val, &cx)?;
+                    const MAX_EFFECT_RESPONSE_NODES: usize = 50_000;
+                    let nodes = resp_val.node_count();
+                    if nodes > MAX_EFFECT_RESPONSE_NODES {
+                        break Err(JitError::EffectResponseTooLarge {
+                            nodes,
+                            limit: MAX_EFFECT_RESPONSE_NODES,
+                        });
+                    }
                     let resp_ptr =
                         unsafe { heap_bridge::value_to_heap(&resp_val, machine.vmctx_mut()) }
                             .map_err(JitError::HeapBridge)?;

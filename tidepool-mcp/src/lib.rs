@@ -46,6 +46,25 @@ pub struct EffectDecl {
     pub helpers: &'static [&'static str],
 }
 
+/// Parsed constructor info extracted from an EffectDecl constructor string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedConstructor {
+    pub name: String,
+    pub arity: u32,
+}
+
+/// Parse `"GitLog :: Text -> Int -> Git [Value]"` → `ParsedConstructor { name: "GitLog", arity: 2 }`
+///
+/// Arity = number of `->` in the type signature (each `->` separates one argument from the rest).
+pub fn parse_constructor(decl: &str) -> ParsedConstructor {
+    let (name_part, type_part) = decl
+        .split_once("::")
+        .expect("constructor decl must contain '::'");
+    let name = name_part.trim().to_string();
+    let arity = type_part.matches("->").count() as u32;
+    ParsedConstructor { name, arity }
+}
+
 /// Trait for effect handlers that can describe their Haskell-side type.
 pub trait DescribeEffect {
     fn effect_decl() -> EffectDecl;
@@ -268,6 +287,31 @@ pub fn ask_decl() -> EffectDecl {
     }
 }
 
+/// Git effect: native repository access via libgit2.
+pub fn git_decl() -> EffectDecl {
+    EffectDecl {
+        type_name: "Git",
+        description: "Native git repository access via libgit2.",
+        constructors: &[
+            "GitLog      :: Text -> Int -> Git [Value]",
+            "GitShow     :: Text -> Git Value",
+            "GitDiff     :: Text -> Git [Value]",
+            "GitBlame    :: Text -> Int -> Int -> Git [Value]",
+            "GitTree     :: Text -> Text -> Git [Value]",
+            "GitBranches :: Git [Value]",
+        ],
+        type_defs: &[],
+        helpers: &[
+            "gitLog :: Text -> Int -> M [Value]\ngitLog ref n = send (GitLog ref n)",
+            "gitShow :: Text -> M Value\ngitShow = send . GitShow",
+            "gitDiff :: Text -> M [Value]\ngitDiff = send . GitDiff",
+            "gitBlame :: Text -> Int -> Int -> M [Value]\ngitBlame file s e = send (GitBlame file s e)",
+            "gitTree :: Text -> Text -> M [Value]\ngitTree hash path = send (GitTree hash path)",
+            "gitBranches :: M [Value]\ngitBranches = send GitBranches",
+        ],
+    }
+}
+
 /// All standard effects in canonical order.
 pub fn standard_decls() -> Vec<EffectDecl> {
     vec![
@@ -278,6 +322,7 @@ pub fn standard_decls() -> Vec<EffectDecl> {
         http_decl(),
         exec_decl(),
         meta_decl(),
+        git_decl(),
         ask_decl(),
     ]
 }
@@ -712,6 +757,161 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
             "runAll :: [Text] -> M [(Int, Text, Text)]\n",
             "runAll = mapM run\n",
         ));
+
+        // --- Git-aware analysis + codebase search helpers ---
+
+        // extLang: detect ast-grep Lang from file extension
+        out.push_str(concat!(
+            "extLang :: Text -> Maybe Lang\n",
+            "extLang f\n",
+            "  | T.isSuffixOf \".rs\" f = Just Rust\n",
+            "  | T.isSuffixOf \".py\" f = Just Python\n",
+            "  | T.isSuffixOf \".ts\" f = Just TypeScript\n",
+            "  | T.isSuffixOf \".tsx\" f = Just TypeScript\n",
+            "  | T.isSuffixOf \".js\" f = Just JavaScript\n",
+            "  | T.isSuffixOf \".jsx\" f = Just JavaScript\n",
+            "  | T.isSuffixOf \".go\" f = Just Go\n",
+            "  | T.isSuffixOf \".java\" f = Just Java\n",
+            "  | T.isSuffixOf \".c\" f = Just C\n",
+            "  | T.isSuffixOf \".cpp\" f = Just Cpp\n",
+            "  | T.isSuffixOf \".cc\" f = Just Cpp\n",
+            "  | T.isSuffixOf \".hs\" f = Just Haskell\n",
+            "  | T.isSuffixOf \".nix\" f = Just Nix\n",
+            "  | otherwise = Nothing\n",
+        ));
+
+        // funcPattern: ast-grep pattern for function definitions per language
+        out.push_str(concat!(
+            "funcPattern :: Lang -> Text\n",
+            "funcPattern Rust = \"fn $NAME\"\n",
+            "funcPattern Python = \"def $NAME\"\n",
+            "funcPattern Go = \"func $NAME\"\n",
+            "funcPattern JavaScript = \"function $NAME\"\n",
+            "funcPattern TypeScript = \"function $NAME\"\n",
+            "funcPattern Java = \"$TYPE $NAME($$$PARAMS)\"\n",
+            "funcPattern C = \"$TYPE $NAME($$$PARAMS)\"\n",
+            "funcPattern Cpp = \"$TYPE $NAME($$$PARAMS)\"\n",
+            "funcPattern Haskell = \"$NAME $$$ARGS = $$$BODY\"\n",
+            "funcPattern _ = \"$NAME\"\n",
+        ));
+
+        // changedFunctions: git diff → changed files → function defs in each
+        out.push_str(concat!(
+            "changedFunctions :: Text -> M [Value]\n",
+            "changedFunctions ref = do\n",
+            "  diffs <- gitDiff ref\n",
+            "  let entries = catMaybes $ map (\\d -> do\n",
+            "        p <- d ?. \"path\" >>= asText\n",
+            "        s <- d ?. \"status\" >>= asText\n",
+            "        lang <- extLang p\n",
+            "        Just (p, s, lang)) diffs\n",
+            "  forM entries $ \\(p, s, lang) -> do\n",
+            "    fns <- if s == \"D\" then pure []\n",
+            "           else do\n",
+            "             ms <- sgFind lang (funcPattern lang) [p]\n",
+            "             pure $ map (\\m -> object [\"name\" .= var m \"NAME\", \"line\" .= mLine m]) ms\n",
+            "    pure $ object [\"file\" .= p, \"status\" .= s, \"functions\" .= fns]\n",
+        ));
+
+        // reviewCommit: enrich a commit with function-level detail
+        out.push_str(concat!(
+            "reviewCommit :: Text -> M Value\n",
+            "reviewCommit hash = do\n",
+            "  meta <- gitShow hash\n",
+            "  diffs <- gitDiff hash\n",
+            "  let h = maybe \"\" id (meta ?. \"hash\" >>= asText)\n",
+            "  let subj = maybe \"\" id (meta ?. \"subject\" >>= asText)\n",
+            "  let auth = maybe \"\" id (meta ?. \"author\" >>= asText)\n",
+            "  let dt = maybe 0 id (meta ?. \"date\" >>= asInt)\n",
+            "  let bod = maybe \"\" id (meta ?. \"body\" >>= asText)\n",
+            "  let entries = catMaybes $ map (\\d -> do\n",
+            "        p <- d ?. \"path\" >>= asText\n",
+            "        s <- d ?. \"status\" >>= asText\n",
+            "        Just (p, s, extLang p)) diffs\n",
+            "  files <- forM entries $ \\(p, s, ml) -> do\n",
+            "    fns <- case ml of\n",
+            "      Nothing -> pure []\n",
+            "      Just lang -> if s == \"D\" then pure []\n",
+            "        else do\n",
+            "          ms <- sgFind lang (funcPattern lang) [p]\n",
+            "          pure $ map (\\m -> object [\"name\" .= var m \"NAME\", \"line\" .= mLine m]) ms\n",
+            "    pure $ object [\"file\" .= p, \"status\" .= s, \"functions\" .= fns]\n",
+            "  pure $ object [\"hash\" .= h, \"subject\" .= subj, \"author\" .= auth,\n",
+            "                 \"date\" .= dt, \"body\" .= bod, \"files\" .= files]\n",
+        ));
+
+        // staleBranches: find branches older than N days
+        out.push_str(concat!(
+            "staleBranches :: Int -> M [Value]\n",
+            "staleBranches maxDays = do\n",
+            "  branches <- gitBranches\n",
+            "  (_, nowStr, _) <- run \"date +%s\"\n",
+            "  let now = maybe 0 id (parseIntM (T.strip nowStr))\n",
+            "  results <- fmap catMaybes $ forM branches $ \\b -> do\n",
+            "    let mname = b ?. \"name\" >>= asText\n",
+            "    let mcommit = b ?. \"commit\" >>= asText\n",
+            "    let isHead = maybe False id (b ?. \"is_head\" >>= asBool)\n",
+            "    case (mname, mcommit) of\n",
+            "      (Just name, Just c) -> do\n",
+            "        info <- gitShow c\n",
+            "        let date = maybe 0 id (info ?. \"date\" >>= asInt)\n",
+            "        let auth = maybe \"\" id (info ?. \"author\" >>= asText)\n",
+            "        let subj = maybe \"\" id (info ?. \"subject\" >>= asText)\n",
+            "        let age = quot (now - date) 86400\n",
+            "        if age >= maxDays\n",
+            "          then pure $ Just $ object [\"name\" .= name, \"author\" .= auth,\n",
+            "                 \"subject\" .= subj, \"days_old\" .= age, \"is_head\" .= isHead]\n",
+            "          else pure Nothing\n",
+            "      _ -> pure Nothing\n",
+            "  pure $ sortBy (\\a b -> let ga = maybe 0 id (a ?. \"days_old\" >>= asInt)\n",
+            "                             gb = maybe 0 id (b ?. \"days_old\" >>= asInt)\n",
+            "                         in compare gb ga) results\n",
+        ));
+
+        // findAndPreview: structured ast-grep preview
+        out.push_str(concat!(
+            "findAndPreview :: Lang -> Text -> Text -> [Text] -> M [Value]\n",
+            "findAndPreview lang pat repl paths = do\n",
+            "  ms <- sgPreview lang pat repl paths\n",
+            "  pure $ map (\\m -> object [\"file\" .= mFile m, \"line\" .= mLine m,\n",
+            "    \"original\" .= mText m, \"replacement\" .= mReplacement m]) ms\n",
+        ));
+
+        // todoScan: find TODO/FIXME/HACK/XXX with git blame attribution
+        out.push_str(concat!(
+            "todoScan :: Text -> M [Value]\n",
+            "todoScan pat = do\n",
+            "  files <- fsGlob pat\n",
+            "  fmap concat $ forM files $ \\path -> do\n",
+            "    content <- fsRead path\n",
+            "    let ls = zip [(1::Int)..] (T.lines content)\n",
+            "    let hits = concatMap (\\(n, l) ->\n",
+            "          let tags = filter (\\t -> T.isInfixOf t l) [\"TODO\", \"FIXME\", \"HACK\", \"XXX\"]\n",
+            "          in map (\\t -> (n, l, t)) tags) ls\n",
+            "    forM hits $ \\(n, l, tag) -> do\n",
+            "      bl <- gitBlame path n n\n",
+            "      let auth = case bl of { (x:_) -> maybe \"\" id (x ?. \"author\" >>= asText); _ -> \"\" }\n",
+            "      let comm = case bl of { (x:_) -> maybe \"\" id (x ?. \"commit\" >>= asText); _ -> \"\" }\n",
+            "      pure $ object [\"file\" .= path, \"line\" .= n, \"tag\" .= tag,\n",
+            "        \"text\" .= T.strip l, \"author\" .= auth, \"commit\" .= comm]\n",
+        ));
+
+        // deadCode: find unreferenced function definitions
+        out.push_str(concat!(
+            "deadCode :: Lang -> Text -> M [Value]\n",
+            "deadCode lang pat = do\n",
+            "  ms <- sgFind lang (funcPattern lang) [pat]\n",
+            "  let defs = take 50 $ catMaybes $ map (\\m ->\n",
+            "        let n = var m \"NAME\" in\n",
+            "        if T.null n then Nothing\n",
+            "        else Just (mFile m, mLine m, n)) ms\n",
+            "  fmap catMaybes $ forM defs $ \\(file, line, name) -> do\n",
+            "    refs <- searchFiles pat name\n",
+            "    let others = filter (\\(f, n, _) -> not (f == file && n == line)) refs\n",
+            "    if null others then pure $ Just $ object [\"file\" .= file, \"line\" .= line, \"name\" .= name]\n",
+            "    else pure Nothing\n",
+        ));
+
         out.push('\n');
     }
 
@@ -1568,6 +1768,44 @@ where
             .await?;
         Ok(())
     }
+
+    /// Start the MCP server on streamable HTTP transport.
+    pub async fn serve_http(self, addr: std::net::SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
+        use rmcp::transport::streamable_http_server::{
+            StreamableHttpService, StreamableHttpServerConfig,
+            session::local::LocalSessionManager,
+        };
+        use std::sync::Arc;
+
+        let template = self.inner;
+        let config = StreamableHttpServerConfig::default();
+        let cancel = config.cancellation_token.clone();
+        let service = StreamableHttpService::new(
+            move || Ok(template.clone()),
+            Arc::new(LocalSessionManager::default()),
+            config,
+        );
+        async fn health() -> axum::Json<serde_json::Value> {
+            axum::Json(serde_json::json!({"status": "ok"}))
+        }
+
+        let router = axum::Router::new()
+            .route("/health", axum::routing::get(health))
+            .nest_service("/mcp", service);
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        eprintln!(
+            "Tidepool MCP v{} listening on http://{}/mcp",
+            env!("CARGO_PKG_VERSION"),
+            addr,
+        );
+        axum::serve(listener, router)
+            .with_graceful_shutdown(async move {
+                tokio::signal::ctrl_c().await.ok();
+                cancel.cancel();
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1776,11 +2014,12 @@ mod tests {
     #[test]
     fn test_standard_decls_includes_ask() {
         let decls = standard_decls();
-        assert_eq!(decls.len(), 8);
+        assert_eq!(decls.len(), 9);
         assert_eq!(decls[4].type_name, "Http");
         assert_eq!(decls[5].type_name, "Exec");
         assert_eq!(decls[6].type_name, "Meta");
-        assert_eq!(decls[7].type_name, "Ask");
+        assert_eq!(decls[7].type_name, "Git");
+        assert_eq!(decls[8].type_name, "Ask");
     }
 
     #[test]
@@ -1800,14 +2039,14 @@ mod tests {
         let preamble = build_preamble(&decls, false);
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Value"));
-        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Meta, Ask]"));
+        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Meta, Git, Ask]"));
     }
 
     #[test]
     fn test_ask_in_effect_stack_type() {
         let decls = standard_decls();
         let stack = build_effect_stack_type(&decls);
-        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Meta, Ask]");
+        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Meta, Git, Ask]");
     }
 
     #[test]
@@ -1867,6 +2106,15 @@ mod tests {
         assert!(preamble.contains("kvAll :: M [(Text, Value)]"));
         assert!(preamble.contains("kvClear :: M ()"));
         assert!(preamble.contains("runAll :: [Text] -> M [(Int, Text, Text)]"));
+        // Git-aware analysis helpers
+        assert!(preamble.contains("extLang :: Text -> Maybe Lang"));
+        assert!(preamble.contains("funcPattern :: Lang -> Text"));
+        assert!(preamble.contains("changedFunctions :: Text -> M [Value]"));
+        assert!(preamble.contains("reviewCommit :: Text -> M Value"));
+        assert!(preamble.contains("staleBranches :: Int -> M [Value]"));
+        assert!(preamble.contains("findAndPreview :: Lang -> Text -> Text -> [Text] -> M [Value]"));
+        assert!(preamble.contains("todoScan :: Text -> M [Value]"));
+        assert!(preamble.contains("deadCode :: Lang -> Text -> M [Value]"));
     }
 
     #[test]
@@ -1895,5 +2143,41 @@ mod tests {
         // Extra helpers
         assert!(preamble.contains("rField :: Text -> Value"));
         assert!(preamble.contains("rStopBy :: Text -> Value"));
+    }
+
+    #[test]
+    fn test_parse_constructor_no_args() {
+        let p = parse_constructor("GitBranches :: Git [Value]");
+        assert_eq!(
+            p,
+            ParsedConstructor {
+                name: "GitBranches".into(),
+                arity: 0
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_constructor_two_args() {
+        let p = parse_constructor("GitLog :: Text -> Int -> Git [Value]");
+        assert_eq!(
+            p,
+            ParsedConstructor {
+                name: "GitLog".into(),
+                arity: 2
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_constructor_nested_types() {
+        let p = parse_constructor("HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value");
+        assert_eq!(
+            p,
+            ParsedConstructor {
+                name: "HttpRequest".into(),
+                arity: 4
+            }
+        );
     }
 }
