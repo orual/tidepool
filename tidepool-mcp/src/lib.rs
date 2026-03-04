@@ -979,7 +979,7 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
                 "\nPrefer helpers over raw `send`: `say \"hi\"` not `send (Print \"hi\")`.\n",
             );
             desc.push_str("Use `>>=` chains and `<$>`/`<*>` for dense composition. Named bindings as escape hatch.\n");
-            desc.push_str("\n");
+            desc.push('\n');
             desc.push_str(concat!(
                 "User library: `Library` is auto-imported from `.tidepool/lib/Library.hs`. ",
                 "Other modules in `.tidepool/lib/` can be imported explicitly via the `imports` field.",
@@ -1238,7 +1238,7 @@ impl DispatchEffect<CapturedOutput> for AskDispatcher {
 
             // Parse response as JSON → aeson Value; plain text wraps as Aeson.String
             let json_val: serde_json::Value = serde_json::from_str(&response)
-                .unwrap_or_else(|_| serde_json::Value::String(response));
+                .unwrap_or(serde_json::Value::String(response));
             let core_val = json_val
                 .to_value(cx.table())
                 .map_err(tidepool_effect::error::EffectError::Bridge)?;
@@ -2179,5 +2179,124 @@ mod tests {
                 arity: 4
             }
         );
+    }
+
+    #[test]
+    fn test_preamble_required_imports() {
+        let decls = standard_decls();
+        let preamble = build_preamble(&decls, false);
+        assert!(preamble.contains("import Tidepool.Prelude hiding (error)"));
+        assert!(preamble.contains("import qualified Data.Text as T"));
+        assert!(preamble.contains("import Control.Monad.Freer hiding (run)"));
+        assert!(preamble.contains("import qualified Tidepool.Aeson.KeyMap as KM"));
+    }
+
+    #[test]
+    fn test_template_haskell_truncation() {
+        let effects = vec![EffectDecl {
+            type_name: "Console",
+            description: "",
+            constructors: &["Print :: Text -> Console ()"],
+            type_defs: &[],
+            helpers: &[],
+        }];
+        let preamble = build_preamble(&effects, false);
+        let stack = build_effect_stack_type(&effects);
+        let source = vec!["pure 42".into()];
+
+        // With budget
+        let result = template_haskell(&preamble, &stack, &source, &[], &[], None, Some(1024));
+        assert!(result.contains("kvSet \"__sayChars\" (toJSON (0 :: Int))"));
+        assert!(result.contains("paginateResult (max' 100 (1024 - _sayC)) (toJSON _r)"));
+
+        // Without budget (defaults to 4096)
+        let result = template_haskell(&preamble, &stack, &source, &[], &[], None, None);
+        assert!(result.contains("paginateResult 4096 (toJSON _r)"));
+    }
+
+    #[test]
+    fn test_template_haskell_input() {
+        let effects = vec![EffectDecl {
+            type_name: "Console",
+            description: "",
+            constructors: &["Print :: Text -> Console ()"],
+            type_defs: &[],
+            helpers: &[],
+        }];
+        let preamble = build_preamble(&effects, false);
+        let stack = build_effect_stack_type(&effects);
+        let source = vec!["pure 42".into()];
+        let input = serde_json::json!({"val": 123});
+
+        let result = template_haskell(&preamble, &stack, &source, &[], &[], Some(&input), None);
+
+        assert!(result.contains("input :: Aeson.Value"));
+        assert!(result.contains("input = object [\"val\" .= Aeson.Number (fromIntegral (123 :: Int))]"));
+    }
+
+    #[test]
+    fn test_eval_timeout_value() {
+        assert_eq!(EVAL_TIMEOUT_SECS, 120);
+    }
+
+    #[test]
+    fn test_effect_decls_basic_validation() {
+        let console = console_decl();
+        assert_eq!(console.type_name, "Console");
+        assert!(console.constructors[0].contains("Print"));
+
+        let kv = kv_decl();
+        assert_eq!(kv.type_name, "KV");
+        assert!(kv.constructors.iter().any(|c| c.contains("KvGet")));
+
+        let fs = fs_decl();
+        assert_eq!(fs.type_name, "Fs");
+        assert!(fs.constructors.iter().any(|c| c.contains("FsRead")));
+
+        let http = http_decl();
+        assert_eq!(http.type_name, "Http");
+        assert!(http.constructors.iter().any(|c| c.contains("HttpGet")));
+    }
+
+    #[test]
+    fn test_eval_request_helpers() {
+        let json = serde_json::json!({
+            "code": "pure 42",
+            "helpers": "foo :: Int -> Int\nfoo x = x + 1"
+        });
+        let req: EvalRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.helpers, vec!["foo :: Int -> Int", "foo x = x + 1"]);
+    }
+
+    #[test]
+    fn test_eval_request_input() {
+        let json = serde_json::json!({
+            "code": "pure 42",
+            "input": {"key": "value", "num": 123}
+        });
+        let req: EvalRequest = serde_json::from_value(json).unwrap();
+        assert!(req.input.is_some());
+        let input = req.input.unwrap();
+        assert_eq!(input["key"], "value");
+        assert_eq!(input["num"], 123);
+    }
+
+    #[test]
+    fn test_json_to_haskell() {
+        let val = serde_json::json!({
+            "str": "hello",
+            "bool": true,
+            "null": null,
+            "num": 42,
+            "arr": [1, 2],
+            "obj": {"a": 1}
+        });
+        let haskell = json_to_haskell(&val);
+        assert!(haskell.contains("\"str\" .= Aeson.String \"hello\""));
+        assert!(haskell.contains("\"bool\" .= Aeson.Bool True"));
+        assert!(haskell.contains("\"null\" .= Aeson.Null"));
+        assert!(haskell.contains("\"num\" .= Aeson.Number (fromIntegral (42 :: Int))"));
+        assert!(haskell.contains("\"arr\" .= toJSON [Aeson.Number (fromIntegral (1 :: Int)), Aeson.Number (fromIntegral (2 :: Int))]"));
+        assert!(haskell.contains("\"obj\" .= object [\"a\" .= Aeson.Number (fromIntegral (1 :: Int))]"));
     }
 }

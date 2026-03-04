@@ -447,19 +447,15 @@ fn emit_lam(
     let captures: Vec<(VarId, SsaVal)> = sorted_fvs
         .iter()
         .map(|v| {
-            let val = ctx.env.get(v).unwrap_or_else(|| {
-                panic!(
-                    "Lam capture: VarId({:#x}) not in env. env keys: {:?}",
-                    v.0,
-                    ctx.env
-                        .keys()
-                        .map(|k| format!("{:#x}", k.0))
-                        .collect::<Vec<_>>()
+            let val = ctx.env.get(v).ok_or_else(|| {
+                EmitError::MissingCaptureVar(
+                    *v,
+                    format!("Lam capture: not in env (env has {} vars)", ctx.env.len()),
                 )
-            });
-            (*v, *val)
+            })?;
+            Ok::<_, EmitError>((*v, *val))
         })
-        .collect();
+        .collect::<Result<Vec<_>, EmitError>>()?;
 
     let lambda_name = ctx.next_lambda_name();
     let mut closure_sig = Signature::new(pipeline.isa.default_call_conv());
@@ -812,7 +808,7 @@ impl EmitContext {
                             field_indices: Vec<usize>,
                         },
                     }
-                    let mut pre_allocs = Vec::new();
+                    let mut pre_allocs = Vec::with_capacity(rec_bindings.len());
 
                     for (binder, rhs_idx) in &rec_bindings {
                         match &tree.nodes[*rhs_idx] {
@@ -947,7 +943,7 @@ impl EmitContext {
                     // Lam body compilation. These are just env lookups that don't depend
                     // on closure code pointers. Resolved Lam bodies may capture them as
                     // free variables (e.g., substitute aliases like $fEqList_$s$c==1).
-                    let mut deferred_simple = Vec::new();
+                    let mut deferred_simple = Vec::with_capacity(simple_bindings.len());
                     for (binder, rhs_idx) in &simple_bindings {
                         if Self::rhs_is_error_call(tree, *rhs_idx) {
                             let kind = Self::extract_error_kind(tree, *rhs_idx);
@@ -975,7 +971,7 @@ impl EmitContext {
                     let mut pending_capture_updates: std::collections::HashMap<
                         VarId,
                         Vec<(cranelift_codegen::ir::Value, i32)>,
-                    > = std::collections::HashMap::new();
+                    > = std::collections::HashMap::with_capacity(rec_bindings.len());
 
                     for pa in &pre_allocs {
                         let (closure_ptr, sorted_fvs, rhs_idx) = match pa {
@@ -1131,7 +1127,7 @@ impl EmitContext {
                     let simple_binder_set: std::collections::HashSet<VarId> =
                         deferred_simple.iter().map(|(b, _)| *b).collect();
                     let mut deferred_cons: Vec<(cranelift_codegen::ir::Value, Vec<usize>)> =
-                        Vec::new();
+                        Vec::with_capacity(rec_bindings.len());
                     for pa in &pre_allocs {
                         if let PreAlloc::Con {
                             ptr, field_indices, ..
@@ -1169,7 +1165,7 @@ impl EmitContext {
                             deferred_simple.iter().map(|(b, _)| *b).collect();
 
                         let mut direct_deps: std::collections::HashMap<VarId, Vec<VarId>> =
-                            std::collections::HashMap::new();
+                            std::collections::HashMap::with_capacity(bindings.len());
                         for (binder, rhs_idx) in bindings {
                             let fvs = tidepool_repr::free_vars::free_vars(
                                 &tree.extract_subtree(*rhs_idx),
@@ -1181,7 +1177,7 @@ impl EmitContext {
                         let mut reachable_deferred: std::collections::HashMap<
                             VarId,
                             std::collections::HashSet<VarId>,
-                        > = std::collections::HashMap::new();
+                        > = std::collections::HashMap::with_capacity(deferred_simple.len());
                         for &(start_node, _) in &deferred_simple {
                             let mut visited = std::collections::HashSet::new();
                             let mut stack = vec![start_node];
@@ -1208,7 +1204,7 @@ impl EmitContext {
                         let mut progress = true;
                         while !remaining.is_empty() && progress {
                             progress = false;
-                            let mut next_remaining = Vec::new();
+                            let mut next_remaining = Vec::with_capacity(remaining.len());
                             for (binder, rhs_idx) in remaining {
                                 let blocked = reachable_deferred[&binder].iter().any(|fv| {
                                     !sorted.iter().any(|(b, _): &(VarId, usize)| *b == *fv)
@@ -1234,7 +1230,7 @@ impl EmitContext {
                         cranelift_codegen::ir::Value,
                         Vec<usize>,
                         std::collections::HashSet<VarId>,
-                    )> = Vec::new();
+                    )> = Vec::with_capacity(deferred_cons.len());
                     for (ptr, field_indices) in &deferred_cons {
                         let deps: std::collections::HashSet<VarId> = field_indices
                             .iter()
@@ -1314,12 +1310,12 @@ impl EmitContext {
                     // These are captures of Lam/Con bindings (or trivial simple bindings)
                     // that were not in env during Phase 1 but are now in env.
                     for (var_id, updates) in pending_capture_updates {
-                        let ssaval = self.env.get(&var_id).unwrap_or_else(|| {
-                            panic!(
-                                "LetRec capture fill: VarId({:#x}) not in env after Phase 3c.",
-                                var_id.0
-                            );
-                        });
+                        let ssaval = self.env.get(&var_id).ok_or_else(|| {
+                            EmitError::MissingCaptureVar(
+                                var_id,
+                                "LetRec Phase 3a' capture fill: not in env after Phase 3c".into(),
+                            )
+                        })?;
                         let cap_val = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, *ssaval);
                         for (closure_ptr, offset) in updates {
                             builder
