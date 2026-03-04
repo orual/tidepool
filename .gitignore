@@ -1,4 +1,5 @@
-.tidepool/
+.tidepool/*
+!.tidepool/lib/
 target/
 dist-newstyle/
 *.hi

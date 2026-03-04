@@ -92,6 +92,16 @@ Everything MCP users need in one import:
 
 `parseCsv`, `parseTsv`, `parseDelimited`, `renderTable`, `renderTableWith`, `column`, `sortByColumn`, `filterByColumn`
 
+### Heuristic Combinators — `Q a` (in preamble, auto-available)
+
+First-class questions: `Q a` bundles schema + parser + confidence threshold.
+- `pick cats ?? prompt` — classify. `yn ?? prompt` — judge. `obj schema ?? prompt` — extract.
+- `txt "field"`, `num "field"` — single-field extraction.
+- `bar 0.95 q` — raise confidence threshold.
+- Applicative: `(,) <$> pick cats <*> num "pri" ?? prompt` — one Haiku call, multiple extractions.
+- `q ?! prompt` — returns `Sure a | Unsure Double a` (preserves confidence).
+- `triage q render items`, `survey q render items`, `sift q render items` — batch ops.
+
 ### Adding new Prelude functions
 
 Polymorphic base functions going through typeclass dictionaries often crash — the JIT eagerly evaluates error branches in dictionary records. Shadow with monomorphic versions using primops directly (e.g., `rem` instead of `Integral` dict). Avoid `maximum`/`minimum` from base (use manual `foldl'` with comparison).

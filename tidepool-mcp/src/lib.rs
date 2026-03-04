@@ -898,6 +898,109 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
             "    else pure Nothing\n",
         ));
 
+        // --- Heuristic combinators: Q a (Haiku-first, Ask-on-uncertainty) ---
+
+        let has_llm = effects.iter().any(|e| e.type_name == "Llm");
+        let has_ask_eff = effects.iter().any(|e| e.type_name == "Ask");
+        if has_llm && has_ask_eff {
+            out.push_str("-- Heuristic combinators\n");
+            out.push_str(concat!(
+                "data Q a = Q Schema (Value -> a) Double\n",
+                "data Judged a = Sure a | Unsure Double a\n",
+            ));
+            out.push_str(concat!(
+                "instance Functor Q where\n",
+                "  fmap f (Q s p t) = Q s (f . p) t\n",
+            ));
+            out.push_str(concat!(
+                "instance Applicative Q where\n",
+                "  pure a = Q (SObj []) (const a) 0.7\n",
+                "  Q (SObj fs1) p1 t1 <*> Q (SObj fs2) p2 t2 = Q (SObj (fs1 ++ fs2)) (\\v -> p1 v (p2 v)) (if t1 >= t2 then t1 else t2)\n",
+                "  Q s1 p1 t1 <*> Q s2 p2 t2 = Q s1 (\\v -> p1 v (p2 v)) (if t1 >= t2 then t1 else t2)\n",
+            ));
+            // Internal helpers: augment schema with _conf, extract confidence, strip _conf
+            out.push_str(concat!(
+                "h_aug :: Schema -> Schema\n",
+                "h_aug (SObj fs) = SObj (fs ++ [(\"_conf\", SNum)])\n",
+                "h_aug s = SObj [(\"value\", s), (\"_conf\", SNum)]\n",
+            ));
+            out.push_str(concat!(
+                "h_conf :: Value -> Double\n",
+                "h_conf v = case v ^? key \"_conf\" . _Number of { Just d -> d; _ -> 0.0 }\n",
+            ));
+            out.push_str(concat!(
+                "h_strip :: Value -> Value\n",
+                "h_strip (Object kvs) = Object (KM.delete (KM.fromText \"_conf\") kvs)\n",
+                "h_strip v = v\n",
+            ));
+            // ?? operator: ask Haiku, auto-escalate on low confidence
+            out.push_str(concat!(
+                "infixl 1 ??\n",
+                "(??) :: Q a -> Text -> M a\n",
+                "(Q schema parse threshold) ?? prompt = do\n",
+                "  r <- llmJson prompt (h_aug schema)\n",
+                "  let c = h_conf r\n",
+                "  v <- if c >= threshold then pure (h_strip r)\n",
+                "       else ask (prompt <> \"\\n[haiku \" <> pack (showDouble c) <> \"]: \" <> encode (h_strip r))\n",
+                "  pure (parse v)\n",
+            ));
+            // ?! operator: ask with evidence, returns Judged
+            out.push_str(concat!(
+                "infixl 1 ?!\n",
+                "(?!) :: Q a -> Text -> M (Judged a)\n",
+                "(Q schema parse threshold) ?! prompt = do\n",
+                "  r <- llmJson prompt (h_aug schema)\n",
+                "  let c = h_conf r\n",
+                "  if c >= threshold\n",
+                "    then pure (Sure (parse (h_strip r)))\n",
+                "    else do\n",
+                "      v <- ask (prompt <> \"\\n[haiku \" <> pack (showDouble c) <> \"]: \" <> encode (h_strip r))\n",
+                "      pure (Unsure c (parse v))\n",
+            ));
+            // Smart constructors
+            out.push_str(concat!(
+                "pick :: [Text] -> Q Text\n",
+                "pick cats = Q (SObj [(\"pick\", SEnum cats)]) (\\v -> case v ^? key \"pick\" . _String of { Just s -> s; _ -> \"\" }) 0.7\n",
+            ));
+            out.push_str(concat!(
+                "yn :: Q Bool\n",
+                "yn = Q (SObj [(\"answer\", SBool)]) (\\v -> case v ^? key \"answer\" . _Bool of { Just b -> b; _ -> False }) 0.7\n",
+            ));
+            out.push_str(concat!(
+                "obj :: Schema -> Q Value\n",
+                "obj s = Q s id 0.7\n",
+            ));
+            out.push_str(concat!(
+                "txt :: Text -> Q Text\n",
+                "txt k = Q (SObj [(k, SStr)]) (\\v -> case v ^? key k . _String of { Just s -> s; _ -> \"\" }) 0.7\n",
+            ));
+            out.push_str(concat!(
+                "num :: Text -> Q Double\n",
+                "num k = Q (SObj [(k, SNum)]) (\\v -> case v ^? key k . _Number of { Just n -> n; _ -> 0.0 }) 0.7\n",
+            ));
+            out.push_str(concat!(
+                "bar :: Double -> Q a -> Q a\n",
+                "bar t (Q s p _) = Q s p t\n",
+            ));
+            // Batch helpers
+            out.push_str(concat!(
+                "triage :: Q b -> (a -> Text) -> [a] -> M [(a, b)]\n",
+                "triage q render = mapM (\\x -> (,) x <$> (q ?? render x))\n",
+            ));
+            out.push_str(concat!(
+                "survey :: (Eq b, Ord b) => Q b -> (a -> Text) -> [a] -> M [(b, Int)]\n",
+                "survey q render xs = do\n",
+                "  bs <- mapM (\\x -> q ?? render x) xs\n",
+                "  pure (map (\\g -> (head g, length g)) (groupBy (==) (sort bs)))\n",
+            ));
+            out.push_str(concat!(
+                "sift :: Q Bool -> (a -> Text) -> [a] -> M ([a], [a])\n",
+                "sift q render xs = do\n",
+                "  tagged <- mapM (\\x -> (,) x <$> (q ?? render x)) xs\n",
+                "  pure (map fst (filter snd tagged), map fst (filter (not . snd) tagged))\n",
+            ));
+        }
+
         out.push('\n');
     }
 
@@ -970,6 +1073,26 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
             desc.push_str(concat!(
                 "User library: `Library` is auto-imported from `.tidepool/lib/Library.hs`. ",
                 "Other modules in `.tidepool/lib/` can be imported explicitly via the `imports` field.",
+            ));
+        }
+
+        let has_llm = effects.iter().any(|e| e.type_name == "Llm");
+        let has_ask_desc = effects.iter().any(|e| e.type_name == "Ask");
+        if has_llm && has_ask_desc {
+            desc.push_str(concat!(
+                "\n\nHeuristic combinators (Library, auto-imported):\n",
+                "  Q a — first-class question (schema + parser + confidence gate)\n",
+                "  pick cats ?? prompt      -- classify (M Text)\n",
+                "  yn ?? prompt             -- yes/no (M Bool)\n",
+                "  obj schema ?? prompt     -- structured extraction (M Value)\n",
+                "  txt \"field\" ?? prompt    -- single text field (M Text)\n",
+                "  num \"field\" ?? prompt    -- single number field (M Double)\n",
+                "  (,) <$> pick cs <*> num \"n\" ?? p  -- Applicative: merged schema, one call\n",
+                "  bar 0.95 q ?? prompt     -- raise threshold\n",
+                "  q ?! prompt             -- returns Sure a | Unsure Double a\n",
+                "  triage q render items    -- batch: [(item, answer)]\n",
+                "  survey q render items    -- tally: [(answer, count)]\n",
+                "  sift yn render items     -- partition: ([true], [false])\n",
             ));
         }
     }
@@ -2105,6 +2228,20 @@ mod tests {
         assert!(preamble.contains("findAndPreview :: Lang -> Text -> Text -> [Text] -> M [Value]"));
         assert!(preamble.contains("todoScan :: Text -> M [Value]"));
         assert!(preamble.contains("deadCode :: Lang -> Text -> M [Value]"));
+        // Heuristic combinators
+        assert!(preamble.contains("data Q a = Q Schema (Value -> a) Double"));
+        assert!(preamble.contains("data Judged a = Sure a | Unsure Double a"));
+        assert!(preamble.contains("(??) :: Q a -> Text -> M a"));
+        assert!(preamble.contains("(?!) :: Q a -> Text -> M (Judged a)"));
+        assert!(preamble.contains("pick :: [Text] -> Q Text"));
+        assert!(preamble.contains("yn :: Q Bool"));
+        assert!(preamble.contains("obj :: Schema -> Q Value"));
+        assert!(preamble.contains("txt :: Text -> Q Text"));
+        assert!(preamble.contains("num :: Text -> Q Double"));
+        assert!(preamble.contains("bar :: Double -> Q a -> Q a"));
+        assert!(preamble.contains("triage :: Q b -> (a -> Text) -> [a] -> M [(a, b)]"));
+        assert!(preamble.contains("survey :: (Eq b, Ord b) => Q b -> (a -> Text) -> [a] -> M [(b, Int)]"));
+        assert!(preamble.contains("sift :: Q Bool -> (a -> Text) -> [a] -> M ([a], [a])"));
     }
 
     #[test]
