@@ -1470,6 +1470,23 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install panic hook that writes crash dumps to ~/.tidepool/crash.log
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("{}\n{:?}\n", info, std::backtrace::Backtrace::capture());
+        let path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".tidepool/crash.log");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, msg.as_bytes()));
+        eprintln!("[tidepool] PANIC — see {}", path.display());
+    }));
+
     use clap::Parser;
     let args = Args::parse();
     let http_addr = args

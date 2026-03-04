@@ -16,6 +16,164 @@ mod inner {
     use std::cell::Cell;
     use std::ptr::{self, null_mut};
 
+    /// Write a crash dump using only async-signal-safe syscalls.
+    /// No allocations, no locks, no std::fs — just raw libc open/write/close.
+    unsafe fn write_crash_dump(sig: libc::c_int, info: *mut libc::siginfo_t) {
+        // Build path: ~/.tidepool/crash.log
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            return;
+        }
+        // Stack buffer for path
+        let mut path_buf = [0u8; 512];
+        let home_bytes = home.as_bytes();
+        if home_bytes.len() + 22 > path_buf.len() {
+            return;
+        }
+        path_buf[..home_bytes.len()].copy_from_slice(home_bytes);
+        let suffix = b"/.tidepool/crash.log\0";
+        path_buf[home_bytes.len()..home_bytes.len() + suffix.len()].copy_from_slice(suffix);
+
+        // Ensure directory exists
+        let mut dir_buf = [0u8; 512];
+        let dir_suffix = b"/.tidepool\0";
+        dir_buf[..home_bytes.len()].copy_from_slice(home_bytes);
+        dir_buf[home_bytes.len()..home_bytes.len() + dir_suffix.len()].copy_from_slice(dir_suffix);
+        libc::mkdir(dir_buf.as_ptr() as *const libc::c_char, 0o755);
+
+        let fd = libc::open(
+            path_buf.as_ptr() as *const libc::c_char,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND,
+            0o644,
+        );
+        if fd < 0 {
+            return;
+        }
+
+        // Write signal info
+        let sig_name: &[u8] = match sig {
+            libc::SIGILL => b"SIGILL",
+            libc::SIGSEGV => b"SIGSEGV",
+            libc::SIGBUS => b"SIGBUS",
+            libc::SIGTRAP => b"SIGTRAP",
+            _ => b"UNKNOWN",
+        };
+
+        let mut buf = [0u8; 256];
+        let mut pos = 0;
+
+        // "[tidepool-crash] sig="
+        let prefix = b"[tidepool-crash] sig=";
+        buf[pos..pos + prefix.len()].copy_from_slice(prefix);
+        pos += prefix.len();
+
+        buf[pos..pos + sig_name.len()].copy_from_slice(sig_name);
+        pos += sig_name.len();
+
+        // " addr="
+        let addr_prefix = b" addr=0x";
+        buf[pos..pos + addr_prefix.len()].copy_from_slice(addr_prefix);
+        pos += addr_prefix.len();
+
+        // Faulting address as hex
+        let si_addr = if !info.is_null() {
+            (*info).si_addr() as usize
+        } else {
+            0
+        };
+        // Write hex digits
+        let hex_digits = b"0123456789abcdef";
+        let mut hex_buf = [b'0'; 16];
+        let mut val = si_addr;
+        for i in (0..16).rev() {
+            hex_buf[i] = hex_digits[val & 0xf];
+            val >>= 4;
+        }
+        buf[pos..pos + 16].copy_from_slice(&hex_buf);
+        pos += 16;
+
+        // " jmpbuf="
+        let jmp_prefix = b" jmpbuf=";
+        buf[pos..pos + jmp_prefix.len()].copy_from_slice(jmp_prefix);
+        pos += jmp_prefix.len();
+
+        let jmp_set = JMP_BUF.with(|cell| !cell.get().is_null());
+        if jmp_set {
+            buf[pos..pos + 3].copy_from_slice(b"set");
+            pos += 3;
+        } else {
+            buf[pos..pos + 4].copy_from_slice(b"null");
+            pos += 4;
+        }
+
+        // " ts="
+        let ts_prefix = b" ts=";
+        buf[pos..pos + ts_prefix.len()].copy_from_slice(ts_prefix);
+        pos += ts_prefix.len();
+
+        // Unix timestamp as decimal
+        let mut ts = libc::time(ptr::null_mut()) as u64;
+        let mut ts_buf = [0u8; 20];
+        let mut ts_len = 0;
+        if ts == 0 {
+            ts_buf[0] = b'0';
+            ts_len = 1;
+        } else {
+            while ts > 0 {
+                ts_buf[ts_len] = b'0' + (ts % 10) as u8;
+                ts /= 10;
+                ts_len += 1;
+            }
+            ts_buf[..ts_len].reverse();
+        }
+        buf[pos..pos + ts_len].copy_from_slice(&ts_buf[..ts_len]);
+        pos += ts_len;
+
+        buf[pos] = b'\n';
+        pos += 1;
+
+        libc::write(fd, buf.as_ptr() as *const libc::c_void, pos);
+        libc::close(fd);
+    }
+
+    /// Write a simple crash message (for panics in trampoline).
+    unsafe fn write_crash_dump_msg(msg: &[u8]) {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            return;
+        }
+        let mut path_buf = [0u8; 512];
+        let home_bytes = home.as_bytes();
+        if home_bytes.len() + 22 > path_buf.len() {
+            return;
+        }
+        path_buf[..home_bytes.len()].copy_from_slice(home_bytes);
+        let suffix = b"/.tidepool/crash.log\0";
+        path_buf[home_bytes.len()..home_bytes.len() + suffix.len()].copy_from_slice(suffix);
+
+        let mut dir_buf = [0u8; 512];
+        let dir_suffix = b"/.tidepool\0";
+        dir_buf[..home_bytes.len()].copy_from_slice(home_bytes);
+        dir_buf[home_bytes.len()..home_bytes.len() + dir_suffix.len()].copy_from_slice(dir_suffix);
+        libc::mkdir(dir_buf.as_ptr() as *const libc::c_char, 0o755);
+
+        let fd = libc::open(
+            path_buf.as_ptr() as *const libc::c_char,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND,
+            0o644,
+        );
+        if fd < 0 {
+            return;
+        }
+
+        let prefix = b"[tidepool-crash] ";
+        libc::write(fd, prefix.as_ptr() as *const libc::c_void, prefix.len());
+        libc::write(fd, msg.as_ptr() as *const libc::c_void, msg.len());
+        let nl = b"\n";
+        libc::write(fd, nl.as_ptr() as *const libc::c_void, 1);
+        libc::close(fd);
+    }
+
     // sigjmp_buf sizes vary by platform:
     //   - Linux x86_64 (glibc): __jmp_buf_tag[1] = 200 bytes
     //   - macOS x86_64: 37 ints + signal mask ≈ 296 bytes
@@ -76,6 +234,7 @@ mod inner {
             // Panic crossed into the trampoline. We can't propagate it across C,
             // so abort. The caller (with_signal_protection) already wraps JIT calls
             // in catch_unwind at a higher level, so this should never fire.
+            write_crash_dump_msg(b"panic in JIT trampoline");
             std::process::abort();
         }
     }
@@ -137,8 +296,9 @@ mod inner {
                 siglongjmp(buf, sig);
             }
         }
-        // Not in JIT context — restore default handler and re-raise
+        // Not in JIT context — log crash dump, restore default handler and re-raise
         unsafe {
+            write_crash_dump(sig, _info);
             libc::signal(sig, libc::SIG_DFL);
             libc::raise(sig);
         }
