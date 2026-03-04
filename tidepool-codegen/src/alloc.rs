@@ -1,4 +1,4 @@
-use cranelift_codegen::ir::{self, types, InstBuilder, MemFlags, Value};
+use cranelift_codegen::ir::{self, types, BlockArg, InstBuilder, MemFlags, Value};
 use cranelift_frontend::FunctionBuilder;
 
 /// Offset of alloc_ptr within VMContext (byte 0).
@@ -77,7 +77,9 @@ pub fn emit_alloc_fast_path(
     builder
         .ins()
         .store(flags, new_ptr, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
-    builder.ins().jump(continue_block, &[alloc_ptr]);
+    builder
+        .ins()
+        .jump(continue_block, &[BlockArg::Value(alloc_ptr)]);
 
     // --- Slow path: call gc_trigger, retry alloc ---
     builder.switch_to_block(slow_block);
@@ -121,14 +123,18 @@ pub fn emit_alloc_fast_path(
     builder
         .ins()
         .store(flags, post_gc_new, vmctx_val, VMCTX_ALLOC_PTR_OFFSET);
-    builder.ins().jump(continue_block, &[post_gc_ptr]);
+    builder
+        .ins()
+        .jump(continue_block, &[BlockArg::Value(post_gc_ptr)]);
 
     // Slow path failure: call runtime_oom instead of trapping
     builder.switch_to_block(slow_fail_block);
     builder.seal_block(slow_fail_block);
     let oom_result = builder.ins().call(oom_func, &[]);
     let poison_ptr = builder.inst_results(oom_result)[0];
-    builder.ins().jump(continue_block, &[poison_ptr]);
+    builder
+        .ins()
+        .jump(continue_block, &[BlockArg::Value(poison_ptr)]);
 
     // --- Continue: result is the old alloc_ptr from whichever path ---
     builder.switch_to_block(continue_block);

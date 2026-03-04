@@ -1,9 +1,8 @@
-use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::{self, types, AbiParam};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::Context;
-use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_jit::{ArenaMemoryProvider, JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 use std::sync::Arc;
 
@@ -38,9 +37,8 @@ impl std::error::Error for PipelineError {}
 
 /// Cranelift JIT compilation pipeline.
 ///
-/// Implements the double-compile strategy:
-/// 1. `Context::compile(isa)` to extract stack maps from CompiledCode
-/// 2. `module.define_function()` for executable code (recompiles from IR)
+/// Single-compile strategy: `module.define_function()` compiles and links,
+/// then stack maps are extracted from `ctx.compiled_code()`.
 pub struct CodegenPipeline {
     /// The JIT module that manages executable memory.
     ///
@@ -70,11 +68,10 @@ impl CodegenPipeline {
         // REQUIRED: enables RBP frame chain for GC stack walking
         flag_builder.set("preserve_frame_pointers", "true").unwrap();
         flag_builder.set("opt_level", "speed").unwrap();
-        // PIC mode: external symbols go through GOT entries so x86 PC-relative
-        // relocations don't overflow when JIT code is >2GB from host functions.
-        // Matches what JITBuilder::new() sets internally.
-        flag_builder.set("is_pic", "true").unwrap();
-        flag_builder.set("use_colocated_libcalls", "false").unwrap();
+        // ArenaMemoryProvider allocates code/GOT/readonly from a single contiguous
+        // reservation, so PIC is not needed — cranelift-jit 0.129+ requires is_pic=false.
+        flag_builder.set("is_pic", "false").unwrap();
+        flag_builder.set("use_colocated_libcalls", "true").unwrap();
 
         let isa_builder = cranelift_native::builder().expect("host machine not supported");
         let isa = isa_builder
@@ -87,6 +84,13 @@ impl CodegenPipeline {
         for (name, ptr) in symbols {
             jit_builder.symbol(*name, *ptr);
         }
+
+        // 256MB virtual reservation — demand-paged (PROT_NONE → committed on write).
+        // All code/GOT/readonly carved from one contiguous range, guaranteeing
+        // <2GB distance for X86GOTPCRel4 relocations.
+        let arena = ArenaMemoryProvider::new_with_size(256 * 1024 * 1024)
+            .expect("failed to reserve JIT memory arena");
+        jit_builder.memory_provider(Box::new(arena));
 
         let module = JITModule::new(jit_builder);
 
@@ -118,11 +122,10 @@ impl CodegenPipeline {
             .map_err(|e| PipelineError::Declaration(format!("failed to declare `{}`: {}", name, e)))
     }
 
-    /// Compile a function using the double-compile strategy.
+    /// Compile and define a function in the JIT module.
     ///
-    /// 1. Calls `Context::compile(isa)` to extract stack maps
-    /// 2. Registers stack maps in the registry
-    /// 3. Calls `module.define_function()` which recompiles for execution
+    /// `define_function` internally calls `ctx.compile()`, then stack maps
+    /// are extracted from `ctx.compiled_code()` — single compile per function.
     ///
     /// After calling this for all functions, call `finalize()` to make them callable.
     pub fn define_function(
@@ -130,15 +133,16 @@ impl CodegenPipeline {
         func_id: FuncId,
         ctx: &mut Context,
     ) -> Result<(), PipelineError> {
-        // First compile: extract stack maps
-        let mut ctrl_plane = ControlPlane::default();
+        // Single compile: define_function internally calls ctx.compile()
+        self.module
+            .define_function(func_id, ctx)
+            .map_err(|e| PipelineError::Definition(format!("{:?}", e)))?;
+
+        // Extract stack maps from the same compilation
         let compiled = ctx
-            .compile(self.isa.as_ref(), &mut ctrl_plane)
-            .map_err(|e| PipelineError::Compilation(format!("{:?}", e)))?;
-
-        let func_size = compiled.buffer.data().len() as u32;
-
-        // Extract stack map data before define_function recompiles
+            .compiled_code()
+            .expect("compiled_code missing after define_function");
+        let func_size = compiled.code_buffer().len() as u32;
         let raw_maps: Vec<RawStackMap> = compiled
             .buffer
             .user_stack_maps()
@@ -149,12 +153,6 @@ impl CodegenPipeline {
             })
             .collect();
 
-        // Second compile: define in module for execution
-        self.module
-            .define_function(func_id, ctx)
-            .map_err(|e| PipelineError::Definition(format!("{:?}", e)))?;
-
-        // Store raw maps and register after finalize.
         self.pending_stack_maps.push((func_id, func_size, raw_maps));
         Ok(())
     }

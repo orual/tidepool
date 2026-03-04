@@ -1,7 +1,7 @@
 use crate::emit::expr::ensure_heap_ptr;
 use crate::emit::*;
 use crate::pipeline::CodegenPipeline;
-use cranelift_codegen::ir::{self, types, InstBuilder, Value};
+use cranelift_codegen::ir::{self, types, BlockArg, InstBuilder, Value};
 use cranelift_frontend::FunctionBuilder;
 use tidepool_repr::*;
 
@@ -48,7 +48,9 @@ pub fn emit_join(
     // 5. Emit body (the continuation that may contain Jumps)
     let body_result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, body_idx)?;
     let body_val = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, body_result);
-    builder.ins().jump(merge_block, &[body_val]);
+    builder
+        .ins()
+        .jump(merge_block, &[BlockArg::Value(body_val)]);
 
     // 6. Switch to join block, emit rhs
     builder.switch_to_block(join_block);
@@ -66,7 +68,9 @@ pub fn emit_join(
 
     let rhs_result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, rhs_idx)?;
     let rhs_val = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, rhs_result);
-    builder.ins().jump(merge_block, &[rhs_val]);
+    builder
+        .ins()
+        .jump(merge_block, &[BlockArg::Value(rhs_val)]);
 
     // 7. Seal blocks
     // Body is emitted, so all Jumps to join_block are known.
@@ -119,11 +123,13 @@ pub fn emit_jump(
         .block;
 
     // 2. Emit each arg
-    let mut arg_values = Vec::new();
+    let mut arg_values: Vec<BlockArg> = Vec::new();
     for &arg_idx in arg_indices {
         let val = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, arg_idx)?;
         // 3. Ensure all args are HeapPtr
-        arg_values.push(ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val));
+        arg_values.push(BlockArg::Value(ensure_heap_ptr(
+            builder, vmctx, gc_sig, oom_func, val,
+        )));
     }
 
     // 4. Jump

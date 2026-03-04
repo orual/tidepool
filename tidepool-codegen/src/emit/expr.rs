@@ -2,7 +2,7 @@ use crate::alloc::emit_alloc_fast_path;
 use crate::emit::*;
 use crate::pipeline::CodegenPipeline;
 use cranelift_codegen::ir::{
-    self, types, AbiParam, InstBuilder, MemFlags, Signature, UserFuncName, Value,
+    self, types, AbiParam, BlockArg, InstBuilder, MemFlags, Signature, UserFuncName, Value,
 };
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -365,9 +365,9 @@ fn collapse_frame(
                 })?
                 .block;
 
-            let arg_values: Vec<Value> = args
+            let arg_values: Vec<BlockArg> = args
                 .iter()
-                .map(|v| ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, *v))
+                .map(|v| BlockArg::Value(ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, *v)))
                 .collect();
 
             builder.ins().jump(join_block, &arg_values);

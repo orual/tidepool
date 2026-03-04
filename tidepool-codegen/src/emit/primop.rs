@@ -3,8 +3,8 @@ use crate::alloc::emit_alloc_fast_path;
 use crate::emit::{EmitError, SsaVal};
 use crate::pipeline::CodegenPipeline;
 use cranelift_codegen::ir::{
-    self, condcodes::FloatCC, condcodes::IntCC, types, AbiParam, InstBuilder, MemFlags, Signature,
-    Value,
+    self, condcodes::FloatCC, condcodes::IntCC, types, AbiParam, BlockArg, InstBuilder, MemFlags,
+    Signature, Value,
 };
 use cranelift_frontend::FunctionBuilder;
 use cranelift_module::Linkage;
@@ -1698,7 +1698,7 @@ fn unbox_addr(
             builder.append_block_param(start_block, types::I64);
             builder.append_block_param(next_block, types::I64);
 
-            builder.ins().jump(start_block, &[v]);
+            builder.ins().jump(start_block, &[BlockArg::Value(v)]);
 
             builder.switch_to_block(start_block);
             let curr_v = builder.block_params(start_block)[0];
@@ -1712,7 +1712,7 @@ fn unbox_addr(
             let con_block = builder.create_block();
             builder
                 .ins()
-                .brif(is_con, con_block, &[], next_block, &[curr_v]);
+                .brif(is_con, con_block, &[], next_block, &[BlockArg::Value(curr_v)]);
 
             builder.switch_to_block(con_block);
             builder.seal_block(con_block);
@@ -1722,7 +1722,7 @@ fn unbox_addr(
                 curr_v,
                 layout::CON_FIELDS_OFFSET as i32,
             );
-            builder.ins().jump(start_block, &[field0]);
+            builder.ins().jump(start_block, &[BlockArg::Value(field0)]);
 
             builder.switch_to_block(next_block);
             builder.seal_block(start_block);
@@ -1766,7 +1766,7 @@ fn unbox_bytearray(
             builder.append_block_param(start_block, types::I64);
             builder.append_block_param(next_block, types::I64);
 
-            builder.ins().jump(start_block, &[v]);
+            builder.ins().jump(start_block, &[BlockArg::Value(v)]);
 
             builder.switch_to_block(start_block);
             let curr_v = builder.block_params(start_block)[0];
@@ -1780,7 +1780,7 @@ fn unbox_bytearray(
             let con_block = builder.create_block();
             builder
                 .ins()
-                .brif(is_con, con_block, &[], next_block, &[curr_v]);
+                .brif(is_con, con_block, &[], next_block, &[BlockArg::Value(curr_v)]);
 
             builder.switch_to_block(con_block);
             builder.seal_block(con_block);
@@ -1790,7 +1790,7 @@ fn unbox_bytearray(
                 curr_v,
                 layout::CON_FIELDS_OFFSET as i32,
             );
-            builder.ins().jump(start_block, &[field0]);
+            builder.ins().jump(start_block, &[BlockArg::Value(field0)]);
 
             builder.switch_to_block(next_block);
             builder.seal_block(start_block);
@@ -1830,7 +1830,7 @@ pub fn unbox_int(
             builder.append_block_param(start_block, types::I64);
             builder.append_block_param(next_block, types::I64);
 
-            builder.ins().jump(start_block, &[v]);
+            builder.ins().jump(start_block, &[BlockArg::Value(v)]);
 
             builder.switch_to_block(start_block);
             let curr_v = builder.block_params(start_block)[0];
@@ -1844,7 +1844,7 @@ pub fn unbox_int(
             let con_block = builder.create_block();
             builder
                 .ins()
-                .brif(is_con, con_block, &[], next_block, &[curr_v]);
+                .brif(is_con, con_block, &[], next_block, &[BlockArg::Value(curr_v)]);
 
             builder.switch_to_block(con_block);
             builder.seal_block(con_block);
@@ -1854,7 +1854,7 @@ pub fn unbox_int(
                 curr_v,
                 layout::CON_FIELDS_OFFSET as i32,
             );
-            builder.ins().jump(start_block, &[field0]);
+            builder.ins().jump(start_block, &[BlockArg::Value(field0)]);
 
             builder.switch_to_block(next_block);
             builder.seal_block(start_block);
@@ -1881,7 +1881,7 @@ pub fn unbox_double(
             builder.append_block_param(start_block, types::I64);
             builder.append_block_param(next_block, types::I64);
 
-            builder.ins().jump(start_block, &[v]);
+            builder.ins().jump(start_block, &[BlockArg::Value(v)]);
 
             builder.switch_to_block(start_block);
             let curr_v = builder.block_params(start_block)[0];
@@ -1895,7 +1895,7 @@ pub fn unbox_double(
             let con_block = builder.create_block();
             builder
                 .ins()
-                .brif(is_con, con_block, &[], next_block, &[curr_v]);
+                .brif(is_con, con_block, &[], next_block, &[BlockArg::Value(curr_v)]);
 
             builder.switch_to_block(con_block);
             builder.seal_block(con_block);
@@ -1905,7 +1905,7 @@ pub fn unbox_double(
                 curr_v,
                 layout::CON_FIELDS_OFFSET as i32,
             );
-            builder.ins().jump(start_block, &[field0]);
+            builder.ins().jump(start_block, &[BlockArg::Value(field0)]);
 
             builder.switch_to_block(next_block);
             builder.seal_block(start_block);
@@ -1932,7 +1932,7 @@ pub fn unbox_float(
             builder.append_block_param(start_block, types::I64);
             builder.append_block_param(next_block, types::I64);
 
-            builder.ins().jump(start_block, &[v]);
+            builder.ins().jump(start_block, &[BlockArg::Value(v)]);
 
             builder.switch_to_block(start_block);
             let curr_v = builder.block_params(start_block)[0];
@@ -1946,7 +1946,7 @@ pub fn unbox_float(
             let con_block = builder.create_block();
             builder
                 .ins()
-                .brif(is_con, con_block, &[], next_block, &[curr_v]);
+                .brif(is_con, con_block, &[], next_block, &[BlockArg::Value(curr_v)]);
 
             builder.switch_to_block(con_block);
             builder.seal_block(con_block);
@@ -1956,7 +1956,7 @@ pub fn unbox_float(
                 curr_v,
                 layout::CON_FIELDS_OFFSET as i32,
             );
-            builder.ins().jump(start_block, &[field0]);
+            builder.ins().jump(start_block, &[BlockArg::Value(field0)]);
 
             builder.switch_to_block(next_block);
             builder.seal_block(start_block);

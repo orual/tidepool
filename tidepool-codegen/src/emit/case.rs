@@ -2,7 +2,8 @@ use crate::emit::expr::ensure_heap_ptr;
 use crate::emit::*;
 use crate::pipeline::CodegenPipeline;
 use cranelift_codegen::ir::{
-    self, condcodes::IntCC, types, AbiParam, InstBuilder, MemFlags, Signature, TrapCode, Value,
+    self, condcodes::IntCC, types, AbiParam, BlockArg, InstBuilder, MemFlags, Signature, TrapCode,
+    Value,
 };
 use cranelift_frontend::FunctionBuilder;
 use cranelift_module::{Linkage, Module};
@@ -78,7 +79,7 @@ pub fn emit_case(
         // Default only
         let result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, alt.body)?;
         let result_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, result);
-        builder.ins().jump(merge_block, &[result_ptr]);
+        builder.ins().jump(merge_block, &[BlockArg::Value(result_ptr)]);
     } else {
         // No alts? Trap.
         builder.ins().trap(TrapCode::unwrap_user(2));
@@ -128,7 +129,7 @@ fn emit_data_dispatch(
         force_block,
         &[],
         dispatch_block,
-        &[initial_scrut_ptr],
+        &[BlockArg::Value(initial_scrut_ptr)],
     );
 
     // Force block: call host_fns::heap_force
@@ -150,7 +151,9 @@ fn emit_data_dispatch(
     let call = builder.ins().call(force_ref, &[vmctx, initial_scrut_ptr]);
     let force_result = builder.inst_results(call)[0];
     builder.declare_value_needs_stack_map(force_result);
-    builder.ins().jump(dispatch_block, &[force_result]);
+    builder
+        .ins()
+        .jump(dispatch_block, &[BlockArg::Value(force_result)]);
 
     // Dispatch block: actual pattern matching starts here
     builder.switch_to_block(dispatch_block);
@@ -197,7 +200,7 @@ fn emit_data_dispatch(
             let result =
                 ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, alt.body)?;
             let result_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, result);
-            builder.ins().jump(merge_block, &[result_ptr]);
+            builder.ins().jump(merge_block, &[BlockArg::Value(result_ptr)]);
 
             // Clean up
             for binder in bound_vars {
@@ -215,7 +218,7 @@ fn emit_data_dispatch(
         ctx.declare_env(builder);
         let result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, alt.body)?;
         let result_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, result);
-        builder.ins().jump(merge_block, &[result_ptr]);
+        builder.ins().jump(merge_block, &[BlockArg::Value(result_ptr)]);
     } else {
         emit_case_trap(pipeline, builder, scrut_ptr, data_alts)?;
     }
@@ -367,7 +370,7 @@ fn emit_lit_dispatch(
         ctx.declare_env(builder);
         let result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, alt.body)?;
         let result_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, result);
-        builder.ins().jump(merge_block, &[result_ptr]);
+        builder.ins().jump(merge_block, &[BlockArg::Value(result_ptr)]);
 
         // Continue to next check
         builder.switch_to_block(next_check_block);
@@ -379,7 +382,7 @@ fn emit_lit_dispatch(
         ctx.declare_env(builder);
         let result = ctx.emit_node(pipeline, builder, vmctx, gc_sig, oom_func, tree, alt.body)?;
         let result_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, result);
-        builder.ins().jump(merge_block, &[result_ptr]);
+        builder.ins().jump(merge_block, &[BlockArg::Value(result_ptr)]);
     } else {
         builder.ins().trap(TrapCode::unwrap_user(2));
     }
