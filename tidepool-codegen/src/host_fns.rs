@@ -1570,6 +1570,15 @@ mod tests {
 /// `num_alts` is the number of data alt tags expected.
 /// `alt_tags` is a pointer to an array of expected tag u64 values.
 pub extern "C" fn runtime_case_trap(scrut_ptr: i64, num_alts: i64, alt_tags: i64) -> *mut u8 {
+    // If a runtime error is already pending (e.g. DivisionByZero), the poison
+    // value cascaded into a case expression. Return poison again instead of
+    // aborting — the error flag will be detected when with_signal_protection
+    // returns.
+    let has_error = RUNTIME_ERROR.with(|cell| cell.borrow().is_some());
+    if has_error {
+        return error_poison_ptr();
+    }
+
     use std::io::Write;
     let ptr = scrut_ptr as *const u8;
     if (scrut_ptr as u64) < 0x1000 {
