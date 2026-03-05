@@ -58,8 +58,22 @@ impl From<crate::pipeline::PipelineError> for JitError {
     }
 }
 
-/// High-level JIT effect machine — compile and run freer-simple effect stacks
-/// without touching raw pointers, nurseries, or stack maps.
+/// High-level JIT effect machine.
+///
+/// Compiles a `CoreExpr` (Haskell effect program) into native code via Cranelift
+/// and runs it as a coroutine: the machine yields effect requests, the caller
+/// dispatches them through an HList of [`EffectHandler`]s, and resumes with responses.
+///
+/// ```ignore
+/// let (expr, table) = haskell_inline! { target = "main", include = "haskell", r#"..."# };
+/// let mut vm = JitEffectMachine::compile(&expr, &table, 1 << 20)?;
+/// vm.run(&table, &mut frunk::hlist![MyHandler], &())?;
+/// ```
+///
+/// Owns the compiled code, nursery (GC heap), and freer-simple constructor tags.
+/// The nursery size (in bytes) controls how much heap is available before GC triggers.
+///
+/// [`EffectHandler`]: tidepool_effect::EffectHandler
 pub struct JitEffectMachine {
     pipeline: CodegenPipeline,
     nursery: Nursery,

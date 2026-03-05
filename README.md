@@ -115,13 +115,60 @@ tidepool-mcp/               MCP server library (generic over effect handlers)
 5. **Compile to native** via Cranelift, producing a `JitEffectMachine`
 6. **Run with handlers** — the machine yields effect requests; Rust handlers respond
 
-### Using as a Rust library
+## Examples
+
+| Example | What it shows |
+|---------|--------------|
+| [`examples/guess/`](examples/guess/) | Number guessing game. Compile-time `haskell_inline!`, JIT, two effects (Console + Rng). The minimal "hello world". |
+| [`examples/guess-interpreted/`](examples/guess-interpreted/) | Same game, tree-walking interpreter instead of JIT. Shows the interpreter path. |
+| [`examples/tide/`](examples/tide/) | Interactive REPL with 5 effects (Repl, Console, Env, Net, Fs). Multi-effect composition at scale. |
+
+## Using as a Rust Library
+
+### Defining effects
+
+The core pattern is three steps:
+
+**1. Haskell GADT defines the effect:**
+
+```haskell
+data Console a where
+    Emit     :: String -> Console ()
+    AwaitInt :: Console Int
+```
+
+**2. `#[derive(FromCore)]` Rust enum mirrors it:**
+
+```rust
+#[derive(FromCore)]
+enum ConsoleReq {
+    #[core(name = "Emit")]
+    Emit(String),
+    #[core(name = "AwaitInt")]
+    AwaitInt,
+}
+```
+
+**3. `impl EffectHandler` provides the implementation:**
+
+```rust
+impl EffectHandler for ConsoleHandler {
+    type Request = ConsoleReq;
+    fn handle(&mut self, req: ConsoleReq, cx: &EffectContext) -> Result<Value, EffectError> {
+        match req {
+            ConsoleReq::Emit(s) => { println!("{s}"); cx.respond(()) }
+            ConsoleReq::AwaitInt => { /* read from stdin */ cx.respond(42i64) }
+        }
+    }
+}
+```
+
+### Compile-time path (`haskell_inline!`)
 
 ```rust
 use tidepool_macro::haskell_inline;
 use tidepool_codegen::jit_machine::JitEffectMachine;
 
-// Compile Haskell at build time
 let (expr, table) = haskell_inline! {
     target = "greet",
     include = "haskell",
@@ -131,10 +178,29 @@ greet = emit "Hello from Haskell!"
     "#
 };
 
-// JIT compile and run with Rust handlers
 let mut vm = JitEffectMachine::compile(&expr, &table, 1 << 20)?;
-vm.run(&table, &mut handlers, &())?;
+vm.run(&table, &mut frunk::hlist![ConsoleHandler], &())?;
 ```
+
+### Runtime path (`compile_and_run`)
+
+```rust
+let result = tidepool_runtime::compile_and_run(
+    &source, "result", &[], &mut handlers, &(),
+)?;
+println!("{}", result.to_json());
+```
+
+### Key crates
+
+| Crate | Entry points |
+|-------|-------------|
+| [`tidepool-macro`](tidepool-macro/) | `haskell_inline!`, `haskell_eval!`, `haskell_expr!` — compile-time Haskell embedding |
+| [`tidepool-effect`](tidepool-effect/) | `EffectHandler`, `EffectContext`, `DispatchEffect` — effect dispatch traits |
+| [`tidepool-bridge-derive`](tidepool-bridge-derive/) | `#[derive(FromCore)]`, `#[derive(ToCore)]` — Haskell↔Rust value conversion |
+| [`tidepool-runtime`](tidepool-runtime/) | `compile_and_run`, `compile_haskell`, `EvalResult` — high-level runtime API |
+| [`tidepool-codegen`](tidepool-codegen/) | `JitEffectMachine` — Cranelift JIT compiler + effect machine |
+| [`tidepool-mcp`](tidepool-mcp/) | `TidepoolMcpServer`, `DescribeEffect`, `EffectDecl` — MCP server library |
 
 ## MCP Server Effects
 
