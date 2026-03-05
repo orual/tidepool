@@ -18,7 +18,10 @@ fn type_mismatch(expected: &str, got: &Value) -> BridgeError {
         Value::ThunkRef(_) => "ThunkRef".to_string(),
         Value::JoinCont(_, _, _) => "JoinCont".to_string(),
         Value::ConFun(id, arity, args) => format!("ConFun({:?}, {}/{})", id, args.len(), arity),
-        Value::ByteArray(bs) => format!("ByteArray(len={})", bs.lock().unwrap().len()),
+        Value::ByteArray(bs) => match bs.lock() {
+            Ok(b) => format!("ByteArray(len={})", b.len()),
+            Err(_) => "ByteArray(poisoned)".to_string(),
+        },
     };
     BridgeError::TypeMismatch {
         expected: expected.to_string(),
@@ -294,14 +297,14 @@ impl FromCore for String {
                 if fields.len() == 3 && table.get_by_name("Text") == Some(*id) =>
             {
                 let ba = match &fields[0] {
-                    Value::ByteArray(bs) => bs.lock().unwrap().clone(),
+                    Value::ByteArray(bs) => bs.lock().map_err(|_| BridgeError::InternalError("mutex poisoned".into()))?.clone(),
                     // Lifted ByteArray wrapper: Con("ByteArray", [Value::ByteArray(..)])
                     Value::Con(ba_id, ba_fields)
                         if ba_fields.len() == 1
                             && table.get_by_name("ByteArray") == Some(*ba_id) =>
                     {
                         match &ba_fields[0] {
-                            Value::ByteArray(bs) => bs.lock().unwrap().clone(),
+                            Value::ByteArray(bs) => bs.lock().map_err(|_| BridgeError::InternalError("mutex poisoned".into()))?.clone(),
                             _ => {
                                 return Err(type_mismatch("ByteArray# in ByteArray", &ba_fields[0]))
                             }

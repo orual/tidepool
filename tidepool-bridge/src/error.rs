@@ -27,6 +27,8 @@ pub enum BridgeError {
     },
     /// The type is not supported by the bridge.
     UnsupportedType(String),
+    /// Internal invariant violation (should never happen).
+    InternalError(String),
 }
 
 impl fmt::Display for BridgeError {
@@ -45,6 +47,7 @@ impl fmt::Display for BridgeError {
                 write!(f, "Type mismatch: expected {}, got {}", expected, got)
             }
             BridgeError::UnsupportedType(ty) => write!(f, "Unsupported type: {}", ty),
+            BridgeError::InternalError(msg) => write!(f, "Internal error: {}", msg),
         }
     }
 }

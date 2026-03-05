@@ -70,6 +70,8 @@ pub enum EmitError {
     InvalidArity(PrimOpKind, usize, usize),
     /// A variable needed for closure capture was not found in the environment.
     MissingCaptureVar(VarId, String),
+    /// Internal invariant violation (should never happen).
+    InternalError(String),
 }
 
 impl std::fmt::Display for EmitError {
@@ -89,6 +91,7 @@ impl std::fmt::Display for EmitError {
             EmitError::MissingCaptureVar(v, ctx) => {
                 write!(f, "missing capture variable VarId({:#x}): {}", v.0, ctx)
             }
+            EmitError::InternalError(msg) => write!(f, "internal error: {}", msg),
         }
     }
 }

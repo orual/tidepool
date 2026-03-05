@@ -56,13 +56,13 @@ pub struct ParsedConstructor {
 /// Parse `"GitLog :: Text -> Int -> Git [Value]"` → `ParsedConstructor { name: "GitLog", arity: 2 }`
 ///
 /// Arity = number of `->` in the type signature (each `->` separates one argument from the rest).
-pub fn parse_constructor(decl: &str) -> ParsedConstructor {
+pub fn parse_constructor(decl: &str) -> Result<ParsedConstructor, String> {
     let (name_part, type_part) = decl
         .split_once("::")
-        .expect("constructor decl must contain '::'");
+        .ok_or_else(|| format!("constructor decl must contain '::': {:?}", decl))?;
     let name = name_part.trim().to_string();
     let arity = type_part.matches("->").count() as u32;
-    ParsedConstructor { name, arity }
+    Ok(ParsedConstructor { name, arity })
 }
 
 /// Trait for effect handlers that can describe their Haskell-side type.
@@ -1289,12 +1289,12 @@ impl CapturedOutput {
 
     /// Push a line of output.
     pub fn push(&self, line: String) {
-        self.lines.lock().unwrap().push(line);
+        self.lines.lock().unwrap_or_else(|e| e.into_inner()).push(line);
     }
 
     /// Drain all captured lines, returning them and clearing the buffer.
     pub fn drain(&self) -> Vec<String> {
-        let mut lines = self.lines.lock().unwrap();
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
         std::mem::take(&mut *lines)
     }
 }
@@ -1440,7 +1440,7 @@ impl TidepoolMcpServerImpl {
     }
 
     fn cleanup_stale_continuations(&self) {
-        let mut conts = self.continuations.lock().unwrap();
+        let mut conts = self.continuations.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::Instant::now();
         conts.retain(|_, session| now.duration_since(session.created_at) < CONTINUATION_TTL);
     }
@@ -1582,7 +1582,7 @@ impl TidepoolMcpServerImpl {
                     "continuation_id": cont_id,
                     "prompt": prompt,
                 });
-                self.continuations.lock().unwrap().insert(
+                self.continuations.lock().unwrap_or_else(|e| e.into_inner()).insert(
                     cont_id.clone(),
                     EvalSession {
                         response_tx,
@@ -1629,7 +1629,7 @@ impl TidepoolMcpServerImpl {
         self.cleanup_stale_continuations();
 
         let mut session = {
-            let mut conts = self.continuations.lock().unwrap();
+            let mut conts = self.continuations.lock().unwrap_or_else(|e| e.into_inner());
             conts.remove(&req.continuation_id).ok_or_else(|| {
                 McpError::invalid_params(
                     format!(
@@ -1675,7 +1675,7 @@ impl TidepoolMcpServerImpl {
                     "continuation_id": cont_id,
                     "prompt": prompt,
                 });
-                self.continuations.lock().unwrap().insert(
+                self.continuations.lock().unwrap_or_else(|e| e.into_inner()).insert(
                     cont_id.clone(),
                     EvalSession {
                         response_tx,
@@ -2285,7 +2285,7 @@ mod tests {
 
     #[test]
     fn test_parse_constructor_no_args() {
-        let p = parse_constructor("GitBranches :: Git [Value]");
+        let p = parse_constructor("GitBranches :: Git [Value]").unwrap();
         assert_eq!(
             p,
             ParsedConstructor {
@@ -2297,7 +2297,7 @@ mod tests {
 
     #[test]
     fn test_parse_constructor_two_args() {
-        let p = parse_constructor("GitLog :: Text -> Int -> Git [Value]");
+        let p = parse_constructor("GitLog :: Text -> Int -> Git [Value]").unwrap();
         assert_eq!(
             p,
             ParsedConstructor {
@@ -2310,7 +2310,7 @@ mod tests {
     #[test]
     fn test_parse_constructor_nested_types() {
         let p =
-            parse_constructor("HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value");
+            parse_constructor("HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value").unwrap();
         assert_eq!(
             p,
             ParsedConstructor {

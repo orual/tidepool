@@ -207,7 +207,7 @@ fn optimize_then_tiny_nursery() {
             });
             runner
                 .run(&arb_core_expr(), |mut expr| {
-                    optimize(&mut expr);
+                    optimize(&mut expr).unwrap();
                     check_jit_vs_eval(expr, 2 * 1024)
                 })
                 .unwrap();

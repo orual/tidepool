@@ -150,7 +150,7 @@ fn jit_agrees_with_eval_after_optimize() {
             });
             runner
                 .run(&arb_core_expr(), |mut expr| {
-                    optimize(&mut expr);
+                    optimize(&mut expr).unwrap();
                     check_jit_vs_eval(expr, 64 * 1024)
                 })
                 .unwrap();
@@ -240,7 +240,7 @@ fn jit_agrees_with_eval_optimized_small_nursery() {
             });
             runner
                 .run(&arb_core_expr(), |mut expr| {
-                    optimize(&mut expr);
+                    optimize(&mut expr).unwrap();
                     check_jit_vs_eval(expr, 4 * 1024)
                 })
                 .unwrap();

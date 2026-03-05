@@ -586,7 +586,9 @@ pub fn emit_primop(
                 PrimOpKind::DoubleAsinh => "runtime_double_asinh",
                 PrimOpKind::DoubleAcosh => "runtime_double_acosh",
                 PrimOpKind::DoubleAtanh => "runtime_double_atanh",
-                _ => unreachable!(),
+                _ => return Err(EmitError::InternalError(format!(
+                    "unexpected double primop variant: {:?}", op
+                ))),
             };
             let bits = builder.ins().bitcast(types::I64, MemFlags::new(), a);
             let result = emit_runtime_call(

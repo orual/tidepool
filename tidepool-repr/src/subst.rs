@@ -320,7 +320,11 @@ fn subst_at(tree: &CoreExpr, idx: usize, ctx: &mut SubstCtx, env: &HashMap<VarId
 
 fn splice_tree(replacement: &CoreExpr, new_nodes: &mut Vec<CoreFrame<usize>>) -> usize {
     if replacement.nodes.is_empty() {
-        panic!("Cannot splice an empty replacement tree");
+        // Empty replacement tree is a programming error; emit a dummy Var(0) node.
+        eprintln!("WARNING: splice_tree called with empty replacement tree");
+        let idx = new_nodes.len();
+        new_nodes.push(CoreFrame::Var(VarId(0)));
+        return idx;
     }
     let offset = new_nodes.len();
     for node in &replacement.nodes {

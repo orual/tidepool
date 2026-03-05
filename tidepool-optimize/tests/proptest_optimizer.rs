@@ -376,7 +376,7 @@ fn multiple_passes_preserve_eval() {
                     let original_res = eval(&expr, &env, &mut heap1);
 
                     let mut optimized = expr.clone();
-                    optimize(&mut optimized);
+                    optimize(&mut optimized).unwrap();
 
                     let mut heap2 = VecHeap::new();
                     let optimized_res = eval(&optimized, &env, &mut heap2);
@@ -431,10 +431,10 @@ fn optimization_is_idempotent() {
             runner
                 .run(&arb_core_expr(), |expr| {
                     let mut optimized1 = expr.clone();
-                    optimize(&mut optimized1);
+                    optimize(&mut optimized1).unwrap();
 
                     let mut optimized2 = optimized1.clone();
-                    let stats = optimize(&mut optimized2);
+                    let stats = optimize(&mut optimized2).unwrap();
 
                     prop_assert_eq!(
                         &optimized1,

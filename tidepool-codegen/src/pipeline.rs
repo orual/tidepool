@@ -12,6 +12,8 @@ use crate::stack_map::{RawStackMap, StackMapRegistry};
 /// Errors from the Cranelift compilation pipeline.
 #[derive(Debug)]
 pub enum PipelineError {
+    /// Pipeline initialization failed (ISA detection, memory reservation).
+    Init(String),
     /// Function declaration failed.
     Declaration(String),
     /// First-pass compilation failed (stack map extraction).
@@ -25,6 +27,7 @@ pub enum PipelineError {
 impl std::fmt::Display for PipelineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PipelineError::Init(e) => write!(f, "pipeline init failed: {}", e),
             PipelineError::Declaration(e) => write!(f, "function declaration failed: {}", e),
             PipelineError::Compilation(e) => write!(f, "compilation failed: {}", e),
             PipelineError::Definition(e) => write!(f, "define_function failed: {}", e),
@@ -63,20 +66,25 @@ impl CodegenPipeline {
     ///
     /// `symbols` is a list of (name, pointer) pairs for host functions
     /// that JIT code can call (e.g., gc_trigger, heap_alloc).
-    pub fn new(symbols: &[(&str, *const u8)]) -> Self {
+    pub fn new(symbols: &[(&str, *const u8)]) -> Result<Self, PipelineError> {
         let mut flag_builder = settings::builder();
         // REQUIRED: enables RBP frame chain for GC stack walking
-        flag_builder.set("preserve_frame_pointers", "true").unwrap();
-        flag_builder.set("opt_level", "speed").unwrap();
+        flag_builder.set("preserve_frame_pointers", "true")
+            .map_err(|e| PipelineError::Init(format!("set preserve_frame_pointers: {e}")))?;
+        flag_builder.set("opt_level", "speed")
+            .map_err(|e| PipelineError::Init(format!("set opt_level: {e}")))?;
         // ArenaMemoryProvider allocates code/GOT/readonly from a single contiguous
         // reservation, so PIC is not needed — cranelift-jit 0.129+ requires is_pic=false.
-        flag_builder.set("is_pic", "false").unwrap();
-        flag_builder.set("use_colocated_libcalls", "true").unwrap();
+        flag_builder.set("is_pic", "false")
+            .map_err(|e| PipelineError::Init(format!("set is_pic: {e}")))?;
+        flag_builder.set("use_colocated_libcalls", "true")
+            .map_err(|e| PipelineError::Init(format!("set use_colocated_libcalls: {e}")))?;
 
-        let isa_builder = cranelift_native::builder().expect("host machine not supported");
+        let isa_builder = cranelift_native::builder()
+            .map_err(|e| PipelineError::Init(format!("host ISA: {e}")))?;
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder.clone()))
-            .unwrap();
+            .map_err(|e| PipelineError::Init(format!("ISA finish: {e}")))?;
 
         let mut jit_builder =
             JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
@@ -89,18 +97,18 @@ impl CodegenPipeline {
         // All code/GOT/readonly carved from one contiguous range, guaranteeing
         // <2GB distance for X86GOTPCRel4 relocations.
         let arena = ArenaMemoryProvider::new_with_size(256 * 1024 * 1024)
-            .expect("failed to reserve JIT memory arena");
+            .map_err(|e| PipelineError::Init(format!("JIT memory arena: {e}")))?;
         jit_builder.memory_provider(Box::new(arena));
 
         let module = JITModule::new(jit_builder);
 
-        Self {
+        Ok(Self {
             module,
             isa,
             stack_maps: StackMapRegistry::new(),
             pending_stack_maps: Vec::new(),
             lambda_names: Vec::new(),
-        }
+        })
     }
 
     /// Create the standard function signature for compiled tidepool functions.
@@ -141,7 +149,7 @@ impl CodegenPipeline {
         // Extract stack maps from the same compilation
         let compiled = ctx
             .compiled_code()
-            .expect("compiled_code missing after define_function");
+            .ok_or_else(|| PipelineError::Compilation("compiled_code missing after define_function".into()))?;
         let func_size = compiled.code_buffer().len() as u32;
         let raw_maps: Vec<RawStackMap> = compiled
             .buffer

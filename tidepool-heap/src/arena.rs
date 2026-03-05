@@ -61,7 +61,10 @@ impl ArenaHeap {
         let aligned_size = size
             .checked_add(7)
             .map(|s| s & !7)
-            .expect("Allocation size overflow");
+            .ok_or(HeapError::NurseryExhausted {
+                requested: size,
+                available: 0,
+            })?;
 
         // Check for nursery exhaustion and reserve space atomically.
         let mut prev_used = self.used.load(Ordering::SeqCst);
@@ -89,7 +92,10 @@ impl ArenaHeap {
         // bumpalo::alloc_layout always returns 16-byte aligned pointer
         // for layouts with alignment <= 16.
         let layout = std::alloc::Layout::from_size_align(aligned_size, 8)
-            .expect("Invalid layout for alloc_raw");
+            .map_err(|_| HeapError::NurseryExhausted {
+                requested: aligned_size,
+                available: 0,
+            })?;
 
         Ok(self.arena.alloc_layout(layout).as_ptr())
     }

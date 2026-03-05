@@ -58,6 +58,8 @@ pub enum EvalError {
     Undefined,
     /// Recursion depth limit exceeded during deep_force
     DepthLimit,
+    /// Internal invariant violation (should never happen)
+    InternalError(String),
 }
 
 impl std::fmt::Display for EvalError {
@@ -87,6 +89,7 @@ impl std::fmt::Display for EvalError {
             EvalError::UserError => write!(f, "Haskell error called"),
             EvalError::Undefined => write!(f, "Haskell undefined forced"),
             EvalError::DepthLimit => write!(f, "recursion depth limit exceeded"),
+            EvalError::InternalError(msg) => write!(f, "internal error: {}", msg),
         }
     }
 }

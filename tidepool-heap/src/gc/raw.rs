@@ -28,7 +28,7 @@ unsafe fn evacuate(old_ptr: *mut u8, to_base: *mut u8, free: &mut usize) -> *mut
     let size = read_size(old_ptr) as usize;
     let aligned = size
         .checked_add(7)
-        .expect("heap object size too large to align")
+        .unwrap_or(size)
         & !7;
     let new_ptr = to_base.add(*free);
     std::ptr::copy_nonoverlapping(old_ptr, new_ptr, aligned);
@@ -121,7 +121,7 @@ pub unsafe fn cheney_copy(
         let obj_size = read_size(obj) as usize;
         let aligned = obj_size
             .checked_add(7)
-            .expect("heap object size too large to align")
+            .unwrap_or(obj_size)
             & !7;
         for_each_pointer_field(obj, |field_slot| {
             let field_val = *field_slot;

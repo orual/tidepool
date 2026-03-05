@@ -33,7 +33,7 @@ pub fn parse_input(input: &DeriveInput) -> Result<DataInfo, syn::Error> {
                 Fields::Named(f) => f
                     .named
                     .iter()
-                    .map(|field| (field.ident.clone().unwrap(), field.ty.clone()))
+                    .filter_map(|field| Some((field.ident.clone()?, field.ty.clone())))
                     .collect(),
                 Fields::Unit => Vec::new(),
                 Fields::Unnamed(_) => {

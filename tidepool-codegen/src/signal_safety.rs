@@ -306,8 +306,8 @@ mod inner {
             return Err(SignalError(val));
         }
 
-        // Closure completed normally.
-        Ok(result_cell.into_inner().unwrap())
+        // Closure completed normally — result_cell is guaranteed to be Some.
+        result_cell.into_inner().ok_or(SignalError(-1))
     }
 
     extern "C" fn handler(sig: libc::c_int, _info: *mut libc::siginfo_t, _ctx: *mut libc::c_void) {
@@ -399,7 +399,9 @@ mod inner {
         ALT_STACK_INSTALLED.with(|installed| {
             if !installed.get() {
                 unsafe {
-                    let layout = Layout::from_size_align(ALT_STACK_SIZE, 16).unwrap();
+                    let Ok(layout) = Layout::from_size_align(ALT_STACK_SIZE, 16) else {
+                        return;
+                    };
                     let alt_stack_ptr = alloc(layout);
                     if alt_stack_ptr.is_null() {
                         return;

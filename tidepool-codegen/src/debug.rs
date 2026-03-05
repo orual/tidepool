@@ -55,18 +55,18 @@ impl LambdaRegistry {
 
 /// Install a registry as the global singleton. Returns the old one if any.
 pub fn set_lambda_registry(registry: LambdaRegistry) -> Option<LambdaRegistry> {
-    let mut guard = LAMBDA_REGISTRY.lock().unwrap();
+    let mut guard = LAMBDA_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     guard.replace(registry)
 }
 
 /// Clear the global registry.
 pub fn clear_lambda_registry() -> Option<LambdaRegistry> {
-    LAMBDA_REGISTRY.lock().unwrap().take()
+    LAMBDA_REGISTRY.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 /// Look up a code pointer in the global registry.
 pub fn lookup_lambda(code_ptr: usize) -> Option<String> {
-    let guard = LAMBDA_REGISTRY.lock().unwrap();
+    let guard = LAMBDA_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
     guard
         .as_ref()
         .and_then(|r| r.lookup(code_ptr))

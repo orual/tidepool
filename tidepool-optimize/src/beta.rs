@@ -54,7 +54,8 @@ fn try_beta_at(expr: &CoreExpr, idx: usize) -> Option<CoreExpr> {
             match other {
                 CoreFrame::Var(_) | CoreFrame::Lit(_) => {}
                 CoreFrame::App { .. } => {
-                    unreachable!("App nodes are handled in the outer match")
+                    // App nodes are handled in the outer match — this arm should never fire.
+                    return None;
                 }
                 CoreFrame::Lam { body, .. } => {
                     result = try_beta_at(expr, *body);

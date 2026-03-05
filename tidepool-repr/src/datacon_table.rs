@@ -58,28 +58,12 @@ impl DataConTable {
 
     /// Look up by name, returning the DataConId.
     ///
-    /// **Panics** when multiple constructors share the same unqualified name,
+    /// Returns `None` when multiple constructors share the same unqualified name,
     /// since the result would be ambiguous. Use `get_by_qualified_name`,
     /// `get_by_name_arity`, or `get_companion` instead.
     pub fn get_by_name(&self, name: &str) -> Option<DataConId> {
         match self.by_name.get(name) {
-            Some(vec) if vec.len() > 1 => {
-                let qualified: Vec<&str> = vec
-                    .iter()
-                    .filter_map(|id| {
-                        self.by_id
-                            .get(id)
-                            .and_then(|dc| dc.qualified_name.as_deref())
-                    })
-                    .collect();
-                panic!(
-                    "get_by_name({:?}) is ambiguous: {} constructors share this name {:?}. \
-                     Use get_by_qualified_name() or get_by_name_arity() instead.",
-                    name,
-                    vec.len(),
-                    qualified,
-                );
-            }
+            Some(vec) if vec.len() > 1 => None,
             Some(vec) => vec.last().copied(),
             None => None,
         }

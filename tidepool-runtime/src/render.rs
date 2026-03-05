@@ -118,7 +118,7 @@ pub fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_j
                         }
                     };
                     if let Some(bs) = raw_ba {
-                        let borrowed = bs.lock().unwrap();
+                        let borrowed = bs.lock().unwrap_or_else(|e| e.into_inner());
                         let off = extract_boxed_int(off_val, table).unwrap_or(0) as usize;
                         let len = extract_boxed_int(len_val, table).unwrap_or(borrowed.len() as i64)
                             as usize;
@@ -235,7 +235,7 @@ pub fn value_to_json(val: &Value, table: &DataConTable, depth: usize) -> serde_j
             json!(format!("<partially-applied {}>", name))
         }
         Value::ByteArray(bs) => {
-            let borrowed = bs.lock().unwrap();
+            let borrowed = bs.lock().unwrap_or_else(|e| e.into_inner());
             match std::str::from_utf8(&borrowed) {
                 Ok(s) => json!(s),
                 Err(_) => json!(format!("<ByteArray# len={}>", borrowed.len())),
@@ -337,7 +337,7 @@ fn extract_char_inner(val: &Value, table: &DataConTable) -> Option<char> {
                 }
             };
             let bs = raw_ba?;
-            let borrowed = bs.lock().unwrap();
+            let borrowed = bs.lock().unwrap_or_else(|e| e.into_inner());
             let byte = *borrowed.get(off)?;
             Some(byte as char)
         }

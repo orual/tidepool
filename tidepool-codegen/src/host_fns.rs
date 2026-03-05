@@ -383,7 +383,7 @@ pub fn error_poison_ptr() -> *mut u8 {
     let addr = *POISON.get_or_init(|| {
         // Closure size: header(8) + code_ptr(8) + num_captured(8) = 24
         let size = 24usize;
-        let layout = std::alloc::Layout::from_size_align(size, 8).unwrap();
+        let layout = std::alloc::Layout::from_size_align(size, 8).unwrap_or_else(|_| std::process::abort());
         let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
         if ptr.is_null() {
             std::alloc::handle_alloc_error(layout);
@@ -431,7 +431,7 @@ pub fn error_poison_ptr_lazy(kind: u64) -> *mut u8 {
         for k in 0..5u64 {
             // Closure: header(8) + code_ptr(8) + num_captured(2+pad=8) + captured[0](8) = 32
             let size = 32usize;
-            let lo = std::alloc::Layout::from_size_align(size, 8).unwrap();
+            let lo = std::alloc::Layout::from_size_align(size, 8).unwrap_or_else(|_| std::process::abort());
             let ptr = unsafe { std::alloc::alloc_zeroed(lo) };
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(lo);
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn debug_app_check(fun_ptr: *const u8) -> *mut u8 {
 /// Returns a raw pointer to the allocation (caller stores in Lit value slot).
 pub extern "C" fn runtime_new_byte_array(size: i64) -> i64 {
     let total = 8 + size as usize;
-    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap();
+    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap_or_else(|_| std::process::abort());
     let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -631,7 +631,7 @@ pub extern "C" fn runtime_resize_byte_array(ba: i64, new_size: i64) -> i64 {
     let new_size = new_size as usize;
 
     let new_total = 8 + new_size;
-    let new_layout = std::alloc::Layout::from_size_align(new_total, 8).unwrap();
+    let new_layout = std::alloc::Layout::from_size_align(new_total, 8).unwrap_or_else(|_| std::process::abort());
     let new_ptr = unsafe { std::alloc::alloc_zeroed(new_layout) };
     if new_ptr.is_null() {
         std::alloc::handle_alloc_error(new_layout);
@@ -650,7 +650,7 @@ pub extern "C" fn runtime_resize_byte_array(ba: i64, new_size: i64) -> i64 {
 
     // Free old buffer
     let old_total = 8 + old_size;
-    let old_layout = std::alloc::Layout::from_size_align(old_total, 8).unwrap();
+    let old_layout = std::alloc::Layout::from_size_align(old_total, 8).unwrap_or_else(|_| std::process::abort());
     unsafe {
         std::alloc::dealloc(old_ptr, old_layout);
     }
@@ -712,7 +712,7 @@ pub extern "C" fn runtime_compare_byte_arrays(
 pub extern "C" fn runtime_new_boxed_array(len: i64, init: i64) -> i64 {
     let n = len as usize;
     let total = 8 + 8 * n;
-    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap();
+    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap_or_else(|_| std::process::abort());
     let ptr = unsafe { std::alloc::alloc(layout) };
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -733,7 +733,7 @@ pub extern "C" fn runtime_new_boxed_array(len: i64, init: i64) -> i64 {
 pub extern "C" fn runtime_clone_boxed_array(src: i64, off: i64, len: i64) -> i64 {
     let n = len as usize;
     let total = 8 + 8 * n;
-    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap();
+    let layout = std::alloc::Layout::from_size_align(total, 8).unwrap_or_else(|_| std::process::abort());
     let ptr = unsafe { std::alloc::alloc(layout) };
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -954,7 +954,10 @@ pub extern "C" fn runtime_text_reverse(dest: i64, src: i64, off: i64, len: i64) 
 pub extern "C" fn runtime_show_double_addr(bits: i64) -> i64 {
     let d = f64::from_bits(bits as u64);
     let s = haskell_show_double(d);
-    let c_str = std::ffi::CString::new(s).unwrap();
+    let c_str = match std::ffi::CString::new(s) {
+        Ok(c) => c,
+        Err(_) => std::process::abort(),
+    };
     let ptr = c_str.into_raw();
     ptr as i64
 }

@@ -68,10 +68,10 @@ impl std::fmt::Display for Value {
             Value::ConFun(id, arity, args) => {
                 write!(f, "<partial Con#{} {}/{}>", id.0, args.len(), arity)
             }
-            Value::ByteArray(ba) => {
-                let bytes = ba.lock().unwrap();
-                write!(f, "<ByteArray# len={}>", bytes.len())
-            }
+            Value::ByteArray(ba) => match ba.lock() {
+                Ok(bytes) => write!(f, "<ByteArray# len={}>", bytes.len()),
+                Err(_) => write!(f, "<ByteArray# poisoned>"),
+            },
         }
     }
 }

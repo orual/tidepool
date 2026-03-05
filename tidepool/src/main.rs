@@ -1069,7 +1069,9 @@ impl EffectHandler<CapturedOutput> for GitHandler {
                 let lines: Vec<&str> = content.lines().collect();
                 let mut hunks = Vec::new();
                 for hunk_idx in 0..blame.len() {
-                    let hunk = blame.get_index(hunk_idx).unwrap();
+                    let Some(hunk) = blame.get_index(hunk_idx) else {
+                        continue;
+                    };
                     let sig = hunk.final_signature();
                     let line_start = hunk.final_start_line();
                     let line_count = hunk.lines_in_hunk();
@@ -1462,32 +1464,32 @@ const EMBEDDED_FILES: &[(&str, &str)] = &[
 
 /// Ensure embedded Haskell stdlib is written to ~/.tidepool/prelude/.
 /// Returns the prelude directory path. Respects TIDEPOOL_PRELUDE_DIR override.
-fn ensure_prelude() -> PathBuf {
+fn ensure_prelude() -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(dir) = std::env::var_os("TIDEPOOL_PRELUDE_DIR") {
-        return PathBuf::from(dir);
+        return Ok(PathBuf::from(dir));
     }
 
     // In-repo development: use haskell/lib/ directly if present
     if let Ok(cwd) = std::env::current_dir() {
         let from_root = cwd.join("haskell").join("lib");
         if from_root.join("Tidepool").join("Prelude.hs").exists() {
-            return from_root;
+            return Ok(from_root);
         }
         let from_haskell = cwd.join("lib");
         if from_haskell.join("Tidepool").join("Prelude.hs").exists() {
-            return from_haskell;
+            return Ok(from_haskell);
         }
     }
 
     // Installed mode: write embedded files to ~/.tidepool/prelude/
     let base = dirs::home_dir()
-        .expect("could not determine home directory")
+        .ok_or("could not determine home directory")?
         .join(".tidepool")
         .join("prelude");
     let stamp = base.join(".version");
     let version = env!("CARGO_PKG_VERSION");
     if stamp.exists() && std::fs::read_to_string(&stamp).ok().as_deref() == Some(version) {
-        return base;
+        return Ok(base);
     }
 
     for (path, content) in EMBEDDED_FILES {
@@ -1498,7 +1500,7 @@ fn ensure_prelude() -> PathBuf {
         let _ = std::fs::write(&full, content);
     }
     let _ = std::fs::write(&stamp, version);
-    base
+    Ok(base)
 }
 
 /// Check if tidepool-extract is available.
@@ -1657,7 +1659,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
-    let prelude_dir = ensure_prelude();
+    let prelude_dir = ensure_prelude()?;
 
     // If tidepool-extract is not available, serve the degraded setup server.
     if find_tidepool_extract().is_none() {
@@ -1834,7 +1836,8 @@ mod tests {
         // Auto-add all effect constructors from declarations
         for decl in &decls {
             for con_str in decl.constructors {
-                let parsed = tidepool_mcp::parse_constructor(con_str);
+                let parsed = tidepool_mcp::parse_constructor(con_str)
+                    .unwrap_or_else(|e| panic!("bad constructor decl: {e}"));
                 if t.get_by_name(&parsed.name).is_some() {
                     continue;
                 }
@@ -2166,7 +2169,7 @@ mod tests {
         let table = full_effect_test_table();
         for decl in &tidepool_mcp::standard_decls() {
             for con_str in decl.constructors {
-                let parsed = tidepool_mcp::parse_constructor(con_str);
+                let parsed = tidepool_mcp::parse_constructor(con_str).unwrap();
                 let id = table.get_by_name(&parsed.name).unwrap_or_else(|| {
                     panic!(
                         "Constructor '{}' from effect '{}' missing from test DataConTable",

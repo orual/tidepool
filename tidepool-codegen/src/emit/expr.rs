@@ -520,7 +520,7 @@ fn emit_lam(
         let func_id = pipeline
             .module
             .declare_function("runtime_oom", Linkage::Import, &sig)
-            .unwrap();
+            .map_err(|e| EmitError::CraneliftError(format!("declare runtime_oom: {e}")))?;
         pipeline
             .module
             .declare_func_in_func(func_id, inner_builder.func)
@@ -680,7 +680,7 @@ pub fn compile_expr(
         let func_id = pipeline
             .module
             .declare_function("runtime_oom", Linkage::Import, &sig)
-            .unwrap();
+            .map_err(|e| EmitError::CraneliftError(format!("declare runtime_oom: {e}")))?;
         pipeline.module.declare_func_in_func(func_id, builder.func)
     };
 
@@ -947,7 +947,9 @@ impl EmitContext {
                                     field_indices: fields.clone(),
                                 });
                             }
-                            _ => unreachable!(),
+                            other => return Err(EmitError::InternalError(format!(
+                                "LetRec phase 1: expected Lam or Con, got {:?}", other
+                            ))),
                         }
                     }
 
@@ -1004,7 +1006,9 @@ impl EmitContext {
                         };
                         let (lam_binder, lam_body) = match &tree.nodes[rhs_idx] {
                             CoreFrame::Lam { binder, body } => (*binder, *body),
-                            _ => unreachable!(),
+                            other => return Err(EmitError::InternalError(format!(
+                                "LetRec phase 3a: expected Lam, got {:?}", other
+                            ))),
                         };
                         let lam_body_tree = tree.extract_subtree(lam_body);
 
@@ -1050,7 +1054,7 @@ impl EmitContext {
                             let func_id = pipeline
                                 .module
                                 .declare_function("runtime_oom", Linkage::Import, &sig)
-                                .unwrap();
+                                .map_err(|e| EmitError::CraneliftError(format!("declare runtime_oom: {e}")))?;
                             pipeline
                                 .module
                                 .declare_func_in_func(func_id, inner_builder.func)
