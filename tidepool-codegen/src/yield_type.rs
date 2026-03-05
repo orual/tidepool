@@ -70,6 +70,10 @@ pub enum YieldError {
     StackOverflow,
     /// Fatal signal during JIT execution (SIGILL, SIGSEGV, SIGBUS, SIGTRAP).
     Signal(i32),
+    /// Blackhole detected (infinite loop: thunk forced itself).
+    BlackHole,
+    /// Thunk encountered with an invalid evaluation state.
+    BadThunkState(u8),
 }
 
 impl std::fmt::Display for YieldError {
@@ -103,6 +107,8 @@ impl std::fmt::Display for YieldError {
             YieldError::BadFunPtrTag(tag) => write!(f, "application of non-closure (tag={})", tag),
             YieldError::HeapOverflow => write!(f, "heap overflow (nursery exhausted after GC)"),
             YieldError::StackOverflow => write!(f, "stack overflow (likely infinite list or unbounded recursion — use zipWithIndex/imap/enumFromTo instead of [0..])"),
+            YieldError::BlackHole => write!(f, "blackhole detected (infinite loop: thunk forced itself)"),
+            YieldError::BadThunkState(state) => write!(f, "thunk has invalid evaluation state: {}", state),
             YieldError::Signal(sig) => {
                 #[cfg(unix)]
                 {
@@ -142,6 +148,8 @@ impl From<crate::host_fns::RuntimeError> for YieldError {
             RuntimeError::BadFunPtrTag(tag) => YieldError::BadFunPtrTag(tag),
             RuntimeError::HeapOverflow => YieldError::HeapOverflow,
             RuntimeError::StackOverflow => YieldError::StackOverflow,
+            RuntimeError::BlackHole => YieldError::BlackHole,
+            RuntimeError::BadThunkState(state) => YieldError::BadThunkState(state),
         }
     }
 }
