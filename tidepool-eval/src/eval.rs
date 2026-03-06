@@ -170,12 +170,9 @@ fn eval_at(
                 Value::ConFun(tag, arity, mut args) => {
                     args.push(arg_val);
                     if args.len() == arity {
-                        // Force all fields when constructor is saturated
-                        let mut forced_args = Vec::with_capacity(args.len());
-                        for a in args {
-                            forced_args.push(force(a, heap)?);
-                        }
-                        Ok(Value::Con(tag, forced_args))
+                        // Don't force fields — leave thunks intact for lazy evaluation.
+                        // Fields will be forced on demand when case-matched or used by primops.
+                        Ok(Value::Con(tag, args))
                     } else {
                         Ok(Value::ConFun(tag, arity, args))
                     }
@@ -226,7 +223,22 @@ fn eval_at(
         CoreFrame::Con { tag, fields } => {
             let mut field_vals = Vec::with_capacity(fields.len());
             for &f in fields {
-                field_vals.push(eval_at(expr, f, env, heap)?);
+                // Thunkify non-trivial fields to enable lazy evaluation.
+                // Var and Lit are cheap lookups; everything else (App, Case,
+                // Let, PrimOp, nested Con) gets wrapped in a thunk so that
+                // infinite structures like `cycle` and `zipWith ... [0..]`
+                // don't diverge at construction time.
+                match &expr.nodes[f] {
+                    CoreFrame::Var(_) | CoreFrame::Lit(_)
+                    | CoreFrame::Con { .. } | CoreFrame::Lam { .. } => {
+                        field_vals.push(eval_at(expr, f, env, heap)?);
+                    }
+                    _ => {
+                        let subtree = expr.extract_subtree(f);
+                        let thunk_id = heap.alloc(env.clone(), subtree);
+                        field_vals.push(Value::ThunkRef(thunk_id));
+                    }
+                }
             }
             Ok(Value::Con(*tag, field_vals))
         }
