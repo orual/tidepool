@@ -365,12 +365,73 @@ fn collapse_frame(
                 builder.declare_value_needs_stack_map(result);
                 return Ok(SsaVal::HeapPtr(result));
             }
-            primop::emit_primop(pipeline, builder, vmctx, gc_sig, oom_func, op, args)
+            // Force thunked args: PrimOps are strict in all arguments.
+            // Case alt binders can be thunks (lazy Con fields), so force
+            // them before passing to primop unboxing.
+            let forced_args: Vec<SsaVal> = args
+                .iter()
+                .map(|a| force_thunk_ssaval(pipeline, builder, vmctx, *a))
+                .collect::<Result<Vec<_>, EmitError>>()?;
+            primop::emit_primop(pipeline, builder, vmctx, gc_sig, oom_func, op, &forced_args)
         }
         EmitFrame::App { fun, arg } => {
             ctx.declare_env(builder);
-            let fun_ptr = fun.value();
+            let raw_fun_ptr = fun.value();
             let arg_ptr = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, arg);
+
+            // Force thunked function values. Case alt binders can be
+            // thunks (lazy fields), so when one is applied as a function,
+            // we must force it to get the underlying closure.
+            let fun_tag = builder.ins().load(
+                types::I8,
+                MemFlags::trusted(),
+                raw_fun_ptr,
+                0,
+            );
+            let is_thunk = builder.ins().icmp_imm(
+                IntCC::Equal,
+                fun_tag,
+                tidepool_heap::layout::TAG_THUNK as i64,
+            );
+
+            let force_fun_block = builder.create_block();
+            let fun_ready_block = builder.create_block();
+            builder.append_block_param(fun_ready_block, types::I64);
+
+            builder.ins().brif(
+                is_thunk,
+                force_fun_block,
+                &[],
+                fun_ready_block,
+                &[BlockArg::Value(raw_fun_ptr)],
+            );
+
+            builder.switch_to_block(force_fun_block);
+            builder.seal_block(force_fun_block);
+
+            let force_fn = pipeline
+                .module
+                .declare_function("heap_force", Linkage::Import, &{
+                    let mut sig = Signature::new(pipeline.isa.default_call_conv());
+                    sig.params.push(AbiParam::new(types::I64)); // vmctx
+                    sig.params.push(AbiParam::new(types::I64)); // thunk
+                    sig.returns.push(AbiParam::new(types::I64)); // result
+                    sig
+                })
+                .map_err(|e| EmitError::CraneliftError(e.to_string()))?;
+            let force_ref = pipeline.module.declare_func_in_func(force_fn, builder.func);
+            let force_call = builder.ins().call(force_ref, &[vmctx, raw_fun_ptr]);
+            let forced_fun = builder.inst_results(force_call)[0];
+            builder.declare_value_needs_stack_map(forced_fun);
+            builder.ins().jump(
+                fun_ready_block,
+                &[BlockArg::Value(forced_fun)],
+            );
+
+            builder.switch_to_block(fun_ready_block);
+            builder.seal_block(fun_ready_block);
+            let fun_ptr = builder.block_params(fun_ready_block)[0];
+            builder.declare_value_needs_stack_map(fun_ptr);
 
             // Debug: call host fn to validate fun_ptr tag before call_indirect.
             // Returns 0 (null) if ok, or a poison pointer if call should be skipped.
@@ -1449,25 +1510,34 @@ impl EmitContext {
                     // must be populated before any simple binding evaluation.
                     let simple_binder_set: std::collections::HashSet<VarId> =
                         deferred_simple.iter().map(|(b, _)| *b).collect();
-                    let mut deferred_cons: Vec<(cranelift_codegen::ir::Value, Vec<usize>)> =
+                    let mut deferred_cons: Vec<(VarId, cranelift_codegen::ir::Value, Vec<usize>)> =
                         Vec::with_capacity(rec_bindings.len());
+                    let mut deferred_con_binders: std::collections::HashSet<VarId> =
+                        std::collections::HashSet::new();
                     for pa in &pre_allocs {
                         if let PreAlloc::Con {
-                            ptr, field_indices, ..
+                            binder, ptr, field_indices,
                         } = pa
                         {
                             let needs_simple = field_indices.iter().any(|&f_idx| {
                             matches!(&tree.nodes[f_idx], CoreFrame::Var(v) if simple_binder_set.contains(v))
                         });
                             if needs_simple {
-                                deferred_cons.push((*ptr, field_indices.clone()));
+                                deferred_cons.push((*binder, *ptr, field_indices.clone()));
+                                deferred_con_binders.insert(*binder);
                             } else {
                                 for (i, &f_idx) in field_indices.iter().enumerate() {
-                                    let val = self.emit_node(
-                                        pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
-                                    )?;
-                                    let field_val =
-                                        ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val);
+                                    let field_val = if is_trivial_field(f_idx, tree) {
+                                        let val = self.emit_node(
+                                            pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                        )?;
+                                        ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val)
+                                    } else {
+                                        let thunk_val = emit_thunk(
+                                            self, pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                        )?;
+                                        thunk_val.value()
+                                    };
                                     builder.ins().store(
                                         MemFlags::trusted(),
                                         field_val,
@@ -1550,11 +1620,12 @@ impl EmitContext {
                     // depends on.  Once all deps are satisfied we fill ALL its
                     // fields (not just the simple-binding ones).
                     let mut deferred_con_deps: Vec<(
+                        VarId,
                         cranelift_codegen::ir::Value,
                         Vec<usize>,
                         std::collections::HashSet<VarId>,
                     )> = Vec::with_capacity(deferred_cons.len());
-                    for (ptr, field_indices) in &deferred_cons {
+                    for (con_binder, ptr, field_indices) in &deferred_cons {
                         let deps: std::collections::HashSet<VarId> = field_indices
                             .iter()
                             .filter_map(|&f_idx| {
@@ -1566,7 +1637,7 @@ impl EmitContext {
                                 None
                             })
                             .collect();
-                        deferred_con_deps.push((*ptr, field_indices.clone(), deps));
+                        deferred_con_deps.push((*con_binder, *ptr, field_indices.clone(), deps));
                     }
 
                     for (binder, rhs_idx) in &deferred_simple {
@@ -1577,9 +1648,23 @@ impl EmitContext {
                             self.trace_scope(&format!("defer error LetRec(deferred) {:?}", binder));
                             self.env.insert(*binder, SsaVal::HeapPtr(poison_val));
                         } else {
-                            let rhs_val = self.emit_node(
-                                pipeline, builder, vmctx, gc_sig, oom_func, tree, *rhs_idx,
-                            )?;
+                            // If any deferred Con depends on this simple binding,
+                            // emit as a thunk. Eagerly evaluating it could
+                            // transitively access unfilled Con fields → SIGSEGV.
+                            let refs_deferred_con = !deferred_con_binders.is_empty()
+                                && deferred_con_deps.iter().any(
+                                    |(_, _, _, simple_deps)| simple_deps.contains(binder),
+                                );
+                            let rhs_val = if refs_deferred_con {
+                                let thunk_val = emit_thunk(
+                                    self, pipeline, builder, vmctx, gc_sig, oom_func, tree, *rhs_idx,
+                                )?;
+                                thunk_val
+                            } else {
+                                self.emit_node(
+                                    pipeline, builder, vmctx, gc_sig, oom_func, tree, *rhs_idx,
+                                )?
+                            };
                             self.trace_scope(&format!("insert LetRec(simple) {:?}", binder));
                             self.env.insert(*binder, rhs_val);
                         }
@@ -1607,15 +1692,21 @@ impl EmitContext {
                         // deps are now all satisfied.  Fill ALL fields at once so
                         // that later simple bindings (or their callees) can safely
                         // pattern-match on these Cons without hitting NULL fields.
-                        for (ptr, field_indices, remaining_deps) in deferred_con_deps.iter_mut() {
+                        for (_cb, ptr, field_indices, remaining_deps) in deferred_con_deps.iter_mut() {
                             remaining_deps.remove(binder);
                             if remaining_deps.is_empty() && !field_indices.is_empty() {
                                 for (i, &f_idx) in field_indices.iter().enumerate() {
-                                    let val = self.emit_node(
-                                        pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
-                                    )?;
-                                    let field_val =
-                                        ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val);
+                                    let field_val = if is_trivial_field(f_idx, tree) {
+                                        let val = self.emit_node(
+                                            pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                        )?;
+                                        ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val)
+                                    } else {
+                                        let thunk_val = emit_thunk(
+                                            self, pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                        )?;
+                                        thunk_val.value()
+                                    };
                                     builder.ins().store(
                                         MemFlags::trusted(),
                                         field_val,
@@ -1649,12 +1740,19 @@ impl EmitContext {
 
                     // Phase 3d: Fill any deferred Con fields not already filled
                     // incrementally during Phase 3c.
-                    for (ptr, field_indices, _) in &deferred_con_deps {
+                    for (_cb, ptr, field_indices, _) in &deferred_con_deps {
                         for (i, &f_idx) in field_indices.iter().enumerate() {
-                            let val = self.emit_node(
-                                pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
-                            )?;
-                            let field_val = ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val);
+                            let field_val = if is_trivial_field(f_idx, tree) {
+                                let val = self.emit_node(
+                                    pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                )?;
+                                ensure_heap_ptr(builder, vmctx, gc_sig, oom_func, val)
+                            } else {
+                                let thunk_val = emit_thunk(
+                                    self, pipeline, builder, vmctx, gc_sig, oom_func, tree, f_idx,
+                                )?;
+                                thunk_val.value()
+                            };
                             builder.ins().store(
                                 MemFlags::trusted(),
                                 field_val,
@@ -1837,6 +1935,71 @@ fn emit_lit_string(
 
     builder.declare_value_needs_stack_map(ptr);
     Ok(SsaVal::HeapPtr(ptr))
+}
+
+/// Force a thunked SsaVal to WHNF. If the value is a HeapPtr pointing to a
+/// TAG_THUNK object, emit code to call `heap_force` and return the result.
+/// Raw values and non-thunk HeapPtrs pass through unchanged.
+pub(crate) fn force_thunk_ssaval(
+    pipeline: &mut CodegenPipeline,
+    builder: &mut FunctionBuilder,
+    vmctx: Value,
+    val: SsaVal,
+) -> Result<SsaVal, EmitError> {
+    match val {
+        SsaVal::Raw(_, _) => Ok(val),
+        SsaVal::HeapPtr(ptr) => {
+            let tag = builder
+                .ins()
+                .load(types::I8, MemFlags::trusted(), ptr, 0);
+            let is_thunk = builder.ins().icmp_imm(
+                IntCC::Equal,
+                tag,
+                layout::TAG_THUNK as i64,
+            );
+
+            let force_block = builder.create_block();
+            let ready_block = builder.create_block();
+            builder.append_block_param(ready_block, types::I64);
+
+            builder.ins().brif(
+                is_thunk,
+                force_block,
+                &[],
+                ready_block,
+                &[BlockArg::Value(ptr)],
+            );
+
+            builder.switch_to_block(force_block);
+            builder.seal_block(force_block);
+
+            let force_fn = pipeline
+                .module
+                .declare_function("heap_force", Linkage::Import, &{
+                    let mut sig = Signature::new(pipeline.isa.default_call_conv());
+                    sig.params.push(AbiParam::new(types::I64)); // vmctx
+                    sig.params.push(AbiParam::new(types::I64)); // thunk
+                    sig.returns.push(AbiParam::new(types::I64)); // result
+                    sig
+                })
+                .map_err(|e| EmitError::CraneliftError(e.to_string()))?;
+            let force_ref = pipeline
+                .module
+                .declare_func_in_func(force_fn, builder.func);
+            let call = builder.ins().call(force_ref, &[vmctx, ptr]);
+            let forced = builder.inst_results(call)[0];
+            builder.declare_value_needs_stack_map(forced);
+            builder
+                .ins()
+                .jump(ready_block, &[BlockArg::Value(forced)]);
+
+            builder.switch_to_block(ready_block);
+            builder.seal_block(ready_block);
+            let result = builder.block_params(ready_block)[0];
+            builder.declare_value_needs_stack_map(result);
+            Ok(SsaVal::HeapPtr(result))
+        }
+    }
 }
 
 pub(crate) fn ensure_heap_ptr(

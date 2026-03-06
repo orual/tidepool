@@ -7,7 +7,6 @@ use cranelift_codegen::ir::{
 };
 use cranelift_frontend::FunctionBuilder;
 use cranelift_module::{Linkage, Module};
-use tidepool_heap::layout;
 use tidepool_repr::{Alt, AltCon, CoreExpr, Literal, VarId};
 
 /// Emit Case dispatch. The scrutinee has already been evaluated (stack-safe).
@@ -187,7 +186,11 @@ fn emit_data_dispatch(
             builder.seal_block(alt_block);
             ctx.declare_env(builder);
 
-            // Bind pattern variables — force thunked Con fields
+            // Bind pattern variables — do NOT force thunked fields.
+            // In Haskell, case alt binders are lazy. Thunked Con fields
+            // remain as thunks until used in a strict context (case scrutiny,
+            // primop args, etc.). Forcing here causes infinite loops for
+            // self-referencing structures like `xs = 1 : map (+1) xs`.
             let mut bound_vars = Vec::new();
             for (i, &binder) in alt.binders.iter().enumerate() {
                 let offset = CON_FIELDS_START + (8 * i as i32);
@@ -195,53 +198,8 @@ fn emit_data_dispatch(
                     builder
                         .ins()
                         .load(types::I64, MemFlags::trusted(), scrut_ptr, offset);
-                // Force only TAG_THUNK fields (not closures which are valid values).
-                // Null check first, then read tag, check == TAG_THUNK (1).
-                let zero = builder.ins().iconst(types::I64, 0);
-                let is_null =
-                    builder.ins().icmp(IntCC::Equal, field_val, zero);
-                let check_tag_block = builder.create_block();
-                let thunk_block = builder.create_block();
-                let ready_block = builder.create_block();
-                builder.append_block_param(ready_block, types::I64);
-                builder.ins().brif(
-                    is_null,
-                    ready_block,
-                    &[BlockArg::Value(field_val)],
-                    check_tag_block,
-                    &[],
-                );
-                builder.switch_to_block(check_tag_block);
-                builder.seal_block(check_tag_block);
-                let field_tag = builder
-                    .ins()
-                    .load(types::I8, MemFlags::trusted(), field_val, 0);
-                let is_thunk = builder
-                    .ins()
-                    .icmp_imm(IntCC::Equal, field_tag, layout::TAG_THUNK as i64);
-                builder.ins().brif(
-                    is_thunk,
-                    thunk_block,
-                    &[],
-                    ready_block,
-                    &[BlockArg::Value(field_val)],
-                );
-                builder.switch_to_block(thunk_block);
-                builder.seal_block(thunk_block);
-                let force_call =
-                    builder
-                        .ins()
-                        .call(force_ref, &[vmctx, field_val]);
-                let forced = builder.inst_results(force_call)[0];
-                builder.declare_value_needs_stack_map(forced);
-                builder
-                    .ins()
-                    .jump(ready_block, &[BlockArg::Value(forced)]);
-                builder.switch_to_block(ready_block);
-                builder.seal_block(ready_block);
-                let final_val = builder.block_params(ready_block)[0];
-                builder.declare_value_needs_stack_map(final_val);
-                ctx.env.insert(binder, SsaVal::HeapPtr(final_val));
+                builder.declare_value_needs_stack_map(field_val);
+                ctx.env.insert(binder, SsaVal::HeapPtr(field_val));
                 bound_vars.push(binder);
             }
 

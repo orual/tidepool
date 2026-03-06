@@ -274,7 +274,7 @@ pub extern "C" fn heap_force(vmctx: *mut VMContext, obj: *mut u8) -> *mut u8 {
                 let state = *current.add(layout::THUNK_STATE_OFFSET);
                 match state {
                     layout::THUNK_UNEVALUATED => {
-                        // 1. Eager blackhole
+                        // 1. Mark blackhole for cycle detection
                         *current.add(layout::THUNK_STATE_OFFSET) = layout::THUNK_BLACKHOLE;
 
                         // 2. Read code pointer
@@ -308,9 +308,8 @@ pub extern "C" fn heap_force(vmctx: *mut VMContext, obj: *mut u8) -> *mut u8 {
                         return runtime_blackhole_trap(vmctx);
                     }
                     layout::THUNK_EVALUATED => {
-                        // Follow indirection — result may be another thunk
-                        current =
-                            *(current.add(layout::THUNK_INDIRECTION_OFFSET) as *const *mut u8);
+                        let next = *(current.add(layout::THUNK_INDIRECTION_OFFSET) as *const *mut u8);
+                        current = next;
                         continue;
                     }
                     other => return runtime_bad_thunk_state_trap(vmctx, other),
