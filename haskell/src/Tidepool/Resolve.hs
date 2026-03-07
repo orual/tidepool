@@ -13,7 +13,6 @@ import GHC.Unit.Module (moduleName, moduleNameString)
 import Data.Word (Word64)
 import Data.Char (isDigit)
 import Data.List (isPrefixOf, isInfixOf)
-import qualified Data.Map.Strict as Map
 
 -- For specialization fallback
 import GHC.Driver.Env (HscEnv(..), hscEPS)
@@ -43,10 +42,9 @@ data UnresolvedVar = UnresolvedVar
 -- When a variable's unfolding is missing, attempts specialization
 -- fallback: parses the OccName for $s markers, derives the generic
 -- parent name, and looks it up via the HscEnv's NameCache and EPS.
--- If that also fails (e.g., for $fOrdList_$ccompare which is a
--- record selector with no unfolding), falls back to Prelude substitutes
--- for known patterns (compareString for Ord list compare, eqString
--- for Eq list ==).
+-- If that also fails, falls back to fat interface lookup
+-- (mi_extra_decls) which handles loop-breakers and typeclass methods
+-- whose unfoldings aren't exposed via realIdUnfolding.
 --
 -- Returns: (augmented bindings, list of variables that could not be resolved).
 resolveExternals :: HscEnv -> [CoreBind] -> IO ([CoreBind], [UnresolvedVar])
@@ -55,10 +53,8 @@ resolveExternals hscEnv binds = do
       allFreeVars  = foldMap freeVarsOfBind binds
       allFVList    = nonDetEltsUniqSet allFreeVars
       externals    = filter (isResolvable localBinders) allFVList
-      -- Build name→Var lookup for Prelude substitution fallback
-      localNameMap = buildLocalNameMap binds
   fatCache <- newFatIfaceCache
-  (resolvedBinds, substituteBinds, _, unresolved) <- go fatCache localNameMap externals emptyVarSet localBinders [] [] []
+  (resolvedBinds, substituteBinds, _, unresolved) <- go fatCache externals emptyVarSet localBinders [] [] []
   let resolvedPairs = concatMap toRecPairs resolvedBinds
       substitutePairs = concatMap toRecPairs substituteBinds
       -- All three groups (resolved, originals, substitutes) form a 3-way cycle:
@@ -72,22 +68,21 @@ resolveExternals hscEnv binds = do
       augmented = if null allPairs then [] else [Rec allPairs]
   return (augmented, unresolved)
   where
-    go :: FatIfaceCache -> Map.Map String (Var, CoreExpr) -> [Var] -> VarSet -> VarSet
+    go :: FatIfaceCache -> [Var] -> VarSet -> VarSet
        -> [CoreBind] -> [CoreBind] -> [UnresolvedVar]
        -> IO ([CoreBind], [CoreBind], VarSet, [UnresolvedVar])
-    go _ _ [] visited _ acc subAcc unres = return (reverse acc, reverse subAcc, visited, reverse unres)
-    go fatCache nameMap (v:rest) visited localSet acc subAcc unres
-      | elemVarSet v visited = go fatCache nameMap rest visited localSet acc subAcc unres
+    go _ [] visited _ acc subAcc unres = return (reverse acc, reverse subAcc, visited, reverse unres)
+    go fatCache (v:rest) visited localSet acc subAcc unres
+      | elemVarSet v visited = go fatCache rest visited localSet acc subAcc unres
       | otherwise = do
           let visited' = extendVarSet visited v
-              vName = occNameString (nameOccName (varName v))
           let handleUnfolding unfoldingExpr =
                 let newBind = NonRec v unfoldingExpr
                     newFVs = exprSomeFreeVars (const True) unfoldingExpr
                     localSet' = extendVarSet localSet v
                     newExternals = filter (isResolvable localSet')
                                          (nonDetEltsUniqSet newFVs)
-                in go fatCache nameMap (newExternals ++ rest) visited' localSet' (newBind : acc) subAcc unres
+                in go fatCache (newExternals ++ rest) visited' localSet' (newBind : acc) subAcc unres
           case maybeUnfoldingTemplate (idUnfolding v) of
                Just unfoldingExpr -> handleUnfolding unfoldingExpr
                Nothing -> case maybeUnfoldingTemplate (realIdUnfolding v) of
@@ -103,15 +98,9 @@ resolveExternals hscEnv binds = do
                            localSet' = extendVarSet (extendVarSet localSet v) genId
                            newExternals = filter (isResolvable localSet')
                                                  (nonDetEltsUniqSet newFVs)
-                       in go fatCache nameMap (newExternals ++ rest) visited' localSet' (genBind : acc) (aliasBind : subAcc) unres
-                     Nothing ->
-                       -- Despec failed too. Try Prelude substitution.
-                       case preludeSubstitute nameMap vName v of
-                         Just subBind ->
-                           let localSet' = extendVarSet localSet v
-                           in go fatCache nameMap rest visited' localSet' acc (subBind : subAcc) unres
-                         Nothing -> do
-                           -- Last resort: fat interface fallback (mi_extra_decls).
+                       in go fatCache (newExternals ++ rest) visited' localSet' (genBind : acc) (aliasBind : subAcc) unres
+                     Nothing -> do
+                           -- Despec failed too. Fat interface fallback (mi_extra_decls).
                            -- Handles loop-breakers like itos' whose unfoldings are
                            -- not exposed via realIdUnfolding.
                            mbFat <- lookupFatIface hscEnv fatCache (varName v)
@@ -130,7 +119,7 @@ resolveExternals hscEnv binds = do
                                    visited'' = foldl extendVarSet visited' binders
                                    newExternals = filter (isResolvable localSet')
                                                         (nonDetEltsUniqSet allFVs)
-                               in go fatCache nameMap (newExternals ++ rest) visited'' localSet' (fatBinds ++ acc) subAcc unres
+                               in go fatCache (newExternals ++ rest) visited'' localSet' (fatBinds ++ acc) subAcc unres
                              Nothing ->
                                let uv = UnresolvedVar
                                      { uvKey    = fromIntegral (getKey (varUnique v))
@@ -139,7 +128,7 @@ resolveExternals hscEnv binds = do
                                                     Just m  -> moduleNameString (moduleName m)
                                                     Nothing -> "<no module>"
                                      }
-                               in go fatCache nameMap rest visited' localSet acc subAcc (uv : unres)
+                               in go fatCache rest visited' localSet acc subAcc (uv : unres)
 
     toRecPairs :: CoreBind -> [(Var, CoreExpr)]
     toRecPairs (NonRec b rhs) = [(b, rhs)]
@@ -227,52 +216,6 @@ resolveExternals hscEnv binds = do
          || "$fShowDouble_$s" `isPrefixOf` name
          || name == "$fShowDouble2"
          || name == "minExpt"
-
--- | Build a map from OccName string to (Var, CoreExpr) for all local binders.
--- Used for Prelude substitution: when a specialized method can't be resolved,
--- we inline the Prelude function's RHS directly.
-buildLocalNameMap :: [CoreBind] -> Map.Map String (Var, CoreExpr)
-buildLocalNameMap = foldl addBind Map.empty
-  where
-    addBind m (NonRec b rhs) = Map.insert (occNameString (nameOccName (varName b))) (b, rhs) m
-    addBind m (Rec pairs)  = foldl (\m' (b, rhs) -> Map.insert (occNameString (nameOccName (varName b))) (b, rhs) m') m pairs
-
--- | Known mappings from GHC specialized typeclass method patterns to
--- Prelude function names. When a specialized method like
--- $fOrdList_$s$ccompare1 can't be resolved (and neither can its generic
--- form), we substitute with our Prelude's equivalent.
---
--- Pattern: if the OccName contains the method pattern, use the substitute.
-preludeMethodSubstitutes :: [(String, String)]
-preludeMethodSubstitutes =
-  [ ("$fOrdList_$s$ccompare", "compareString")  -- Ord [a] compare → compareString
-  , ("$fOrdList_$ccompare",   "compareString")  -- generic also fails
-  , ("$fEqList_$s$c==",       "eqString")       -- Eq [a] == → eqString
-  , ("$fEqList_$c==",         "eqString")       -- generic also fails
-  , ("eqString",              "eqString")       -- GHC.Internal.Base.eqString (RULE rewrite)
-  ]
-
--- | Try to substitute an unresolvable specialized var with a Prelude function.
--- Creates a simple alias (NonRec specVar (Var preludeVar)) pointing to the
--- local Prelude function. The alias binding is placed in the same Rec group
--- as originals so both can see each other.
-preludeSubstitute :: Map.Map String (Var, CoreExpr) -> String -> Var -> Maybe CoreBind
-preludeSubstitute nameMap specName specVar =
-  case findSubstitute specName of
-    Nothing -> Nothing
-    Just preludeName ->
-      case Map.lookup preludeName nameMap of
-        Nothing -> Nothing
-        Just (preludeVar, _preludeRhs) ->
-          Just (NonRec specVar (Var preludeVar))
-  where
-    findSubstitute :: String -> Maybe String
-    findSubstitute name = go preludeMethodSubstitutes
-      where
-        go [] = Nothing
-        go ((pat, sub):rest)
-          | pat `isPrefixOf` name = Just sub
-          | otherwise = go rest
 
 -- | Attempt to resolve a specialized Id by deriving its generic parent.
 -- Parses the OccName for $s markers, strips them to get the generic name,
