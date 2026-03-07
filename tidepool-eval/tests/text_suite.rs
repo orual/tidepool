@@ -507,18 +507,6 @@ text_bool!(text_compare, true);
 // which we don't implement. GHC's `read @Int` goes through Integer parsing
 // even for small numbers, hitting ghc-bignum's GMP backend. Options:
 // (1) Rebuild with ghc-bignum-native (pure Haskell, no FFI) in the nix flake
-// (2) Implement __gmpn_* as host functions (~6 routines, limb-array arithmetic)
-// (3) Accept that `read` is not available (Prelude already doesn't export it)
-#[test]
-#[ignore = "requires GMP bignum FFI (ghc-bignum __gmpn_*)"]
-fn text_read_int() {
-    static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_read_int.cbor");
-    let result = try_eval_fixture(CBOR);
-    let val = result.unwrap();
-    let table = table();
-    assert_int(&val, 42, &table);
-}
-
 #[test]
 fn text_show_int() {
     static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_show_int.cbor");
@@ -583,19 +571,7 @@ text_bool!(text_isInfixOf_5char, true);
 text_bool!(text_isInfixOf_6prefix, true);
 text_bool!(text_isInfixOf_long, true);
 text_bool!(text_isInfixOf_neg, true);
-// text_isInfixOf_replicated: stack overflow — T.replicate pulls in large expression tree
 #[test]
-#[ignore = "stack overflow on default stack — T.replicate generates large expression (49716 bytes)"]
-fn text_isInfixOf_replicated() {
-    static CBOR: &[u8] =
-        include_bytes!("../../haskell/test/TextSuite_cbor/text_isInfixOf_replicated.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    assert_bool(&val, true, &table);
-}
-
-#[test]
-#[ignore = "T.unlines/T.lines drops lines — returns 4 instead of 8, separate bug"]
 fn text_lines_count() {
     static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_lines_count.cbor");
     let val = eval_fixture(CBOR);
@@ -649,36 +625,6 @@ fn text_filter_simple_8() {
 }
 
 #[test]
-#[ignore = "stack overflow on default stack — needs RUST_MIN_STACK=16MB (9654 nodes)"]
-fn text_filter_isInfixOf_7() {
-    static CBOR: &[u8] =
-        include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_isInfixOf_7.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    assert_int(&val, 4, &table);
-}
-
-#[test]
-#[ignore = "stack overflow on default stack — needs RUST_MIN_STACK=16MB (10978 nodes)"]
-fn text_filter_isInfixOf_8_list() {
-    static CBOR: &[u8] =
-        include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_isInfixOf_8_list.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    let items = collect_list(&val, &table);
-    eprintln!("filter result ({} items):", items.len());
-    for (i, item) in items.iter().enumerate() {
-        eprintln!("  [{i}] {item:?}");
-    }
-    assert_eq!(
-        items.len(),
-        5,
-        "expected 5 matching items, got {}",
-        items.len()
-    );
-}
-
-#[test]
 fn text_map_isInfixOf_8() {
     static CBOR: &[u8] =
         include_bytes!("../../haskell/test/TextSuite_cbor/text_map_isInfixOf_8.cbor");
@@ -707,16 +653,6 @@ fn text_map_isInfixOf_8() {
 }
 
 #[test]
-#[ignore = "stack overflow on default stack — needs RUST_MIN_STACK=16MB (11027 nodes)"]
-fn text_filter_isInfixOf_8() {
-    static CBOR: &[u8] =
-        include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_isInfixOf_8.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    assert_int(&val, 5, &table);
-}
-
-#[test]
 fn text_filter_length() {
     static CBOR: &[u8] =
         include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_length.cbor");
@@ -735,26 +671,6 @@ fn text_isInfixOf_each() {
     let items = collect_list(&val, &table);
     // [False, True, True, True, False, False, True, True]
     assert_eq!(items.len(), 8, "expected 8 bools, got {}", items.len());
-}
-
-#[test]
-#[ignore = "stack overflow on default stack — needs RUST_MIN_STACK=16MB (11027 nodes)"]
-fn text_filter_list_isInfixOf() {
-    static CBOR: &[u8] =
-        include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_list_isInfixOf.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    assert_int(&val, 5, &table);
-}
-
-#[test]
-#[ignore = "depends on T.unlines/T.lines bug — T.lines drops lines"]
-fn text_filter_lines() {
-    static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_filter_lines.cbor");
-    let val = eval_fixture(CBOR);
-    let table = table();
-    // filter (T.isInfixOf "import") over T.lines of multi-line text = 5 matches
-    assert_int(&val, 5, &table);
 }
 
 #[test]

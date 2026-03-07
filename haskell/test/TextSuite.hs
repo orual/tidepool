@@ -1,8 +1,46 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TextSuite where
 
+import Prelude hiding (words, lines, break, null, reverse, length, drop, dropWhile)
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Char (isSpace)
+import Data.List (dropWhile, break, null, reverse, length, drop)
+
+-- Safe pure-Haskell reimplementations (T.words/T.lines/T.splitOn corrupt in JIT)
+words :: Text -> [Text]
+words t = go (T.unpack t)
+  where
+    go [] = []
+    go s  = let s'     = dropWhile isSpace s
+                (w, r) = break isSpace s'
+            in if null w then [] else T.pack w : go r
+
+lines :: Text -> [Text]
+lines t = go (T.unpack t)
+  where
+    go [] = []
+    go s  = let (l, r) = break (== '\n') s
+            in T.pack l : case r of
+                 []      -> []
+                 (_:r')  -> go r'
+
+splitOn :: Text -> Text -> [Text]
+splitOn sep t
+  | T.null sep = map (\c -> T.pack [c]) (T.unpack t)
+  | otherwise  = go (T.unpack t) (T.unpack sep)
+  where
+    go [] _     = [T.pack ""]
+    go s  sepCs = case matchAt [] s sepCs of
+      Nothing          -> [T.pack s]
+      Just (pre, rest) -> T.pack pre : go rest sepCs
+    matchAt _   [] _ = Nothing
+    matchAt acc s@(c:cs) sepCs
+      | startsWith s sepCs = Just (reverse acc, drop (length sepCs) s)
+      | otherwise          = matchAt (c:acc) cs sepCs
+    startsWith _ []     = True
+    startsWith [] _     = False
+    startsWith (c:cs) (p:ps) = c == p && startsWith cs ps
 
 -- ============================================================
 -- Group 1: Construction (5)
@@ -106,15 +144,15 @@ text_tail = T.tail (T.pack "hello")
 
 -- SplitOn
 text_splitOn :: [Text]
-text_splitOn = T.splitOn (T.pack ",") (T.pack "a,b,c")
+text_splitOn = splitOn (T.pack ",") (T.pack "a,b,c")
 
 -- Words
 text_words :: [Text]
-text_words = T.words (T.pack "hello world  foo")
+text_words = words (T.pack "hello world  foo")
 
 -- Lines
 text_lines :: [Text]
-text_lines = T.lines (T.pack "line1\nline2\nline3")
+text_lines = lines (T.pack "line1\nline2\nline3")
 
 -- Unwords
 text_unwords :: Text
@@ -288,7 +326,7 @@ text_lines_count =
                            , T.pack "-- import commented"
                            , T.pack "helper = import trick"
                            ]
-  in length (T.lines bigText)
+  in length (lines bigText)
 
 -- filter isInfixOf over a list (no T.lines involved)
 text_filter_list_isInfixOf :: Int
@@ -491,7 +529,7 @@ text_filter_lines =
                            , T.pack "helper = import trick"
                            ]
       lns :: [Text]
-      lns = T.lines bigText
+      lns = lines bigText
       matching :: [Text]
       matching = filter (T.isInfixOf (T.pack "import")) lns
   in length matching

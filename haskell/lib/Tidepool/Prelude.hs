@@ -159,7 +159,7 @@ import Prelude
   , fromEnum
   , mapM, mapM_, sequence, sequence_
   )
-import qualified Prelude as P (show)
+import qualified Prelude as P (show, drop, length, null, dropWhile)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Char (ord, chr)
@@ -177,6 +177,12 @@ import Tidepool.Aeson (Value(..), Key, object, (.=), toJSON, ToJSON, fromText)
 import Tidepool.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, _Int, _Double, members, values, _Null)
 import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)
 import qualified Data.Map.Strict as Map
+
+-- Rewrite text-package slice functions to safe pure-Haskell versions.
+-- Fires at -O2 for all code that imports this module (MCP preamble does).
+{-# RULES "Data.Text.words/safe"   forall t.     T.words t   = words t   #-}
+{-# RULES "Data.Text.lines/safe"   forall t.     T.lines t   = lines t   #-}
+{-# RULES "Data.Text.splitOn/safe"  forall sep t. T.splitOn sep t = splitOn sep t #-}
 
 -- | show for Double, bypassing GHC's Integer-based floatToDigits.
 -- The body is a fallback that should never run — Translate.hs intercepts
@@ -219,8 +225,24 @@ toLower = T.toLower
 strip :: Text -> Text
 strip = T.strip
 
+-- | Split text on a delimiter.
+-- Pure reimplementation — T.splitOn returns corrupt Text slices in JIT.
 splitOn :: Text -> Text -> [Text]
-splitOn = T.splitOn
+splitOn sep t
+  | T.null sep = map (\c -> T.pack [c]) (T.unpack t)
+  | otherwise  = go (T.unpack t) (T.unpack sep)
+  where
+    go [] _     = [T.pack ""]
+    go s  sepCs = case matchAt [] s sepCs of
+      Nothing          -> [T.pack s]
+      Just (pre, rest) -> T.pack pre : go rest sepCs
+    matchAt _   [] _ = Nothing
+    matchAt acc s@(c:cs) sepCs
+      | startsWith s sepCs = Just (reverse acc, P.drop (P.length sepCs) s)
+      | otherwise          = matchAt (c:acc) cs sepCs
+    startsWith _ []     = True
+    startsWith [] _     = False
+    startsWith (c:cs) (p:ps) = c == p && startsWith cs ps
 
 replace :: Text -> Text -> Text -> Text
 replace = T.replace
@@ -231,11 +253,35 @@ isSuffixOf = T.isSuffixOf
 isInfixOf :: Text -> Text -> Bool
 isInfixOf = T.isInfixOf
 
+-- | Split text into words (whitespace-delimited).
+-- Pure reimplementation — T.words returns corrupt Text slices in JIT.
 words :: Text -> [Text]
-words = T.words
+words t = go (T.unpack t)
+  where
+    go [] = []
+    go s  = let s'       = P.dropWhile isSpaceC s
+                (w, rest) = breakOnSpace s'
+            in if P.null w then [] else T.pack w : go rest
+    isSpaceC c = c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
+    breakOnSpace [] = ([], [])
+    breakOnSpace (c:cs)
+      | isSpaceC c = ([], c:cs)
+      | otherwise  = let (w, r) = breakOnSpace cs in (c:w, r)
 
+-- | Split text into lines.
+-- Pure reimplementation — T.lines returns corrupt Text slices in JIT.
 lines :: Text -> [Text]
-lines = T.lines
+lines t = go (T.unpack t)
+  where
+    go [] = []
+    go s  = let (l, rest) = breakOnNL s
+            in T.pack l : case rest of
+                 []        -> []
+                 (_:rest') -> go rest'
+    breakOnNL [] = ([], [])
+    breakOnNL (c:cs)
+      | c == '\n' = ([], c:cs)
+      | otherwise = let (l, r) = breakOnNL cs in (c:l, r)
 
 unwords :: [Text] -> Text
 unwords = T.unwords

@@ -32,6 +32,7 @@ import Prelude
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Char (ord, chr)
+import Tidepool.Prelude (words, lines, splitOn)
 
 -- ---------------------------------------------------------------------------
 -- Internal char helpers (avoid Data.Char dictionary)
@@ -82,7 +83,7 @@ camelToSnake = T.pack . go . T.unpack
 -- >>> snakeToCamel "hello_world"
 -- "helloWorld"
 snakeToCamel :: Text -> Text
-snakeToCamel t = case T.splitOn "_" t of
+snakeToCamel t = case splitOn "_" t of
   []     -> T.empty
   (w:ws) -> T.concat (w : map capitalize ws)
 
@@ -100,7 +101,7 @@ capitalize t = case T.uncons t of
 -- >>> titleCase "hello world"
 -- "Hello World"
 titleCase :: Text -> Text
-titleCase = T.unwords . map capitalize . T.words
+titleCase = T.unwords . map capitalize . words
 
 -- ---------------------------------------------------------------------------
 -- Formatting
@@ -130,13 +131,13 @@ padRight w pad t
 
 -- | Indent every line of text by n spaces.
 indent :: Int -> Text -> Text
-indent n t = T.unlines (map (prefix <>) (T.lines t))
+indent n t = T.unlines (map (prefix <>) (lines t))
   where prefix = T.replicate n " "
 
 -- | Remove common leading whitespace from all non-empty lines.
 dedent :: Text -> Text
 dedent t =
-  let ls = T.lines t
+  let ls = lines t
       nonEmpty = filter (not . T.null . T.stripStart) ls
       minIndent = case nonEmpty of
         [] -> 0
@@ -148,12 +149,12 @@ dedent t =
 
 -- | Wrap text to a given line width at word boundaries.
 wrap :: Int -> Text -> Text
-wrap w = T.unlines . concatMap (wrapLine w) . T.lines
+wrap w = T.unlines . concatMap (wrapLine w) . lines
   where
     wrapLine :: Int -> Text -> [Text]
     wrapLine width line
       | T.length line <= width = [line]
-      | otherwise = go width (T.words line) [] 0
+      | otherwise = go width (words line) [] 0
     go _ [] acc _ = [T.unwords (reverse acc)]
     go width (word:ws) acc lineLen
       | null acc  = go width ws [word] (T.length word)
@@ -175,7 +176,7 @@ slugify = collapseHyphens . T.map toLowerOrHyphen . T.strip
     toLowerOrHyphen c
       | isAlphaNum c = toLowerC c
       | otherwise    = '-'
-    collapseHyphens = T.intercalate "-" . filter (not . T.null) . T.splitOn "-"
+    collapseHyphens = T.intercalate "-" . filter (not . T.null) . splitOn "-"
 
 -- | Truncate text to n characters, appending "..." if truncated.
 truncateText :: Int -> Text -> Text

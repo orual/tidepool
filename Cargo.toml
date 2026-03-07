@@ -14,7 +14,6 @@ members = [
     "tidepool-mcp",
     "tidepool",
     "examples/guess",
-    "examples/guess-interpreted",
     "examples/tide",
 ]
 resolver = "2"
