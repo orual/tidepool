@@ -17,6 +17,7 @@ investigate-*.tmp.md
 
 # Scratch files
 *.txt
+*.csv
 scratch*
 
 # Binary artifacts

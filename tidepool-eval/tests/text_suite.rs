@@ -503,10 +503,10 @@ text_bool!(text_compare, true);
 // Group 9: Numeric conversions (5)
 // =============================================================================
 
-// FIXME: text_read_int needs GMP bignum FFI (__gmpn_add, __gmpn_mul, etc.)
-// which we don't implement. GHC's `read @Int` goes through Integer parsing
-// even for small numbers, hitting ghc-bignum's GMP backend. Options:
-// (1) Rebuild with ghc-bignum-native (pure Haskell, no FFI) in the nix flake
+// Known limitation: text_read_int needs GMP bignum FFI (__gmpn_add, __gmpn_mul)
+// which the JIT doesn't implement. GHC's `read @Int` goes through Integer
+// parsing even for small numbers, hitting ghc-bignum's GMP backend.
+// Workaround: use parseInt/parseDouble from Tidepool.Prelude instead.
 #[test]
 fn text_show_int() {
     static CBOR: &[u8] = include_bytes!("../../haskell/test/TextSuite_cbor/text_show_int.cbor");

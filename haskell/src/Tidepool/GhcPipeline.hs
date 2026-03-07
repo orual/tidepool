@@ -26,6 +26,8 @@ runPipeline path includes = do
   libdir <- getLibdir
   runGhc (Just libdir) $ do
     dflags <- getSessionDynFlags
+    -- FullLaziness conflicts with eager eval; CprAnal unboxes return values
+    -- in ways the codegen can't handle (CASE TRAP on constructor tags).
     let dflags' = gopt_set (gopt_set (gopt_unset (gopt_unset (updOptLevel 2 $ dflags
           { backend = noBackend
           , ghcLink = NoLink

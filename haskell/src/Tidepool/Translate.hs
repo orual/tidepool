@@ -268,15 +268,6 @@ translateModule allBinds targetName unresolvedIds =
     bindersOf (NonRec b _) = [b]
     bindersOf (Rec pairs)  = map fst pairs
 
-    -- | Skip GHC-generated metadata bindings ($trModule, $krep, $tc*).
-    -- These are Typeable / module-info bindings that reference unpackCString#
-    -- and are never needed at runtime. Worker-wrappers ($w*) and
-    -- specializations ($s*) must be kept.
-    isMetadataBinder :: Id -> Bool
-    isMetadataBinder b =
-      let name = occNameString (nameOccName (idName b))
-      in any (`isPrefixOf` name) ["$trModule", "$krep", "$tc"]
-
     -- | Filter bindings to only those transitively reachable from the target.
     -- Flattens Rec groups into individual (binder, rhs) pairs for fine-grained
     -- reachability analysis, then reconstructs reachable pairs into a single Rec.

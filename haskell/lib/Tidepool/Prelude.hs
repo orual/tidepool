@@ -175,10 +175,10 @@ import Tidepool.Aeson.Lens (key, nth, _String, _Number, _Bool, _Array, _Object, 
 import Control.Lens (preview, toListOf, (^?), (^..), (&), (.~), (%~), to, _Just, traverse)
 import qualified Data.Map.Strict as Map
 
--- FIXME(#160): Binding-level interception in Translate.hs.
--- show for Double, bypassing GHC's Integer-based floatToDigits.
--- The body is a fallback that should never run — Translate.hs intercepts
--- calls to showDouble and emits a ShowDoubleAddr primop instead.
+-- Permanent binding-level interception in Translate.hs.
+-- GHC's floatToDigits/Integer pipeline is fundamentally incompatible with
+-- the JIT, so showDouble is always intercepted and emitted as ShowDoubleAddr.
+-- The body is a fallback that should never run.
 -- The Double arg must be used to prevent GHC worker-wrapper from dropping it.
 {-# NOINLINE showDouble #-}
 showDouble :: Double -> String
