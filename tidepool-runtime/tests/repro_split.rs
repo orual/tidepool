@@ -215,3 +215,15 @@ fn test_round() {
     let json = run_plain("round (3.5 :: Double) :: Int");
     assert_eq!(json, serde_json::json!(4));
 }
+
+#[test]
+fn test_show_double() {
+    let json = run_plain("show (3.14 :: Double)");
+    assert_eq!(json, serde_json::json!("3.14"));
+}
+
+#[test]
+fn test_show_double_neg() {
+    let json = run_plain("show (-2.718 :: Double)");
+    assert_eq!(json, serde_json::json!("-2.718"));
+}
