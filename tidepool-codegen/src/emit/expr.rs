@@ -1999,7 +1999,20 @@ impl EmitContext {
                         .deferred_con_deps
                         .iter()
                         .any(|d| d.remaining_deps.contains(binder));
-                if refs_deferred_con {
+                // Check if thunkification would drop sibling deps: emit_thunk
+                // creates a fresh EmitContext and only captures vars in the
+                // current env. Sibling deferred simple bindings not yet in env
+                // would be dropped from captures → unresolved var at runtime.
+                let can_thunkify = if refs_deferred_con {
+                    let body_tree = tree.extract_subtree(*rhs_idx);
+                    let fvs = tidepool_repr::free_vars::free_vars(&body_tree);
+                    !fvs.iter().any(|v| {
+                        !self.env.contains_key(v) && deferred_simple.iter().any(|(b, _)| b == v)
+                    })
+                } else {
+                    false
+                };
+                if can_thunkify {
                     // Thunked: compile as thunk inline (no work stack needed,
                     // emit_thunk creates a new EmitContext — bounded recursion).
                     let thunk_val = emit_thunk(
