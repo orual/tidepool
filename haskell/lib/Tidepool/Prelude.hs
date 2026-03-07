@@ -77,6 +77,9 @@ module Tidepool.Prelude
   , genericLength
   , zipWith3
   , zipWith4
+    -- * Text Ord/Eq substitutes (for sort/nub on [Text])
+  , compareText
+  , eqText
     -- * Function combinators
   , on
   , comparing
@@ -541,6 +544,32 @@ on f g x y = f (g x) (g y)
 comparing :: Ord b => (a -> b) -> a -> a -> Ordering
 comparing f x y = compare (f x) (f y)
 {-# INLINE comparing #-}
+
+-- | Compare two Texts lexicographically by Unicode codepoint.
+-- Substitute for $fOrdText_$ccompare (text package Ord instance lacks unfoldings).
+{-# NOINLINE compareText #-}
+compareText :: Text -> Text -> Ordering
+compareText a b = go (T.unpack a) (T.unpack b)
+  where
+    go [] []         = EQ
+    go [] _          = LT
+    go _  []         = GT
+    go (x:xs) (y:ys)
+      | ox < oy      = LT
+      | ox > oy      = GT
+      | otherwise     = go xs ys
+      where !ox = ord x; !oy = ord y
+
+-- | Check two Texts for equality.
+-- Substitute for $fEqText_$c== (text package Eq instance lacks unfoldings).
+{-# NOINLINE eqText #-}
+eqText :: Text -> Text -> Bool
+eqText a b = go (T.unpack a) (T.unpack b)
+  where
+    go [] []         = True
+    go [] _          = False
+    go _  []         = False
+    go (x:xs) (y:ys) = ord x == ord y && go xs ys
 
 -- ---------------------------------------------------------------------------
 -- Text-to-number parsing (avoids Read typeclass which crashes the JIT)

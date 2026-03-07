@@ -250,6 +250,12 @@ preludeMethodSubstitutes =
   , ("$fEqList_$s$c==",       "eqString")       -- Eq [a] == → eqString
   , ("$fEqList_$c==",         "eqString")       -- generic also fails
   , ("eqString",              "eqString")       -- GHC.Internal.Base.eqString (RULE rewrite)
+    -- Ord Text: text package methods lack unfoldings
+  , ("$fOrdText_$ccompare",   "compareText")
+  , ("$fOrdText_$s$ccompare", "compareText")
+    -- Eq Text: text package methods lack unfoldings
+  , ("$fEqText_$c==",         "eqText")
+  , ("$fEqText_$s$c==",       "eqText")
   ]
 
 -- | Try to substitute an unresolvable specialized var with a Prelude function.
