@@ -17,7 +17,7 @@
     background: #161b22; border-bottom: 1px solid #21262d;
     font-size: 12px; flex-shrink: 0;
   }
-  #header .title { font-size: 15px; font-weight: 600; color: #a78bfa; }
+  #header .title { font-size: 15px; font-weight: 600; color: #e879f9; }
   #header .stat { display: flex; align-items: center; gap: 4px; }
   #header .stat-val { font-weight: 600; }
   #breadcrumb {
@@ -45,7 +45,7 @@
     background: #0d1117; border: 1px solid #21262d;
     border-radius: 6px; padding: 10px; margin-bottom: 6px;
   }
-  #detail .pr-card a { color: #a78bfa; text-decoration: none; font-weight: 600; }
+  #detail .pr-card a { color: #e879f9; text-decoration: none; font-weight: 600; }
   #detail .pr-card a:hover { text-decoration: underline; }
   #detail .pr-body { font-size: 11px; color: #8b949e; margin-top: 6px; line-height: 1.5; word-break: break-word; }
   #detail .pr-body code { background: #21262d; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
@@ -60,8 +60,7 @@
   .cell rect { stroke: #0d1117; stroke-width: 1.5px; cursor: pointer; }
   .cell rect:hover { filter: brightness(1.15); }
   .cell rect.selected { stroke: #e2e2e8; stroke-width: 2.5px; }
-  .cell text { pointer-events: none; fill: #e2e2e8; }
-  .cell .sub { fill: #ffffff70; }
+  .cell text { pointer-events: none; }
   .tick-rect { pointer-events: none; }
 </style>
 <script>window.__GRAPH_DATA__ = %%GRAPH_DATA%%;</script>
@@ -81,9 +80,9 @@
     <div id="detail-content">
       <h2 style="color:#484f58">Build Story</h2>
       <p class="meta">Click a block to expand its phase. Click again to collapse.</p>
-      <p style="font-size:11px;color:#30363d;line-height:1.6;margin-top:12px">
+      <p style="font-size:11px;color:#484f58;line-height:1.6;margin-top:12px">
         Depth flows left &rarr; right. Siblings stack top &rarr; bottom.<br>
-        Color = merge wave (cyan &rarr; purple &rarr; gold).
+        Color = merge wave (cyan &rarr; indigo &rarr; fuchsia &rarr; amber &rarr; rose).
       </p>
     </div>
   </div>
@@ -298,18 +297,44 @@ allGapTicks.forEach(t => {
 
 // === Color ===
 const waveColor = d3.scaleLinear()
-  .domain([1, Math.ceil(totalWaves * 0.35), Math.ceil(totalWaves * 0.65), totalWaves])
-  .range(['#06b6d4', '#818cf8', '#a855f7', '#f59e0b'])
+  .domain([1, Math.ceil(totalWaves * 0.25), Math.ceil(totalWaves * 0.5), Math.ceil(totalWaves * 0.75), totalWaves])
+  .range(['#22d3ee', '#4f46e5', '#e879f9', '#f59e0b', '#fb7185'])
   .clamp(true);
 
 function getWave(d) { return d._wave || 1; }
 
+// Relative luminance (WCAG formula)
+function luminance(c) {
+  const rgb = d3.color(c);
+  if (!rgb) return 0;
+  const [rs, gs, bs] = [rgb.r / 255, rgb.g / 255, rgb.b / 255].map(
+    v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  );
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+function textFill(bgColor) {
+  // Pick whichever text color gives better WCAG contrast
+  const lum = luminance(bgColor);
+  const darkText = luminance('#0d1117');
+  const lightText = luminance('#f0f0f4');
+  const crDark = (Math.max(lum, darkText) + 0.05) / (Math.min(lum, darkText) + 0.05);
+  const crLight = (Math.max(lum, lightText) + 0.05) / (Math.min(lum, lightText) + 0.05);
+  return crDark > crLight ? '#0d1117' : '#f0f0f4';
+}
+
+function textSubFill(bgColor) {
+  const primary = textFill(bgColor);
+  return primary === '#0d1117' ? '#0d111770' : '#f0f0f468';
+}
+
 function cellFill(d) {
   const base = d3.color(waveColor(getWave(d)));
-  let c = d.children ? base.darker(0.7) : base;
+  // Parents: moderate darken to stay distinguishable; leaves: full saturation
+  let c = d.children ? base.darker(0.4) : base;
   // Alternate brightness between sequential wave groups
   if (d._wgIdx !== undefined && d._wgIdx % 2 === 1) {
-    c = d3.color(c).brighter(0.4);
+    c = d3.color(c).brighter(0.3);
   }
   return c.toString();
 }
@@ -358,9 +383,9 @@ const seps = sepG.selectAll('.wave-sep')
   .attr('y1', d => d.child.x0 - 0.75)
   .attr('x2', d => d.child.y1)
   .attr('y2', d => d.child.x0 - 0.75)
-  .attr('stroke', '#e2e2e8')
-  .attr('stroke-width', 2)
-  .attr('stroke-opacity', 0.2);
+  .attr('stroke', '#8b949e')
+  .attr('stroke-width', 1.5)
+  .attr('stroke-opacity', 0.35);
 
 const cell = g.selectAll('.cell')
   .data(root.descendants())
@@ -387,6 +412,7 @@ const label = cell.append('text')
   .attr('x', 5).attr('y', 13)
   .attr('font-size', d => d.depth <= 1 ? '11px' : '10px')
   .attr('font-weight', d => d.depth <= 1 ? '600' : '400')
+  .attr('fill', d => textFill(cellFill(d)))
   .text(d => d.data.name)
   .style('opacity', d => (d.x1 - d.x0) > 10 && (d.y1 - d.y0) > 20 ? 1 : 0);
 
@@ -396,6 +422,7 @@ const sub = cell.append('text')
   .attr('clip-path', (d, i) => `url(#cp${i})`)
   .attr('x', 5).attr('y', 25)
   .attr('font-size', '9px')
+  .attr('fill', d => textSubFill(cellFill(d)))
   .text(d => {
     const w = d._hWave ? 'W' + d._hWave + '  ' : '';
     const n = d.data.nodeData;
@@ -455,11 +482,15 @@ spineLabels.selectAll('text')
   .attr('dominant-baseline', 'middle')
   .attr('font-size', '9px')
   .attr('font-weight', '600')
-  .attr('fill', d => waveColor(getWave(d.child)))
+  .attr('fill', d => {
+    // Brighten spine labels for better contrast on dark bg
+    const base = d3.color(waveColor(getWave(d.child)));
+    return base.brighter(0.5).toString();
+  })
   .attr('opacity', d => {
     const h = d.child.orig.x1 - d.child.orig.x0;
     const w = d.parent.orig.y1 - d.parent.orig.y0;
-    return h > 14 && w > 30 ? 0.7 : 0;
+    return h > 14 && w > 30 ? 0.85 : 0;
   })
   .text(d => d.child.data.name);
 
@@ -581,7 +612,7 @@ function doAccordion(clickedD1) {
     .style('opacity', d => {
       const h = d.child.target.x1 - d.child.target.x0;
       const w = d.parent.orig.y1 - d.parent.orig.y0;
-      return h > 14 && w > 30 ? 0.7 : 0;
+      return h > 14 && w > 30 ? 0.85 : 0;
     });
 
   updateBreadcrumb(expandedChild || root);
@@ -659,10 +690,13 @@ function showDetail(d) {
 
   const nd = d.data.nodeData;
 
-  let h = `<h2 style="color:${cellFill(d)}">${esc(d.data.name)}</h2>`;
+  const fill = cellFill(d);
+  const fillBright = d3.color(fill).brighter(0.3).toString();
+  const fillBg = d3.color(fill); fillBg.opacity = 0.15;
+  let h = `<h2 style="color:${fillBright}">${esc(d.data.name)}</h2>`;
   h += `<div class="meta">${esc(d.data.id)}</div>`;
 
-  if (d._hWave) h += `<div class="wave-badge" style="background:${cellFill(d)}22;color:${cellFill(d)}">W${d._hWave}</div>`;
+  if (d._hWave) h += `<div class="wave-badge" style="background:${fillBg};color:${fillBright}">W${d._hWave}</div>`;
 
   if (nd && (nd.additions || nd.deletions)) {
     h += `<div class="pr-meta" style="margin:6px 0"><span class="add">+${(nd.additions||0).toLocaleString()}</span><span class="del">-${(nd.deletions||0).toLocaleString()}</span></div>`;

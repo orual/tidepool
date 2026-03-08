@@ -74,6 +74,98 @@ reparent = {
     'main.bridge-roundtrip':     'main.polish',
     'main.fix-gc-audit':         'main.polish',
     'main.pipeline-errors':      'main.polish',
+    # --- Post-launch phases ---
+    # Test coverage explosion (02-24)
+    'main.test-heap-bridge':         'main.test-coverage',
+    'main.test-host-fns':            'main.test-coverage',
+    'main.test-render-bridge':       'main.test-coverage',
+    'main.test-primops':             'main.test-coverage',
+    'main.test-float-double':        'main.test-coverage',
+    'main.test-cbor-serial':         'main.test-coverage',
+    'main.test-case-expr':           'main.test-coverage',
+    'main.test-bitwise-narrow':      'main.test-coverage',
+    'main.fix-cache-test':           'main.test-coverage',
+    'main.test-effect-cont':         'main.test-coverage',
+    'main.test-int64-word64':        'main.test-coverage',
+    'main.test-eval-edges':          'main.test-coverage',
+    'main.test-pipeline-nursery':    'main.test-coverage',
+    'main.test-bytearray-remaining': 'main.test-coverage',
+    'main.test-error-sentinel':      'main.test-coverage',
+    'main.test-comparison-complete': 'main.test-coverage',
+    # Property-based testing wave (02-25)
+    'main.proptest-host-fns':             'main.proptests',
+    'main.proptest-optimizer-ext':        'main.proptests',
+    'main.proptest-bridge-text':          'main.proptests',
+    'main.proptest-cbor-roundtrip':       'main.proptests',
+    'main.proptest-effect':               'main.proptests',
+    'main.proptest-heap':                 'main.proptests',
+    'main.proptest-jit-vs-eval':          'main.proptests',
+    'main.consolidate-optimizer-proptests':'main.proptests',
+    'main.bump-jit-proptests':            'main.proptests',
+    'main.cbor-fuzz-proptests':           'main.proptests',
+    'main.heap-gc-stress-proptests':      'main.proptests',
+    'main.gc-pressure':                   'main.proptests',
+    'main.effect-yield-resume':           'main.proptests',
+    'main.partial-eval-proptest':         'main.proptests',
+    'main.letrec-stress':                 'main.proptests',
+    'main.generator-depth':              'main.proptests',
+    # GC rewrite (02-25 – 03-08)
+    'main.gc-raw-copy':           'main.gc-rewrite',
+    'main.gc-scaffolding':        'main.gc-rewrite',
+    'main.gc-wire':               'main.gc-rewrite',
+    'main.gc-tests':              'main.gc-rewrite',
+    'main.gc-forwarding-panic':   'main.gc-rewrite',
+    'main.gc-heap-force-stale':   'main.gc-rewrite',
+    # Bugfixes (02-21 – 03-04)
+    'main.desugar-multi-return-primops': 'main.bugfix',
+    'main.fix-text-split':               'main.bugfix',
+    'main.fix-group-c-con-tag':          'main.bugfix',
+    'main.fix-group-a-lit-zero':         'main.bugfix',
+    'main.fix-group-b-heap-force':       'main.bugfix',
+    'main.fix-tide-fs-handler':          'main.bugfix',
+    'main.fix-q-silent-defaults':        'main.bugfix',
+    # Features: aeson, ask, timeout, MCP improvements
+    'main.aeson-prelude':        'main.features',
+    'main.ask-effect':           'main.features',
+    'main.eval-timeout':         'main.features',
+    'main.mcp-string-schema':    'main.features',
+    'main.improve-survey':       'main.features',
+    'main.error-messages':       'main.features',
+    'main.tco':                  'main.features',
+    # Signal safety & crash resilience (03-04 – 03-06)
+    'main.wu1-signal-protection-scope':  'main.signal-safety',
+    'main.wu2-pthread-exit-fallback':    'main.signal-safety',
+    'main.wu3-heap-bridge-validation':   'main.signal-safety',
+    'main.wu4-crash-logging':            'main.signal-safety',
+    'main.sigsegv-context':              'main.signal-safety',
+    # Lazy thunks (03-05)
+    'main.lazy-thunks-ws1-force':    'main.lazy-thunks',
+    'main.lazy-thunks-ws2-codegen':  'main.lazy-thunks',
+    'main.lazy-thunks-ws3-tests':    'main.lazy-thunks',
+    # Hardening & cleanup (03-08)
+    'main.optimizer-tree-utils':     'main.hardening',
+    'main.emit-lam-thunk-dedup':     'main.hardening',
+    'main.abort-to-poison':          'main.hardening',
+    'main.mcp-dedup-misc':           'main.hardening',
+    'main.primop-name-macro':        'main.hardening',
+    'main.magic-constants':          'main.hardening',
+    'main.emit-session-struct':      'main.hardening',
+    'main.registry-raii-guard':      'main.hardening',
+    'main.eval-limits':              'main.hardening',
+    'main.primop-test-coverage':     'main.hardening',
+    'main.mcp-cache-tests':          'main.hardening',
+    'main.codegen-advanced-tests':   'main.hardening',
+    'main.bridge-edge-tests':        'main.hardening',
+    'main.prelude-text-tests':       'main.hardening',
+    'main.heap-gc-tests':            'main.hardening',
+    'main.sandbox-path-traversal':   'main.hardening',
+    'main.translate-safety':         'main.hardening',
+    'main.haskell-lib-fixes':        'main.hardening',
+    'main.facade-runtime-fixes':     'main.hardening',
+    'main.eval-safety':              'main.hardening',
+    'main.host-fns-overflow':        'main.hardening',
+    # Docs
+    'main.update-claude-md':         'main.polish',
 }
 
 # === Build nodes from PRs ===
@@ -105,7 +197,11 @@ ensure_node('main')
 # Synthetic grouping nodes (these never had their own PRs)
 synthetics = ['main.core-repr', 'main.core-eval', 'main.core-heap',
               'main.core-bridge', 'main.core-testing', 'main.tide',
-              'main.runtime', 'main.mcp', 'main.polish']
+              'main.runtime', 'main.mcp', 'main.polish',
+              # Post-launch phases
+              'main.test-coverage', 'main.proptests', 'main.gc-rewrite',
+              'main.bugfix', 'main.features', 'main.signal-safety',
+              'main.lazy-thunks', 'main.hardening']
 for s in synthetics:
     ensure_node(s)
 

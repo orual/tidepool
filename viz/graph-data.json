@@ -1,16 +1,16 @@
 {
   "meta": {
     "repo": "tidepool-heavy-industries/tidepool",
-    "generated": "2026-02-21T02:50:22Z",
-    "node_count": 71,
-    "pr_count": 61
+    "generated": "2026-03-08T22:44:25Z",
+    "node_count": 163,
+    "pr_count": 145
   },
   "stats": {
-    "merged": 61,
-    "closed": 3,
+    "merged": 145,
+    "closed": 24,
     "open": 0,
-    "total_additions": 32168,
-    "total_deletions": 1914
+    "total_additions": 49165,
+    "total_deletions": 5944
   },
   "nodes": [
     {
@@ -312,7 +312,7 @@
           "kind": "direct"
         },
         {
-          "sha": "811480c",
+          "sha": "c9c8682",
           "message": "feat(viz): add build story treemap visualization",
           "timestamp": "2026-02-19T18:04:39-08:00",
           "kind": "direct"
@@ -330,7 +330,7 @@
           "kind": "direct"
         },
         {
-          "sha": "04c9a14",
+          "sha": "89ab7c1",
           "message": "feat(viz): add commit tick marks and ideal merge routing",
           "timestamp": "2026-02-19T20:04:48-08:00",
           "kind": "direct"
@@ -412,6 +412,1050 @@
           "message": "feat: dead binding elimination via reachability analysis in translateModule",
           "timestamp": "2026-02-20T11:38:59-08:00",
           "kind": "direct"
+        },
+        {
+          "sha": "675e1e9",
+          "message": "feat: stack-safe JIT codegen via recursion crate hylomorphism",
+          "timestamp": "2026-02-20T13:18:13-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a06125c",
+          "message": "fix: LetRec simple binding scope ordering + principled codegen diagnostics",
+          "timestamp": "2026-02-20T14:43:28-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "52aac97",
+          "message": "fix: use dataConRepArity for constructor saturation checks and metadata",
+          "timestamp": "2026-02-20T15:18:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "f26d2ae",
+          "message": "fix: collect DataCons from closed bindings + pure JIT execution path",
+          "timestamp": "2026-02-20T16:23:59-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "e6c30cd",
+          "message": "feat(viz): replace zoom with accordion spine interaction",
+          "timestamp": "2026-02-20T16:47:19-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "03903a0",
+          "message": "fix: inject wired-in constructor metadata + remove silent ToCore fallbacks + null-check alloc_con",
+          "timestamp": "2026-02-20T16:55:33-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3b1cc74",
+          "message": "feat(viz): add long-tail phases and child-aligned chart strips",
+          "timestamp": "2026-02-20T18:01:51-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b8e91b6",
+          "message": "fix: GADT equality evidence arity + end-to-end effectful tests",
+          "timestamp": "2026-02-20T18:38:56-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8422a0a",
+          "message": "feat(viz): generalize spine pattern from root to all parent nodes",
+          "timestamp": "2026-02-20T18:53:34-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a054187",
+          "message": "fix: desugar unsafeEqualityProof to unit value for freer-simple GADT evidence",
+          "timestamp": "2026-02-20T18:53:58-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d1ec308",
+          "message": "fix: box chars with C# in ToCore for String + add Renderable marker typeclass",
+          "timestamp": "2026-02-20T19:47:56-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bb599a3",
+          "message": "fix: revert Renderable constraint in template signature to wildcard",
+          "timestamp": "2026-02-20T22:15:25-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c282bf1",
+          "message": "feat: add showInt, length, and compareString to Tidepool.Prelude",
+          "timestamp": "2026-02-20T22:17:14-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "4c1da66",
+          "message": "feat: self-contained Prelude with NoImplicitPrelude + MCP test suite",
+          "timestamp": "2026-02-20T23:17:40-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "4486c46",
+          "message": "fix: resolve 8 MCP test failures (eqString SIGSEGV, sort/isPrefixOf compile errors)",
+          "timestamp": "2026-02-21T09:21:19-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d386215",
+          "message": "fix: desugar type metadata vars + add TypeMetadata error variant",
+          "timestamp": "2026-02-21T12:37:14-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "cadb1d9",
+          "message": "refactor: clean up Resolve/Translate pipeline, fix scope bug",
+          "timestamp": "2026-02-21T20:15:47-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "213f707",
+          "message": "fix: resolve 3-way scope cycle + per-binding reachability for nub SIGSEGV",
+          "timestamp": "2026-02-21T20:24:41-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "09dbd3e",
+          "message": "chore: regenerate CBOR fixtures with per-binding reachability",
+          "timestamp": "2026-02-21T20:42:54-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1f4e79f",
+          "message": "fix: add alias binding for $s vars resolved via spec fallback",
+          "timestamp": "2026-02-21T22:24:37-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "289f16d",
+          "message": "debug: add resolve trace output (temporary)",
+          "timestamp": "2026-02-21T22:36:17-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "394b81a",
+          "message": "fix: split LetRec Con field filling to resolve Con↔simple binding dependency",
+          "timestamp": "2026-02-21T23:00:37-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8257d3a",
+          "message": "feat: rebuild ghc-internal with -fexpose-all-unfoldings via nix overlay",
+          "timestamp": "2026-02-22T12:31:44-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "43c6b66",
+          "message": "feat: verify show (42 :: Int) → \"42\" end-to-end",
+          "timestamp": "2026-02-22T17:07:23-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "15c3b89",
+          "message": "chore: gitignore temp files, scratch artifacts, and leaked CBOR bindings",
+          "timestamp": "2026-02-22T17:07:43-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8fd94c4",
+          "message": "chore: remove debug tracing from Resolve.hs",
+          "timestamp": "2026-02-22T17:11:08-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a101747",
+          "message": "feat: add eval tests for show variants (Int neg, Bool, Maybe)",
+          "timestamp": "2026-02-22T17:43:35-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3b09d02",
+          "message": "feat: intercept unpackFoldrCString# and enable show Char/String eval",
+          "timestamp": "2026-02-22T18:43:50-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c4f3dfe",
+          "message": "chore: remove tracked Suite_cbor/ dir, regenerate fixtures, add JIT crash tests",
+          "timestamp": "2026-02-22T18:45:30-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "ff5e635",
+          "message": "feat: fat interface fallback resolves loop-breaker unfoldings (48/52 JIT tests pass)",
+          "timestamp": "2026-02-22T21:00:36-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "9843597",
+          "message": "feat: implement raise# as runtime_error in JIT codegen",
+          "timestamp": "2026-02-22T21:49:14-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8f4469d",
+          "message": "docs: add polyfill layer spec for unsupported primop substitution",
+          "timestamp": "2026-02-22T22:19:26-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "817357e",
+          "message": "feat: filter bottoming functions from resolution, 52/52 JIT tests pass",
+          "timestamp": "2026-02-22T23:46:00-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3581261",
+          "message": "test: add failing test for two-arg helper fn, improve env lookup diagnostics",
+          "timestamp": "2026-02-23T01:31:30-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "652fbcb",
+          "message": "fix: defer LetRec closure captures for simple bindings (53/53 JIT tests)",
+          "timestamp": "2026-02-23T01:38:53-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "9f35c2e",
+          "message": "chore: rename MCP binary to `tidepool`, default numeric literals to Int",
+          "timestamp": "2026-02-23T03:04:36-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "f77527c",
+          "message": "feat: Data.Map + Control.Lens work through MCP, fat interfaces bypass PIT",
+          "timestamp": "2026-02-23T09:58:53-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5e942b4",
+          "message": "fix: preserve fat interface Rec groups for cross-module join points",
+          "timestamp": "2026-02-23T11:14:46-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5654eb8",
+          "message": "feat: implement plusAddr# + indexCharOffAddr# primops for fused string ops",
+          "timestamp": "2026-02-23T12:33:43-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8db11c1",
+          "message": "fix: convert NonRec join points that cross lambda boundaries to LetNonRec",
+          "timestamp": "2026-02-23T12:52:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b763aa4",
+          "message": "feat: add SG (structural grep) effect powered by ast-grep",
+          "timestamp": "2026-02-23T14:01:22-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "e8b6c34",
+          "message": "feat: migrate MCP effect stack from String to Data.Text",
+          "timestamp": "2026-02-23T23:09:41-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1b1c878",
+          "message": "feat: complete Data.Text support with 50/51 TextSuite tests passing",
+          "timestamp": "2026-02-24T00:36:04-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "54514b1",
+          "message": "fix: mark text_read_int as #[ignore] — requires GMP bignum FFI",
+          "timestamp": "2026-02-24T00:40:11-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1ccde30",
+          "message": "refactor: share Haskell source generation between MCP server and tests",
+          "timestamp": "2026-02-24T02:31:27-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "4ece031",
+          "message": "fix: handle lifted ByteArray in Text bridge + add ByteArray to value_to_heap",
+          "timestamp": "2026-02-24T03:01:14-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "39b01b3",
+          "message": "fix: fix show_int tests and ignore process-crashing tests",
+          "timestamp": "2026-02-24T03:19:37-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b2452ea",
+          "message": "feat: handle non-literal unpackAppendCString# and unpackCString# in translator",
+          "timestamp": "2026-02-24T03:39:43-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bdf946f",
+          "message": "fix: resolve non-global workers and fix isDeadEndId false positives",
+          "timestamp": "2026-02-24T10:04:42-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "798ad5c",
+          "message": "fix: defer error sentinel bindings and return poison closure from runtime_error",
+          "timestamp": "2026-02-24T10:57:08-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b3c6a7a",
+          "message": "fix: use unboxed Text representation in String::to_value to match GHC Core worker format",
+          "timestamp": "2026-02-24T11:31:24-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1e93a57",
+          "message": "fix: update runtime_error tests to expect poison closure instead of null",
+          "timestamp": "2026-02-24T12:03:01-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5ecfb70",
+          "message": "chore: publish-ready cleanup for crates.io + open source",
+          "timestamp": "2026-02-24T13:38:48-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "98ad074",
+          "message": "feat: replace ast-grep subprocess with library crate + workspace-wide formatting",
+          "timestamp": "2026-02-24T14:10:53-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "2285aa0",
+          "message": "test: add 16 failing tests for KV Text bridge bug",
+          "timestamp": "2026-02-24T14:53:35-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "7a53b6e",
+          "message": "fix: correct ByteArray# handling in text FFI primops",
+          "timestamp": "2026-02-24T16:32:31-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "db6e2de",
+          "message": "fix: use 8MB stack for CBOR proptest to prevent RecursiveTree overflow",
+          "timestamp": "2026-02-24T22:11:08-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "ffe23e7",
+          "message": "fix: replace process::abort() with error propagation in JIT runtime",
+          "timestamp": "2026-02-24T23:54:26-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3ee3a10",
+          "message": "docs: audit report on Cranelift trap propagation and SIGILL manifestation",
+          "timestamp": "2026-02-25T10:13:21-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "13c23a5",
+          "message": "fix: Incrementally fill deferred Con fields during LetRec Phase 3c",
+          "timestamp": "2026-02-25T17:50:52-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a0e476e",
+          "message": "feat: Add SmallArray#/Array# primops, aeson+lens-aeson integration, pure primop fix",
+          "timestamp": "2026-02-25T21:29:54-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8a8e297",
+          "message": "test: Add aeson integration test suite (26 tests)",
+          "timestamp": "2026-02-25T21:29:59-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "9d98a43",
+          "message": "fix: Un-ignore 4 aeson tests (heap bridge + renderer + lens rewrites)",
+          "timestamp": "2026-02-25T23:08:26-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a6f46f8",
+          "message": "refactor: Move aeson/lens imports from MCP template into Prelude, add traverse",
+          "timestamp": "2026-02-25T23:57:56-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c439555",
+          "message": "test: Add aeson lens regression tests (_Integer/_Double SIGILL, deep nesting)",
+          "timestamp": "2026-02-26T01:43:57-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "7809ba7",
+          "message": "feat: Add Http effect (HttpGet) to MCP server for JSON endpoint fetching",
+          "timestamp": "2026-02-26T03:10:30-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b2fd5b9",
+          "message": "feat: Replace Scientific with Double for JSON numbers, vendor aeson/lens-aeson",
+          "timestamp": "2026-02-26T15:34:46-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1fb7762",
+          "message": "test: add IR dump tests for PAP vs Eta comparison",
+          "timestamp": "2026-02-26T16:47:55-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "0772607",
+          "message": "fix: strip box constructors in DataCon wrapper path, fix patError, ByteArray alloc",
+          "timestamp": "2026-02-26T19:27:38-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d31122f",
+          "message": "feat: diagnostic case trap, 4-binder unboxed tuple, debug infrastructure",
+          "timestamp": "2026-02-26T20:16:21-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d00019a",
+          "message": "fix: remove stripBoxCon to preserve I# boxing in wrapper DataCon args",
+          "timestamp": "2026-02-26T22:00:54-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "dac3fef",
+          "message": "fix: precise error sentinel detection + force closures in case dispatch",
+          "timestamp": "2026-02-26T22:39:01-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bc1b5bc",
+          "message": "fix: recursive unwrapping of nested ByteArray/I# in Text renderer",
+          "timestamp": "2026-02-26T22:50:39-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "e526cc3",
+          "message": "feat: accept single string for eval code, imports, and helpers",
+          "timestamp": "2026-02-26T23:36:51-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1a53bdc",
+          "message": "feat: built-in thin effect helpers in MCP preamble",
+          "timestamp": "2026-02-27T00:02:51-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c8bb519",
+          "message": "feat: Ask returns Value + disambiguate DataCon lookups by arity",
+          "timestamp": "2026-02-27T08:42:55-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "f523b25",
+          "message": "feat: ShowDoubleAddr primop bypasses GHC's GMP-based floatToDigits",
+          "timestamp": "2026-02-27T12:15:25-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6ef1c81",
+          "message": "fix: intercept GHC's specialized $fShowDouble_$sshowSignedFloat",
+          "timestamp": "2026-02-27T13:06:09-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "20f6a4c",
+          "message": "fix: JSON bridge Map keys + boxed Int, add JIT diagnostic buffer",
+          "timestamp": "2026-02-27T13:53:13-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "20312f3",
+          "message": "feat: render aeson Value as proper JSON",
+          "timestamp": "2026-02-27T14:04:05-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "cd7cb92",
+          "message": "fix: un-ignore integration and cache tests",
+          "timestamp": "2026-02-27T14:33:07-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8643a42",
+          "message": "feat: export Semigroup, Monoid, and (<$>) from Tidepool.Prelude",
+          "timestamp": "2026-02-27T14:44:44-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1e8eb36",
+          "message": "fix: monomorphic even/odd avoids Integral dict error branches",
+          "timestamp": "2026-02-27T14:57:31-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "f62a83b",
+          "message": "feat: export Fractional methods (/, recip, fromRational)",
+          "timestamp": "2026-02-27T15:09:36-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b128a18",
+          "message": "feat: lazy error poison + Floating class primops (sqrt, sin, cos, exp, log, etc.)",
+          "timestamp": "2026-02-27T15:48:53-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b3b7820",
+          "message": "fix: _hs_text_memchr returned absolute offset instead of relative",
+          "timestamp": "2026-02-27T17:39:20-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5ae55e3",
+          "message": "feat: KV stores Value, auto-toJSON returns, Map/Set/encode, Prelude combinators",
+          "timestamp": "2026-02-27T18:14:38-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c4bdcc7",
+          "message": "feat: auto-import user library from .tidepool/lib/",
+          "timestamp": "2026-02-27T21:08:37-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "55f9219",
+          "message": "feat: Library.hs recursion schemes, lenses, bounded iteration + 23 tests",
+          "timestamp": "2026-02-28T00:30:51-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1e94e02",
+          "message": "feat: Fs/Http/Exec/SG effects, RunJson, signal safety, eval polish",
+          "timestamp": "2026-02-28T12:21:15-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a8d1db7",
+          "message": "fix: eval crashes return clean errors instead of killing MCP connection",
+          "timestamp": "2026-02-28T13:13:04-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "37dbd7b",
+          "message": "feat: proper JIT signal safety via sigsetjmp/siglongjmp",
+          "timestamp": "2026-02-28T14:36:40-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "953ed9d",
+          "message": "fix: intercept $fShowDouble_$sshowSignedFloat at binding level + code quality",
+          "timestamp": "2026-03-01T00:28:56-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bbfd8be",
+          "message": "feat: ToJSON String instance, Value helpers, Prelude enrichment",
+          "timestamp": "2026-03-01T00:45:07-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "260d7d8",
+          "message": "feat: ToJSON String instance, Value helpers, Prelude enrichment",
+          "timestamp": "2026-03-01T00:51:42-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5472a27",
+          "message": "fix: monomorphic round avoiding RealFrac dictionary crash",
+          "timestamp": "2026-03-01T00:57:20-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "0b98f22",
+          "message": "feat: MCP wrapper with __mcp_restart tool",
+          "timestamp": "2026-03-01T00:58:08-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "126cf0a",
+          "message": "feat: Library.hs utilities, Ord Value, MCP preamble helpers",
+          "timestamp": "2026-03-01T01:22:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d716a2a",
+          "message": "feat: JSON decoder (decode/eitherDecode) — pure Haskell recursive descent",
+          "timestamp": "2026-03-01T01:31:18-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a2d36d3",
+          "message": "fix: encode whole numbers without decimal point (30 not 30.0)",
+          "timestamp": "2026-03-01T01:35:50-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a9d1d53",
+          "message": "fix: isPrefixOf now operates on Text, matching isSuffixOf/isInfixOf",
+          "timestamp": "2026-03-01T01:40:26-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bfdecff",
+          "message": "feat: expand Map exports, add foldlWithKey'/foldrWithKey/unionWith/intersectionWith",
+          "timestamp": "2026-03-01T01:46:05-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "45e8ac5",
+          "message": "feat: Prelude char predicates, numeric helpers, list combinators + Tidepool.Text module",
+          "timestamp": "2026-03-01T08:53:27-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8f7a703",
+          "message": "feat: Tidepool.Table module — CSV/TSV parsing and table rendering",
+          "timestamp": "2026-03-01T08:59:23-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d45000a",
+          "message": "feat: cargo install distribution + degraded MCP server",
+          "timestamp": "2026-03-01T15:42:38-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "2ce4170",
+          "message": "fix: sigsetjmp portability for macOS",
+          "timestamp": "2026-03-01T15:55:16-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "77c60f6",
+          "message": "fix: resolve clippy errors and warnings",
+          "timestamp": "2026-03-01T16:00:50-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "f608c3d",
+          "message": "fix: desugar runRW# instead of hard-erroring",
+          "timestamp": "2026-03-01T16:40:40-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5b2517f",
+          "message": "feat: aarch64 (Apple Silicon) support for JIT runtime (#124)",
+          "timestamp": "2026-03-02T02:17:23-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "219443e",
+          "message": "fix: empty-vec abort in text functions, atomics ordering, cargo fmt",
+          "timestamp": "2026-03-02T03:48:42-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "2280455",
+          "message": "fix: increase MCP eval timeout from 30s to 120s",
+          "timestamp": "2026-03-02T15:10:49-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "ed55fcd",
+          "message": "feat: MCP eval UX improvements + fix signal_safety thread race",
+          "timestamp": "2026-03-02T15:39:38-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "35f35b9",
+          "message": "Merge pull request #125 from tidepool-heavy-industries/fix/signal-error-reporting",
+          "timestamp": "2026-03-02T18:30:07-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "df78e0d",
+          "message": "chore: gitignore .tidepool/ MCP session state",
+          "timestamp": "2026-03-02T19:36:03-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "487a830",
+          "message": "fix: tide REPL UnknownDataConName(\"Text\") crash",
+          "timestamp": "2026-03-02T19:36:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1dd6cd2",
+          "message": "fix: enable PIC mode to prevent x86 relocation overflow for host symbols",
+          "timestamp": "2026-03-03T16:13:03-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "d398e6d",
+          "message": "feat: upgrade Cranelift 0.116→0.129 + ArenaMemoryProvider + single-compile",
+          "timestamp": "2026-03-03T16:42:48-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6ea98b3",
+          "message": "chore: add pre-release resource cleanup plans",
+          "timestamp": "2026-03-03T17:28:36-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "0981b07",
+          "message": "plans",
+          "timestamp": "2026-03-03T18:13:29-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3ad493c",
+          "message": "docs: create ARCHITECTURE.md and CONTRIBUTING.md",
+          "timestamp": "2026-03-03T19:04:16-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "fbca58e",
+          "message": "feat: change alloc_raw to return Result instead of panic",
+          "timestamp": "2026-03-03T19:06:01-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6d13f07",
+          "message": "feat: change ForwardingTable::lookup panic to Result and handle it",
+          "timestamp": "2026-03-03T19:06:41-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "72e8d4b",
+          "message": "test: add comprehensive unit tests for tidepool-mcp and fix codegen build",
+          "timestamp": "2026-03-03T19:07:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "dc28f50",
+          "message": "fix: publication audit hardening (cleanup, error handling, safety docs, CI)",
+          "timestamp": "2026-03-03T19:15:32-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "fd8fa55",
+          "message": "chore: pre-publish holistic pass",
+          "timestamp": "2026-03-03T22:38:48-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5092232",
+          "message": "fix(jit): detect infinite lists with call depth counter instead of SIGSEGV",
+          "timestamp": "2026-03-04T00:03:34-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a4ec570",
+          "message": "feat(repr): add module-qualified DataCon names + ambiguity error on get_by_name",
+          "timestamp": "2026-03-04T09:17:36-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "76a43f4",
+          "message": "feat: add Llm effect, populate sibling groups, fix signal-safe crash logging",
+          "timestamp": "2026-03-04T09:21:40-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "e8a3ac6",
+          "message": "feat(mcp): add heuristic combinators — Q a, ??, ?!, pick/yn/obj/txt/num",
+          "timestamp": "2026-03-04T12:30:48-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "bc3d9c7",
+          "message": "feat(mcp): replace Q confidence float with 3-boolean rubric",
+          "timestamp": "2026-03-04T12:46:27-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1718584",
+          "message": "fix: eliminate all production panics — replace with Result propagation",
+          "timestamp": "2026-03-04T16:45:17-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a08c8e9",
+          "message": "fix: add SIGFPE to signal handler + restore SYS_exit fallback",
+          "timestamp": "2026-03-04T16:53:50-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a96c33d",
+          "message": "fix: guard integer division against zero divisor",
+          "timestamp": "2026-03-04T17:00:55-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "9f015fd",
+          "message": "chore: remove mcp-wrapper.py",
+          "timestamp": "2026-03-04T17:01:35-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "561c69e",
+          "message": "fix: return poison from runtime_case_trap when error is pending",
+          "timestamp": "2026-03-04T17:28:04-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "e52452e",
+          "message": "Strip Aeson parsing/encoding from vendored library (#144)",
+          "timestamp": "2026-03-04T22:55:31-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "ec1ee61",
+          "message": "fix: usability rough spots from playtesting feedback",
+          "timestamp": "2026-03-04T23:34:14-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1f55e44",
+          "message": "docs: add rustdoc and README improvements for public API surface",
+          "timestamp": "2026-03-04T23:41:20-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "be106af",
+          "message": "docs: update stale crash claims + add lazy thunk implementation plan",
+          "timestamp": "2026-03-05T11:21:25-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3579ce7",
+          "message": "feat: lazy thunks for interpreter + codegen regression tests + doc cleanup",
+          "timestamp": "2026-03-05T18:20:23-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6241c37",
+          "message": "feat: lazy case alt binders + thunk forcing at strict positions",
+          "timestamp": "2026-03-05T20:52:48-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8c53b9a",
+          "message": "feat: trampoline emit_node for stack-safe codegen + 32MB eval thread",
+          "timestamp": "2026-03-06T09:06:10-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "135e4e7",
+          "message": "chore: suppress clippy too_many_arguments on emit_node",
+          "timestamp": "2026-03-06T09:08:04-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "ec050b6",
+          "message": "feat: add VMContext tail call fields + trampoline_resolve for TCO",
+          "timestamp": "2026-03-06T16:34:17-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "4a3f000",
+          "message": "feat: resolve Ord Text / Eq Text for sort/nub on [Text]",
+          "timestamp": "2026-03-06T20:35:41-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "37bfb16",
+          "message": "fix: pure-Haskell words/lines/splitOn to avoid corrupt Text slices in JIT",
+          "timestamp": "2026-03-06T22:09:43-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "3dd4d83",
+          "message": "chore: deduplicate stdlib helpers, add FIXME tracking for JIT workarounds",
+          "timestamp": "2026-03-06T22:46:57-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6b30007",
+          "message": "fix(#157): remove RULES workaround — fat interfaces provide text unfoldings",
+          "timestamp": "2026-03-07T00:47:04-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1c8f74b",
+          "message": "fix(#156): replace sort/nub reimplementations with native Data.List imports",
+          "timestamp": "2026-03-07T01:03:41-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "5aac360",
+          "message": "fix(#159): remove Text Eq/Ord workarounds — fat interfaces resolve natively",
+          "timestamp": "2026-03-07T09:26:30-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1e32605",
+          "message": "fix(#158): remove Prelude substitution machinery — fat interfaces resolve String Eq/Ord",
+          "timestamp": "2026-03-07T09:44:05-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1321f28",
+          "message": "chore: cargo fmt",
+          "timestamp": "2026-03-07T09:56:58-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "16f0014",
+          "message": "fix(#155/#160): re-enable GHC specialization, remove even/odd shadows",
+          "timestamp": "2026-03-07T10:36:51-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "13d093d",
+          "message": "test: add showDouble regression tests for #160 investigation",
+          "timestamp": "2026-03-07T10:39:24-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "6c13cad",
+          "message": "chore: remove dead code and stale comments post-fat-interfaces",
+          "timestamp": "2026-03-07T12:08:35-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a743efd",
+          "message": "docs: add SAFETY comments to unsafe blocks in codegen and heap",
+          "timestamp": "2026-03-07T12:08:46-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "8eba9af",
+          "message": "fix: LetRec thunk sibling capture drop causing unresolved vars",
+          "timestamp": "2026-03-07T12:08:57-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "a6b2ba7",
+          "message": "chore: replace old plans with code quality cleanup plans",
+          "timestamp": "2026-03-07T12:55:20-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "1886180",
+          "message": "refactor: replace TTL cleanup with pressure-driven eviction for continuations",
+          "timestamp": "2026-03-07T18:28:02-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "b65ee7f",
+          "message": "feat(mcp): improve server robustness (output capture, crash log, effect annotation)",
+          "timestamp": "2026-03-07T18:36:00-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "4c96a64",
+          "message": "chore: pre-release dead code and tech debt cleanup",
+          "timestamp": "2026-03-07T19:54:23-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "05eaf39",
+          "message": "feat: laziness boundary tests, defensive thunk traps, and proptest stack overflow fix",
+          "timestamp": "2026-03-07T22:35:58-08:00",
+          "kind": "direct"
+        },
+        {
+          "sha": "c5d2818",
+          "message": "feat: property test suite with ground-type generator and unsafe dedup",
+          "timestamp": "2026-03-07T23:44:49-08:00",
+          "kind": "direct"
+        }
+      ]
+    },
+    {
+      "id": "main.bugfix",
+      "parent": "main",
+      "depth": 1,
+      "label": "bugfix",
+      "prs": [
+        {
+          "number": 0,
+          "title": "bugfix (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-04T20:44:50Z",
+          "closedAt": "2026-03-04T20:44:50Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "81123f8",
+          "message": "Desugar multi-return primops in Translate.hs (#71)",
+          "timestamp": "2026-02-20T23:06:15-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5c190f8",
+          "message": "feat: fix LetRec topological sort and closure capture (#94)",
+          "timestamp": "2026-02-24T21:31:52-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "805099c",
+          "message": "feat: normalize constructor tags and fix Maybe unboxing (#119)",
+          "timestamp": "2026-02-26T20:41:51-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "3c333cb",
+          "message": "Fix Group A memory faults by implementing recursive unboxing and correct translation. Disable stripBoxCon except for wrappers and ensure robust heap box traversal. (#120)",
+          "timestamp": "2026-02-26T21:23:27-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "c4ebbfb",
+          "message": "feat: implement heap_force and force closures in case dispatch (#121)",
+          "timestamp": "2026-02-26T21:51:07-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "3fb24ae",
+          "message": "fix(tide): resolve FsHandler paths and keep REPL alive on error (#135)",
+          "timestamp": "2026-03-03T22:21:17-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "e0ea5f1",
+          "message": "fix: replace silent defaults in Q smart constructors with error calls (#137)",
+          "timestamp": "2026-03-04T12:44:50-08:00",
+          "kind": "merge"
         }
       ]
     },
@@ -710,6 +1754,276 @@
       ]
     },
     {
+      "id": "main.features",
+      "parent": "main",
+      "depth": 1,
+      "label": "features",
+      "prs": [
+        {
+          "number": 0,
+          "title": "features (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-07T01:07:44Z",
+          "closedAt": "2026-03-07T01:07:44Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "ccca483",
+          "message": "feat: add aeson/lens-aeson to Tidepool.Prelude (#115)",
+          "timestamp": "2026-02-25T23:54:20-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "9a346a8",
+          "message": "feat(mcp): add wall-clock timeout to eval and resume tools (#122)",
+          "timestamp": "2026-02-27T13:36:53-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "0728e90",
+          "message": "feat(mcp): change eval tool schema from array-of-strings to single-string (#136)",
+          "timestamp": "2026-03-03T22:21:51-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "f271b21",
+          "message": "feat(mcp): improve survey helper by dropping Ord constraint and using manual tally (#138)",
+          "timestamp": "2026-03-04T12:44:58-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5634155",
+          "message": "feat: preserve Haskell error message strings (#153)",
+          "timestamp": "2026-03-06T12:16:49-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "c200e32",
+          "message": "feat: tail-call optimization for JIT-compiled lambdas (#154)",
+          "timestamp": "2026-03-06T17:07:44-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
+      "id": "main.gc-rewrite",
+      "parent": "main",
+      "depth": 1,
+      "label": "gc-rewrite",
+      "prs": [
+        {
+          "number": 0,
+          "title": "gc-rewrite (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:20:15Z",
+          "closedAt": "2026-03-08T01:20:15Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "41b318b",
+          "message": "feat: implement Cheney Copying GC for Raw HeapObjects (#111)",
+          "timestamp": "2026-02-25T13:48:16-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "6668f5d",
+          "message": "feat: Add GcState and graceful OOM scaffolding (#112)",
+          "timestamp": "2026-02-25T13:48:25-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5616159",
+          "message": "feat: Wire gc_trigger to perform actual Cheney GC (#113)",
+          "timestamp": "2026-02-25T14:37:48-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "ea9455a",
+          "message": "test: Fix test masking and add end-to-end GC validation tests (#114)",
+          "timestamp": "2026-02-25T16:35:17-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "a07b898",
+          "message": "feat(gc): panic on forwarding table lookup failure during compaction (#161)",
+          "timestamp": "2026-03-07T16:33:54-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "80c0bb7",
+          "message": "fix: update current pointer after GC in heap_force (#171)",
+          "timestamp": "2026-03-07T17:20:15-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
+      "id": "main.hardening",
+      "parent": "main",
+      "depth": 1,
+      "label": "hardening",
+      "prs": [
+        {
+          "number": 0,
+          "title": "hardening (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T02:54:29Z",
+          "closedAt": "2026-03-08T02:54:29Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "66c6a8e",
+          "message": "feat: extract shared tree traversal utilities from optimizer passes (#164)",
+          "timestamp": "2026-03-07T16:34:01-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "2166d99",
+          "message": "refactor: extract compute_captures helper from emit_lam and emit_thunk (#162)",
+          "timestamp": "2026-03-07T16:34:10-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "2971aad",
+          "message": "feat: replace abort() with runtime_error and poison in host functions (#165)",
+          "timestamp": "2026-03-07T16:34:17-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "520b197",
+          "message": "feat: MCP eval/resume dedup + miscellaneous fixes (updated) (#166)",
+          "timestamp": "2026-03-07T16:34:32-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "16a3f3d",
+          "message": "feat: unify PrimOpKind name mapping with declarative macro (#167)",
+          "timestamp": "2026-03-07T16:34:39-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "d50caee",
+          "message": "feat: name magic constants (0x45, 0x1000, lit tags in heap_bridge) (#163)",
+          "timestamp": "2026-03-07T16:37:15-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "dd2bb42",
+          "message": "feat: bundle recurring emit parameters into EmitSession struct (#168)",
+          "timestamp": "2026-03-07T16:54:42-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "f56b10d",
+          "message": "feat: add RAII guard for thread-local registry cleanup in JIT run() (#169)",
+          "timestamp": "2026-03-07T17:04:58-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "24737f8",
+          "message": "feat: concurrent eval limit + nursery size cap (#172)",
+          "timestamp": "2026-03-07T17:20:19-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "6105543",
+          "message": "Add comprehensive tests for PrimOp variants (#173)",
+          "timestamp": "2026-03-07T17:29:35-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "6346b5f",
+          "message": "feat: fix ignored cache tests and add MCP test coverage (#174)",
+          "timestamp": "2026-03-07T17:29:39-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "7138bab",
+          "message": "test: add advanced codegen and optimizer tests (#175)",
+          "timestamp": "2026-03-07T17:29:43-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "957f8b8",
+          "message": "test: add bridge error cases, numeric edge tests, and free_vars gap tests (#176)",
+          "timestamp": "2026-03-07T17:29:47-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "33fa8d3",
+          "message": "feat: add runtime coverage tests for Prelude and Text modules (#177)",
+          "timestamp": "2026-03-07T17:37:13-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "f553893",
+          "message": "test: add coverage for heap_force, GC, and heap_bridge (#178)",
+          "timestamp": "2026-03-07T17:37:17-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "989e2b9",
+          "message": "fix: path traversal in RunIn, SgReplace, and FsGlob handlers (#170)",
+          "timestamp": "2026-03-07T17:43:39-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "fccde03",
+          "message": "fix: Haskell translation safety improvements (#179)",
+          "timestamp": "2026-03-07T18:32:07-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "9f89a54",
+          "message": "fix: haskell library issues (ix, converge, dedent, parseDelimited) (#184)",
+          "timestamp": "2026-03-07T18:32:12-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "1f7a457",
+          "message": "fix: KV deserialization warning, glob symlink safety, and cache atomicity (Updated) (#183)",
+          "timestamp": "2026-03-07T18:32:39-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "18afa39",
+          "message": "feat: add bounds checks and safety guards in eval.rs (#181)",
+          "timestamp": "2026-03-07T18:50:35-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "10c43ee",
+          "message": "feat: add integer overflow guards and bounds checks in host_fns.rs (#182)",
+          "timestamp": "2026-03-07T18:54:29-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
       "id": "main.issue-64",
       "parent": "main",
       "depth": 1,
@@ -741,6 +2055,48 @@
           "sha": "53d7aa5",
           "message": "feat: expand PrimOp coverage for Tier 2-3 operations (#69) (#70)",
           "timestamp": "2026-02-20T04:14:00-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
+      "id": "main.lazy-thunks",
+      "parent": "main",
+      "depth": 1,
+      "label": "lazy-thunks",
+      "prs": [
+        {
+          "number": 0,
+          "title": "lazy-thunks (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-05T23:42:02Z",
+          "closedAt": "2026-03-05T23:42:02Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "b56c07d",
+          "message": "feat: implement TAG_THUNK handling in heap_force and heap_to_value (#146)",
+          "timestamp": "2026-03-05T12:03:58-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "1c86b2b",
+          "message": "feat: add Haskell test fixtures and Rust test cases for lazy thunks (#145)",
+          "timestamp": "2026-03-05T12:04:06-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "25dd094",
+          "message": "feat: lazy thunk codegen (WS2) — emit thunks for non-trivial Con fields (#149)",
+          "timestamp": "2026-03-05T15:42:02-08:00",
           "kind": "merge"
         }
       ]
@@ -813,8 +2169,8 @@
           "url": "",
           "additions": 0,
           "deletions": 0,
-          "mergedAt": "2026-02-20T11:51:04Z",
-          "closedAt": "2026-02-20T11:51:04Z"
+          "mergedAt": "2026-02-24T20:34:28Z",
+          "closedAt": "2026-02-24T20:34:28Z"
         }
       ],
       "additions": 0,
@@ -855,6 +2211,132 @@
           "sha": "bd85dc2",
           "message": "refactor(codegen): convert pipeline panics to Results (#66)",
           "timestamp": "2026-02-20T03:51:04-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "57442dc",
+          "message": "docs: update CLAUDE.md to remove stale plan and research references (#72)",
+          "timestamp": "2026-02-24T12:34:28-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
+      "id": "main.proptests",
+      "parent": "main",
+      "depth": 1,
+      "label": "proptests",
+      "prs": [
+        {
+          "number": 0,
+          "title": "proptests (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T11:26:14Z",
+          "closedAt": "2026-02-25T11:26:14Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "4d99174",
+          "message": "test: add property-based tests for text FFI host functions (#95)",
+          "timestamp": "2026-02-24T21:53:03-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "0ce71f6",
+          "message": "test: add extended proptests for optimizer semantic preservation (#97)",
+          "timestamp": "2026-02-24T21:57:54-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5324259",
+          "message": "test: add property-based round-trip tests for Text bridge values (#98)",
+          "timestamp": "2026-02-24T22:00:35-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "38bcb25",
+          "message": "test: CBOR round-trip proptests (#96)",
+          "timestamp": "2026-02-24T22:09:17-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "386ff20",
+          "message": "test: add property-based tests for effect dispatch system (#100)",
+          "timestamp": "2026-02-24T22:23:49-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "d31b09a",
+          "message": "test: add property-based tests for heap allocator and GC (#99)",
+          "timestamp": "2026-02-24T22:34:25-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "861c33f",
+          "message": "test: add JIT vs Eval property-based tests (ignored) (#101)",
+          "timestamp": "2026-02-24T22:50:41-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "0642321",
+          "message": "test: consolidate optimizer property tests into proptest_optimizer.rs (#102)",
+          "timestamp": "2026-02-25T00:50:07-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "a6a235e",
+          "message": "test: bump JIT proptest case count to 50 and add optimized small nursery test (#103)",
+          "timestamp": "2026-02-25T00:50:11-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "fbfe798",
+          "message": "test: add CBOR fuzzing proptests for malformed input resilience (#105)",
+          "timestamp": "2026-02-25T01:19:21-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "991d321",
+          "message": "test: add GC stress proptests for survivor chains and repeated cycles (#104)",
+          "timestamp": "2026-02-25T01:26:53-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "4288d82",
+          "message": "test: add GC pressure proptests with tiny nurseries (#110)",
+          "timestamp": "2026-02-25T03:10:22-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "687cf54",
+          "message": "test: add proptests for EffectMachine (#107)",
+          "timestamp": "2026-02-25T03:11:06-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "dd03825",
+          "message": "test: add proptests for PartialEval pass (#106)",
+          "timestamp": "2026-02-25T03:26:02-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "7569926",
+          "message": "test: add dedicated LetRec codegen stress proptests (#109)",
+          "timestamp": "2026-02-25T03:26:06-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "239fdd1",
+          "message": "feat: expand arb_core_expr structural complexity (#108)",
+          "timestamp": "2026-02-25T03:26:14-08:00",
           "kind": "merge"
         }
       ]
@@ -920,6 +2402,180 @@
       ]
     },
     {
+      "id": "main.signal-safety",
+      "parent": "main",
+      "depth": 1,
+      "label": "signal-safety",
+      "prs": [
+        {
+          "number": 0,
+          "title": "signal-safety (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-03-06T18:42:51Z",
+          "closedAt": "2026-03-06T18:42:51Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "83ef74a",
+          "message": "feat(codegen): improve crash logging with thread ID and better path resolution (#140)",
+          "timestamp": "2026-03-04T15:59:26-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "b88bdbc",
+          "message": "feat: add defensive validation to heap_bridge (#142)",
+          "timestamp": "2026-03-04T15:59:33-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "f00fbc5",
+          "message": "feat: expand signal protection scope to heap bridge calls in jit_machine.rs (#143)",
+          "timestamp": "2026-03-04T15:59:40-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "70104e0",
+          "message": "feat: use pthread_exit in signal handler fallback (#141)",
+          "timestamp": "2026-03-04T16:08:02-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "10bba45",
+          "message": "feat: add SIGSEGV/SIGILL crash context and diagnostics (#152)",
+          "timestamp": "2026-03-06T10:42:51-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
+      "id": "main.test-coverage",
+      "parent": "main",
+      "depth": 1,
+      "label": "test-coverage",
+      "prs": [
+        {
+          "number": 0,
+          "title": "test-coverage (phase grouping)",
+          "body": "",
+          "state": "merged",
+          "url": "",
+          "additions": 0,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:19:29Z",
+          "closedAt": "2026-02-24T21:19:29Z"
+        }
+      ],
+      "additions": 0,
+      "deletions": 0,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "a07feaa",
+          "message": "test: add roundtrip unit tests for heap_bridge (#73)",
+          "timestamp": "2026-02-24T12:48:21-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "e9e5e59",
+          "message": "test: add unit tests for ByteArray and text host functions (#74)",
+          "timestamp": "2026-02-24T12:48:27-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "8a842ff",
+          "message": "test: add unit tests for render.rs and impls.rs (#75)",
+          "timestamp": "2026-02-24T12:48:32-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "98f585f",
+          "message": "test: expand primop integration tests in emit_expr.rs (#76)",
+          "timestamp": "2026-02-24T12:48:37-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5e23d63",
+          "message": "test: add Float and Double primop tests to emit_expr.rs (#77)",
+          "timestamp": "2026-02-24T12:59:26-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "cd10195",
+          "message": "test: add CBOR roundtrip tests for CoreExpr and DataConTable (#78)",
+          "timestamp": "2026-02-24T13:00:06-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "6e011bd",
+          "message": "test: add 8 JIT case expression tests (#79)",
+          "timestamp": "2026-02-24T13:00:12-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "58c5629",
+          "message": "test: add bitwise, narrowing, carry, and char primop tests (#80)",
+          "timestamp": "2026-02-24T13:00:34-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "7efa3b2",
+          "message": "fix: re-enable cache_load in tidepool-runtime to fix test failure (#81)",
+          "timestamp": "2026-02-24T13:01:21-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "461d811",
+          "message": "test: add continuation logic tests for CompiledEffectMachine (#82)",
+          "timestamp": "2026-02-24T13:04:06-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "5bc38db",
+          "message": "test: add Int64 and Word64 primop tests (#83)",
+          "timestamp": "2026-02-24T13:15:24-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "ee4f23a",
+          "message": "test: add eval.rs error path and edge case tests (#84)",
+          "timestamp": "2026-02-24T13:15:29-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "7088d65",
+          "message": "test: add unit tests for nursery and pipeline in tidepool-codegen (#86)",
+          "timestamp": "2026-02-24T13:15:53-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "202d3c7",
+          "message": "test: add remaining ByteArray primop tests (#85)",
+          "timestamp": "2026-02-24T13:17:28-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "dc0e6c5",
+          "message": "feat: add tests for error sentinel deferral in LetNonRec and LetRec (#87)",
+          "timestamp": "2026-02-24T13:18:43-08:00",
+          "kind": "merge"
+        },
+        {
+          "sha": "c1ca447",
+          "message": "test: add Float, Double, Char, and Word comparison tests (#88)",
+          "timestamp": "2026-02-24T13:19:29-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
       "id": "main.tide",
       "parent": "main",
       "depth": 1,
@@ -956,6 +2612,80 @@
       ]
     },
     {
+      "id": "main.abort-to-poison",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "abort-to-poison",
+      "prs": [
+        {
+          "number": 165,
+          "title": "feat: replace abort() with runtime_error and poison in host functions",
+          "body": "This PR replaces `abort()` calls in JIT host callbacks with a more robust error handling pattern:\n1. Added a `check_ptr_invalid` helper to validate pointers, set `RUNTIME_ERROR` (RuntimeError::Undefined), and return a sentinel.\n2. Replaced pointer validation and bounds check `abort()` sites in:\n   - `runtime_copy_addr_to_byte_array`\n   - `runtime_set_byte_array`\n   - `runtime_copy_byte_array`\n   - `runtime_text_reverse`\n   - `runtime_compare_byte_arrays`\n   - `runtime_strlen`\n   - `runtime_text_measure_off`\n   - `runtime_text_memchr`\n   - `runtime_show_double_addr`\n   - `runtime_case_trap`\n3. Functions returning `i64` now return `0` (or `-1` for memchr) after setting the error flag.\n4. Functions returning `*mut u8` now return `error_poison_ptr()`.\n5. Functions returning `()` return early.\n6. Diagnostic output via `eprintln!` and `push_diagnostic` is preserved at all sites.\n7. Layout-related `abort()` calls were left untouched as per instructions.\n\nVerified with `cargo check` and `cargo test`. All pre-existing test failures (including a SIGSEGV in `user_library`) were confirmed to be present before these changes.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/165",
+          "additions": 58,
+          "deletions": 49,
+          "mergedAt": "2026-03-08T00:34:17Z",
+          "closedAt": "2026-03-08T00:34:18Z"
+        }
+      ],
+      "additions": 58,
+      "deletions": 49,
+      "status": "merged"
+    },
+    {
+      "id": "main.aeson-prelude",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "aeson-prelude",
+      "prs": [
+        {
+          "number": 115,
+          "title": "feat: add aeson/lens-aeson to Tidepool.Prelude",
+          "body": "Add aeson/lens-aeson to Tidepool.Prelude + Renderable instances",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/115",
+          "additions": 20,
+          "deletions": 1,
+          "mergedAt": "2026-02-26T07:54:20Z",
+          "closedAt": "2026-02-26T07:54:21Z"
+        }
+      ],
+      "additions": 20,
+      "deletions": 1,
+      "status": "merged"
+    },
+    {
+      "id": "main.ask-effect",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "ask-effect",
+      "prs": [
+        {
+          "number": 118,
+          "title": "feat: Add Ask effect with two-tool continuation pattern",
+          "body": "## Summary\n\nAdds an `Ask` effect that lets Haskell programs suspend execution mid-evaluation to ask the calling LLM a question, then resume when the LLM responds.\n\n### How it works\n\n**Two-tool pattern** (eval + resume):\n\n1. Haskell program calls `send (Ask \"Which one?\")` → execution suspends\n2. `eval` tool returns `{\"suspended\": true, \"continuation_id\": \"cont_1\", \"prompt\": \"Which one?\"}`\n3. LLM calls `resume` tool with `{\"continuation_id\": \"cont_1\", \"response\": \"the second one\"}`\n4. Execution continues with the response as the Ask result\n\n### Architecture: Channel-based suspension\n\nInstead of parking JIT continuations (complex pointer/ownership management), the eval thread **blocks on a channel** when Ask is hit:\n\n- `AskDispatcher` wraps existing effect handlers, intercepts the Ask tag\n- On Ask: sends `Suspended` message via tokio channel, blocks on `std::sync::mpsc::recv()`\n- MCP server receives suspension asynchronously, returns JSON to LLM\n- On resume: sends response via channel, unblocks eval thread\n- Thread continues execution (may hit more Ask effects or complete)\n\n### Changes\n\nAll changes in `tidepool-mcp` only — zero modifications to the effect system, codegen, or runtime.\n\n- `ask_decl()` — declares `data Ask a where Ask :: Text -> Ask Text`\n- `AskDispatcher` — wraps handler stack, intercepts Ask tag via `DispatchEffect`\n- `EvalSession` + `SessionMessage` — channel-based communication between eval thread and MCP server\n- `ResumeRequest` — new tool parameter type\n- Modified `eval()` — channel-based instead of thread-join-based\n- New `resume()` method — sends response, awaits next message\n- TTL cleanup — 5 minute timeout for parked continuations\n- 5 new unit tests\n\n### Usage\n\n```haskell\n-- In an eval call:\nname <- send (Ask \"What is your name?\")\nsend (Print (\"Hello, \" <> name))\nage <- send (Ask (\"How old are you, \" <> name <> \"?\"))\npure (name <> \" is \" <> age <> \" years old\")\n```\n\n## Test plan\n\n- [x] `cargo check -p tidepool-mcp` — no errors\n- [x] `cargo test -p tidepool-mcp` — 12 tests pass (7 existing + 5 new)\n- [x] `cargo check --workspace` — no breakage in other crates\n- [ ] Manual E2E test with MCP server (requires tidepool-extract on PATH)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/118",
+          "additions": 383,
+          "deletions": 60,
+          "mergedAt": "2026-02-26T11:06:30Z",
+          "closedAt": "2026-02-26T11:06:30Z"
+        }
+      ],
+      "additions": 383,
+      "deletions": 60,
+      "status": "merged",
+      "directCommits": [
+        {
+          "sha": "74b05c9",
+          "message": "feat: implement Ask effect with channel-based suspension in tidepool-mcp (#117) (#118)",
+          "timestamp": "2026-02-26T03:06:30-08:00",
+          "kind": "merge"
+        }
+      ]
+    },
+    {
       "id": "main.bridge-derive",
       "parent": "main.core-bridge",
       "depth": 2,
@@ -974,6 +2704,28 @@
         }
       ],
       "additions": 479,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.bridge-edge-tests",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "bridge-edge-tests",
+      "prs": [
+        {
+          "number": 176,
+          "title": "test: add bridge error cases, numeric edge tests, and free_vars gap tests",
+          "body": "This PR adds comprehensive edge case and error tests for the bridge, runtime, and free_vars calculation.\n\n### Changes\n- Added `tidepool-bridge/tests/error_cases.rs`:\n  - Type mismatch error tests (LitInt -> String, LitInt -> bool).\n  - Arity mismatch for tuples.\n  - NaN/Infinity roundtrip for f64.\n  - Edge value roundtrips (i64::MIN/MAX, etc.).\n- Added `tidepool-runtime/tests/edge_cases.rs`:\n  - Numeric boundary tests (maxBound, minBound, overflow cases).\n  - Unicode text tests (length, upper, reverse with multi-byte characters).\n  - Note: Documented that `len` on `Text` currently returns byte length, not character count.\n  - Empty container tests (reverse, sort, sum, product).\n- Updated `tidepool-repr/src/free_vars.rs`:\n  - Added specific test cases for `Join`, `PrimOp`, and `Con` field free variable tracking.\n\nVerified with:\n```bash\ncargo test -p tidepool-bridge --test error_cases\ncargo test -p tidepool-runtime --test edge_cases\ncargo test -p tidepool-repr -- free_vars\n```",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/176",
+          "additions": 342,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:29:48Z",
+          "closedAt": "2026-03-08T01:29:48Z"
+        }
+      ],
+      "additions": 342,
       "deletions": 0,
       "status": "merged"
     },
@@ -1022,6 +2774,28 @@
       "status": "merged"
     },
     {
+      "id": "main.bump-jit-proptests",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "bump-jit-proptests",
+      "prs": [
+        {
+          "number": 103,
+          "title": "test: bump JIT proptest case count and add optimized small nursery test",
+          "body": "Increased case count from 10 to 50 for JIT proptests. Added a new test combining optimization and small nursery.\n\nFound intermittent SIGILL failure when running in parallel, but it passes 100% when run with --test-threads=1 or even in parallel most of the time. The higher case count makes this latent race condition visible. All tests pass successfully at 50 cases in serial.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/103",
+          "additions": 25,
+          "deletions": 4,
+          "mergedAt": "2026-02-25T08:50:11Z",
+          "closedAt": "2026-02-25T08:50:11Z"
+        }
+      ],
+      "additions": 25,
+      "deletions": 4,
+      "status": "merged"
+    },
+    {
       "id": "main.cache-tests",
       "parent": "main.runtime",
       "depth": 2,
@@ -1040,6 +2814,50 @@
         }
       ],
       "additions": 132,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.cbor-fuzz-proptests",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "cbor-fuzz-proptests",
+      "prs": [
+        {
+          "number": 105,
+          "title": "test: add CBOR fuzzing proptests for malformed input resilience",
+          "body": "This PR adds three new proptests to `tidepool-repr` to ensure the CBOR deserializer is resilient against malformed input:\n- `cbor_corrupt_bytes_no_panic`: Randomly flips, inserts, or deletes bytes in valid CBOR-encoded expressions.\n- `cbor_random_bytes_no_panic`: Feeds completely random byte sequences to the deserializer.\n- `cbor_truncated_no_panic`: Truncates valid CBOR-encoded expressions at random positions.\n\nAll tests are configured to run with 256 cases on an 8MB stack thread to match existing patterns and ensure no panics occur.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/105",
+          "additions": 120,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T09:19:21Z",
+          "closedAt": "2026-02-25T09:19:21Z"
+        }
+      ],
+      "additions": 120,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.codegen-advanced-tests",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "codegen-advanced-tests",
+      "prs": [
+        {
+          "number": 175,
+          "title": "test: add advanced codegen and optimizer tests",
+          "body": "This PR adds advanced codegen and optimizer tests to verify:\n- Nested joins and joins with multiple/zero parameters.\n- LetRec phases including recursive factorial, cyclic Con references, and deferred simple bindings.\n- Mutual tail-call optimization (isEven/isOdd).\n- Optimizer pass composition (BetaReduce, Inline, Dce, CaseReduce).\n\nAll new tests follow existing patterns and use the established test infrastructure. No source code or existing tests were modified.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/175",
+          "additions": 657,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:29:44Z",
+          "closedAt": "2026-03-08T01:29:44Z"
+        }
+      ],
+      "additions": 657,
       "deletions": 0,
       "status": "merged"
     },
@@ -1220,6 +3038,28 @@
       "status": "merged"
     },
     {
+      "id": "main.consolidate-optimizer-proptests",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "consolidate-optimizer-proptests",
+      "prs": [
+        {
+          "number": 102,
+          "title": "test: consolidate optimizer property tests into proptest_optimizer.rs",
+          "body": "Consolidate duplicate optimizer property tests from proptest_correctness.rs and proptest_optimizer_extended.rs into a single file proptest_optimizer.rs with 11 tests.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/102",
+          "additions": 80,
+          "deletions": 274,
+          "mergedAt": "2026-02-25T08:50:07Z",
+          "closedAt": "2026-02-25T08:50:07Z"
+        }
+      ],
+      "additions": 80,
+      "deletions": 274,
+      "status": "merged"
+    },
+    {
       "id": "main.core-optimize.beta-reduce",
       "parent": "main.core-optimize",
       "depth": 2,
@@ -1396,6 +3236,28 @@
       "status": "merged"
     },
     {
+      "id": "main.desugar-multi-return-primops",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "desugar-multi-return-primops",
+      "prs": [
+        {
+          "number": 71,
+          "title": "Desugar multi-return primops in Translate.hs",
+          "body": "Implements desugaring for multi-return primops like quotRemInt# and quotRemWord# in the Haskell translator. These are split into individual primop calls (e.g., IntQuot and IntRem) and bound using nested LetNonRec expressions within the Case alternative.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/71",
+          "additions": 95,
+          "deletions": 6,
+          "mergedAt": "2026-02-21T07:06:16Z",
+          "closedAt": "2026-02-21T07:06:16Z"
+        }
+      ],
+      "additions": 95,
+      "deletions": 6,
+      "status": "merged"
+    },
+    {
       "id": "main.dogfood-handlers",
       "parent": "main.mcp",
       "depth": 2,
@@ -1415,6 +3277,116 @@
       ],
       "additions": 156,
       "deletions": 31,
+      "status": "merged"
+    },
+    {
+      "id": "main.effect-yield-resume",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "effect-yield-resume",
+      "prs": [
+        {
+          "number": 107,
+          "title": "feat: Effect machine proptests",
+          "body": "Adds comprehensive proptests for the EffectMachine's dispatch and continuation handling, including:\n- Pure Val result handling\n- Single effect dispatch with random values\n- Multi-handler routing by tag\n- Handler state accumulation across effects\n- Continuation tree (Leaf) evaluation using handler responses",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/107",
+          "additions": 251,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T11:11:06Z",
+          "closedAt": "2026-02-25T11:11:06Z"
+        }
+      ],
+      "additions": 251,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.emit-lam-thunk-dedup",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "emit-lam-thunk-dedup",
+      "prs": [
+        {
+          "number": 162,
+          "title": "Refactor: extract compute_captures helper from emit_lam and emit_thunk",
+          "body": "This PR extracts the shared setup boilerplate from `emit_lam` and `emit_thunk` in `tidepool-codegen/src/emit/expr.rs` into a private helper function `compute_captures`.\n\nBoth functions had ~35 lines of identical logic for:\n1. Extracting the subtree for the body\n2. Computing free variables\n3. Filtering and logging variables not in scope\n4. Sorting the remaining free variables\n\nThe only difference was that `emit_lam` needed to exclude its binder from the free variable set, which is now handled by an `Option<VarId>` parameter in the helper.\n\nTests in `tidepool-codegen` were run and passed.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/162",
+          "additions": 29,
+          "deletions": 35,
+          "mergedAt": "2026-03-08T00:34:10Z",
+          "closedAt": "2026-03-08T00:34:10Z"
+        }
+      ],
+      "additions": 29,
+      "deletions": 35,
+      "status": "merged"
+    },
+    {
+      "id": "main.emit-session-struct",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "emit-session-struct",
+      "prs": [
+        {
+          "number": 168,
+          "title": "feat: bundle recurring emit parameters into EmitSession struct",
+          "body": "Bundles the recurring parameter set `(pipeline, vmctx, gc_sig, oom_func, tree)` into a single `EmitSession` struct to simplify function signatures and improve maintainability.\n\n- Defined `EmitSession` in `tidepool-codegen/src/emit/mod.rs`.\n- Updated 14+ functions across `expr.rs`, `case.rs`, `join.rs`, and `primop.rs` to take `sess: &mut EmitSession`.\n- Kept `builder: &mut FunctionBuilder` as a separate parameter to avoid lifetime conflicts.\n- Updated all call sites and cleaned up unused imports.\n- Verified behavioral correctness with existing test suite (all tests pass).\n\nThis is a purely mechanical refactoring with no changes to emission logic.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/168",
+          "additions": 633,
+          "deletions": 684,
+          "mergedAt": "2026-03-08T00:54:42Z",
+          "closedAt": "2026-03-08T00:54:42Z"
+        }
+      ],
+      "additions": 633,
+      "deletions": 684,
+      "status": "merged"
+    },
+    {
+      "id": "main.error-messages",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "error-messages",
+      "prs": [
+        {
+          "number": 153,
+          "title": "feat: preserve Haskell error message strings",
+          "body": "This PR threads the error message from GHC Core through to the JIT runtime, so that `error \"msg\"` returns `YieldError::UserErrorMsg(\"msg\")` instead of a generic message.\n\nChanges:\n- **`haskell/src/Tidepool/Translate.hs`**: Intercepts `error` and `patError` calls, recursively unwrapping `PushCallStack` to find the `LitString` message. It then wraps the `0x45` error sentinel in an `App` with the `LitString`.\n- **`tidepool-codegen/src/emit/expr.rs`**: Added `extract_error_message` and `emit_error_poison` to statically detect string literals in `LetRec`/`LetNonRec` error branches and pre-allocate 3-capture lazy poison closures. Also fixed an existing indentation bug in the simple bindings phase.\n- **`tidepool-codegen/src/host_fns.rs`**: Implemented `runtime_error_with_msg` and `error_poison_ptr_lazy_msg`. Modified the existing 1-capture `poison_trampoline_lazy` to inspect its argument: if it's a `LitString` (as generated by the new `App` wrapper), it dynamically extracts the string and logs/preserves it.\n- **`tidepool-codegen/src/yield_type.rs`**: Added `YieldError::UserErrorMsg(String)` to correctly propagate the error string up to the `run` caller.\n- **`tidepool-codegen/src/emit/case.rs`**: **Fixed a pre-existing cascading `SIGILL` bug.** `emit_case_trap` now accepts the `merge_block` and performs a `jump` with the poison pointer (if an error is in-flight) instead of unconditionally issuing a `builder.ins().trap(...)` which was causing a hard process crash when testing unresolved variables.\n- **`tidepool-runtime/tests/test_error_msg.rs`**: Added integration tests to verify that standard `error \"...\"` and missing-pattern `patError`s correctly propagate their strings through the entire pipeline.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/153",
+          "additions": 249,
+          "deletions": 20,
+          "mergedAt": "2026-03-06T20:16:49Z",
+          "closedAt": "2026-03-06T20:16:49Z"
+        }
+      ],
+      "additions": 249,
+      "deletions": 20,
+      "status": "merged"
+    },
+    {
+      "id": "main.eval-limits",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "eval-limits",
+      "prs": [
+        {
+          "number": 172,
+          "title": "feat: concurrent eval limit + nursery size cap",
+          "body": "This PR adds a concurrent evaluation limit (MAX_CONCURRENT_EVALS = 4) using a semaphore in the MCP server to manage memory usage (each thread uses ~96MB). It also adds a nursery size cap (MAX_NURSERY_SIZE = 512MB) in the heap arena to prevent unbounded memory growth during nursery doubling.\n\nChanges:\n- Added `eval_semaphore` to `TidepoolMcpServerImpl`.\n- Acquired and moved a semaphore permit into the eval thread in `eval`.\n- Added `MAX_NURSERY_SIZE` constant and capped growth in `collect_garbage`.\n- Added `test_nursery_doubling` to verify heap doubling logic.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/172",
+          "additions": 63,
+          "deletions": 3,
+          "mergedAt": "2026-03-08T01:20:19Z",
+          "closedAt": "2026-03-08T01:20:19Z"
+        }
+      ],
+      "additions": 63,
+      "deletions": 3,
       "status": "merged"
     },
     {
@@ -1462,6 +3434,28 @@
       "status": "merged"
     },
     {
+      "id": "main.eval-safety",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "eval-safety",
+      "prs": [
+        {
+          "number": 181,
+          "title": "feat: add bounds checks and safety guards in eval.rs",
+          "body": "This PR adds bounds checks and safety guards in `tidepool-eval/src/eval.rs` to prevent panics and handle invalid inputs gracefully. \n\nKey changes:\n- `FfiTextMeasureOff` — Add bounds check for the offset.\n- `FfiTextReverse` — Add bounds check for the source range.\n- `WriteWordArray`/`ReadWordArray`/`IndexWordArray` — Add check for negative indices.\n- `IndexWord8Array` — Add check for negative indices (as a similar case).\n- `Chr` — Replace silent NUL fallback with a `TypeMismatch` error for invalid Unicode codepoints.\n\nTests added:\n- `test_eval_primop_ffi_bounds`\n- `test_eval_primop_negative_index`\n- `test_eval_primop_invalid_char`\n\nAll existing tests pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/181",
+          "additions": 247,
+          "deletions": 30,
+          "mergedAt": "2026-03-08T02:50:35Z",
+          "closedAt": "2026-03-08T02:50:35Z"
+        }
+      ],
+      "additions": 247,
+      "deletions": 30,
+      "status": "merged"
+    },
+    {
       "id": "main.eval-strict-case",
       "parent": "main.core-eval",
       "depth": 2,
@@ -1506,6 +3500,72 @@
       "status": "merged"
     },
     {
+      "id": "main.eval-timeout",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "eval-timeout",
+      "prs": [
+        {
+          "number": 122,
+          "title": "feat(mcp): add wall-clock timeout to eval and resume tools",
+          "body": "Add a 30s wall-clock timeout to evaluation and resume in the MCP server to prevent indefinite hangs.\n\nChanges:\n- Replaced `session_rx.recv().await` with `tokio::time::timeout` in both `eval` and `resume`.\n- Added a `EVAL_TIMEOUT_SECS` constant (30s) at the top level.\n- Returns a formatted error with the compiled source when evaluation times out.\n- No new dependencies added (uses `tokio::time` which is already available).\n",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/122",
+          "additions": 39,
+          "deletions": 10,
+          "mergedAt": "2026-02-27T21:36:53Z",
+          "closedAt": "2026-02-27T21:36:53Z"
+        }
+      ],
+      "additions": 39,
+      "deletions": 10,
+      "status": "merged"
+    },
+    {
+      "id": "main.facade-runtime-fixes",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "facade-runtime-fixes",
+      "prs": [
+        {
+          "number": 183,
+          "title": "fix: KV deserialization warning, glob symlink safety, and cache atomicity (Updated)",
+          "body": "This PR addresses runtime fixes for KV deserialization, glob symlink safety, and cache write robustness.\n\n### Updates in response to review comments:\n- **`cache_store`**: Reverted to using `NamedTempFile` to ensure random temp file names (preventing race conditions) and automatic cleanup on failure.\n- **`cache_store`**: Updated docstring to clarify that while individual file replacements are atomic, the two-file update as a whole is not.\n- **`FsReq::Glob`**: Propagated canonicalization errors for the sandbox root to ensure consistency with other filesystem operations.\n- **`FsReq::Glob`**: Explicitly rejected absolute patterns.\n\n### Original Changes:\n- Added explicit warning when KV store JSON is invalid.\n- Added canonicalization and sandbox root filtering to glob results.\n- Implemented rename-based atomicity for cache writes.\n\nVerified with `cargo check --workspace` and `cargo test -p tidepool-runtime`. Pre-existing SIGSEGV in `user_library.rs` remains unchanged.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/183",
+          "additions": 48,
+          "deletions": 17,
+          "mergedAt": "2026-03-08T02:32:39Z",
+          "closedAt": "2026-03-08T02:32:39Z"
+        }
+      ],
+      "additions": 48,
+      "deletions": 17,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-cache-test",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "fix-cache-test",
+      "prs": [
+        {
+          "number": 81,
+          "title": "fix: re-enable cache_load in tidepool-runtime to fix test failure",
+          "body": "Re-enabled `cache_load` in `tidepool-runtime/src/cache.rs` to fix the broken `test_cache_roundtrip` test. The translation pipeline has stabilized, allowing caching to be re-enabled.\n\n- Replaced hardcoded `None` in `cache_load` with logic to load cached Core expression and metadata files.\n- Verified with `cargo test -p tidepool-runtime -- cache::tests`.\n- Workspace tests still pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/81",
+          "additions": 9,
+          "deletions": 5,
+          "mergedAt": "2026-02-24T21:01:21Z",
+          "closedAt": "2026-02-24T21:01:21Z"
+        }
+      ],
+      "additions": 9,
+      "deletions": 5,
+      "status": "merged"
+    },
+    {
       "id": "main.fix-gc-audit",
       "parent": "main.polish",
       "depth": 2,
@@ -1525,6 +3585,138 @@
       ],
       "additions": 25,
       "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-group-a-lit-zero",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-group-a-lit-zero",
+      "prs": [
+        {
+          "number": 120,
+          "title": "Fix Group A SIGILL and memory faults via recursive unboxing and accurate translation",
+          "body": "This PR addresses the SIGILL and memory faults found in Group A tests: `memchr`, `isPrefixOf`, `splitOn`, and `filter_array`.\n\n## Changes Made:\n- **Recursive Unboxing**: Implemented recursive loops in JIT unboxers (`unbox_int`, `unbox_addr`, `unbox_bytearray`, `unbox_float`, `unbox_double`) to properly handle deeply nested \"box\" constructors created by GHC (e.g., `Text (ByteArray (ByteArray# ...))`).\n- **Translation Updates**: Reverted aggressive `stripBoxCon` from `Translate.hs` but kept it restricted to single-constructor product types (as done in Group C) within DataCon wrappers. This resolves \"CASE TRAP\" errors.\n- **Robust Heap Layout Extraction**: Addressed the SIGSEGV related to missing offset tracking for string bounds and nested constructors.\n- **Pointer Validation**: Embedded safe guards in byte array and text FFI helpers within `host_fns.rs` to detect invalid pointers instead of silently faulting.\n- **SplitOn Assertion Update**: Handled the initial crashing bug, leaving `splitOn` failing gently on an assertion for subsequent investigation regarding nested serialization. \n\nAll targets have been built cleanly. Tested locally with 4/5 Group A tests passing successfully.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/120",
+          "additions": 507,
+          "deletions": 299,
+          "mergedAt": "2026-02-27T05:23:27Z",
+          "closedAt": "2026-02-27T05:23:27Z"
+        }
+      ],
+      "additions": 507,
+      "deletions": 299,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-group-b-heap-force",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-group-b-heap-force",
+      "prs": [
+        {
+          "number": 121,
+          "title": "feat: implement heap_force and force closures in case dispatch",
+          "body": "This PR implements thunk forcing in the JIT to resolve the \"Closure in case scrutinee\" issue identified in Group B tests.\n\n### Changes\n- **Implemented `heap_force`** in `host_fns.rs`: This host function now handles 0-capture `Closure` objects by calling their `code_ptr` with the `(vmctx, self, arg)` calling convention (where `self` is the closure and `arg` is null). This matches the JIT's emission for lambdas and thunks.\n- **Updated `emit_data_dispatch`** in `case.rs`: Added a runtime check before data constructor dispatch. If the scrutinee is a `Closure` (tag 0) or `Thunk` (tag 1), it calls `heap_force` and uses the result for the matching logic.\n- **Added `test_group_b_simple_thunk`**: A new regression test in `sort_crash.rs` that verifies thunks inside cons-lists are correctly forced before being case-matched.\n\n### Verification\n- `test_group_b_simple_thunk` passes.\n- Existing `sort_crash.rs` tests (non-ignored) all pass.\n- The original Group B tests (e.g., `test_aeson_lens_nth`) still encounter `CASE TRAP` on a `Closure`, but debug tracing revealed that these closures are actually the **poison closure** (due to earlier `UserError` calls in the `lens` package during translation/codegen). The forcing logic itself is active and correct, as proven by the new simple test.\n\n### Note on calling convention\nThe `heap_force` function uses the 3-argument signature `fn(vmctx, self, arg)` for closures, which was found to be the consistent convention for JIT-compiled closures in this codebase. Passing `self` ensures that even if the closure was used for something else, it has its context. Passing `null` for `arg` is appropriate for forcing a thunk.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/121",
+          "additions": 85,
+          "deletions": 3,
+          "mergedAt": "2026-02-27T05:51:07Z",
+          "closedAt": "2026-02-27T05:51:07Z"
+        }
+      ],
+      "additions": 85,
+      "deletions": 3,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-group-c-con-tag",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-group-c-con-tag",
+      "prs": [
+        {
+          "number": 119,
+          "title": "feat: normalize constructor tags and fix Maybe unboxing",
+          "body": "This PR fixes the Group C issue where `Map` operations (and potentially other higher-order functions) failed with `SIGILL` or `CASE TRAP` due to constructor tag mismatches.\n\n### Changes\n1.  **Stable VarIds**: Implemented `stableVarId` in `Translate.hs` using GHC's `Fingerprint` on the fully-qualified name (Module + OccName). This ensures that the same logical constructor has the same tag regardless of whether it's compiled directly or loaded via a fat interface.\n2.  **Module Normalization**: Added robust module name normalization to handle GHC 9.12's `GHC.Internal.*` module structure, ensuring that internal and public aliases of the same module hash to the same ID.\n3.  **Worker/Wrapper Unification**: Updated `varId` to use the worker's stable ID for both DataCon workers and wrappers. This prevents tag mismatches when a constructor is applied via its wrapper but cased on using its worker tag.\n4.  **Box Stripping Fix**: Fixed a bug in `stripBoxCon` that was incorrectly unboxing sum types like `Maybe`. By restricting stripping to single-constructor algebraic types (product types), we ensure that `Just` and other sum constructors retain their pointer arguments as expected by their workers.\n5.  **Test Enablement**: Enabled `test_map_difference_with` and `test_map_intersection_with` in `tidepool-runtime`, which now pass.\n\n### Verification\n-   `cargo test -p tidepool-runtime --test sort_crash` passes with 220 tests.\n-   Confirmed that `Maybe` and `Int` constructors now have consistent tags across different compilation contexts.\n-   Verified that `test_map_difference_with` and `test_map_intersection_with` no longer trap.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/119",
+          "additions": 30,
+          "deletions": 5,
+          "mergedAt": "2026-02-27T04:41:51Z",
+          "closedAt": "2026-02-27T04:41:51Z"
+        }
+      ],
+      "additions": 30,
+      "deletions": 5,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-q-silent-defaults",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-q-silent-defaults",
+      "prs": [
+        {
+          "number": 137,
+          "title": "fix: replace silent defaults in Q smart constructors with error calls",
+          "body": "Fixed silent defaults in `Q` smart constructors in `tidepool-mcp/src/lib.rs`. \nHaiku's malformed JSON responses will now trigger a descriptive error message instead of returning default values.\n\nChanges:\n- `pick`: `_ -> \"\"` -> `_ -> error \"Q: missing 'pick' in response\"`\n- `yn`: `_ -> False` -> `_ -> error \"Q: missing 'answer' in response\"`\n- `txt`: `_ -> \"\"` -> `_ -> error (\"Q: missing '\" <> k <> \"' in response\")`\n- `num`: `_ -> 0.0` -> `_ -> error (\"Q: missing '\" <> k <> \"' in response\")`\n\nVerified with `cargo test -p tidepool-mcp` and `cargo install --path tidepool`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/137",
+          "additions": 4,
+          "deletions": 4,
+          "mergedAt": "2026-03-04T20:44:50Z",
+          "closedAt": "2026-03-04T20:44:50Z"
+        }
+      ],
+      "additions": 4,
+      "deletions": 4,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-text-split",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-text-split",
+      "prs": [
+        {
+          "number": 94,
+          "title": "feat: fix LetRec topological sort and closure capture",
+          "body": "Fixes an infinite loop / segfault bug in recursive text functions like\n`T.split`. The root cause was that top-level module bindings are compiled\nas a single large LetRec group. During compilation, closures were\nallocated in Phase 1 but their capture slots remained uninitialized until\nPhase 3a'. If the evaluation of a deferred simple binding in Phase 3c\ntriggered an allocation (e.g. `newByteArray#`) and exhausted the JIT\nnursery, the ensuing garbage collection root tracing would scan the\nuninitialized closure capture slots and segfault.\n\nThis PR resolves the issue by zero-initializing closure capture\nslots upon allocation and implementing a full transitive dependency\ntopological sort for LetRec deferred bindings. The capture slots are\nnow incrementally filled as their dependencies resolve, ensuring safe\nexecution and GC tracing.\n\nAdditionally:\n- Corrects `Clz8#` primop implementation to narrow to I8 before clz.\n- Adds comprehensive text splitting tests to `repro_split.rs`.\n\n**Updates:**\n- Addressed Copilot review feedback: removed unused imports, removed global env set `TIDEPOOL_DUMP_TREE` from test, optimized LetRec topo sort using DFS reachability instead of full transitive map building, refactored Phase 3c updates into O(1) map lookups, zero-initialized Con fields in Phase 1, and restored `#[ignore]` on `test_kv_keys_text_split_on` specifying the newly-identified bridge text mismatch issue.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/94",
+          "additions": 395,
+          "deletions": 65,
+          "mergedAt": "2026-02-25T05:31:52Z",
+          "closedAt": "2026-02-25T05:31:52Z"
+        }
+      ],
+      "additions": 395,
+      "deletions": 65,
+      "status": "merged"
+    },
+    {
+      "id": "main.fix-tide-fs-handler",
+      "parent": "main.bugfix",
+      "depth": 2,
+      "label": "fix-tide-fs-handler",
+      "prs": [
+        {
+          "number": 135,
+          "title": "fix(tide): resolve FsHandler paths and keep REPL alive on error",
+          "body": "This PR updates the `FsHandler` in the Tide REPL example to resolve relative paths against a configurable `working_dir` (defaulting to the current working directory). It also wraps the effect machine's execution in a loop to catch handler errors (like file-not-found) and re-prompt the user instead of exiting the REPL.\n\nUpdated based on review comments: The REPL loop now only retries specifically on `EffectError::Handler` runtime errors, ensuring that fatal machine or compilation errors are correctly propagated and don't lead to infinite loops.\n\nFixed CI failure: Added `pkgs.openssl` to `flake.nix` devShell to fix the `openssl-sys` compilation error caused by the `git2` dependency.\n\nKey changes:\n- `FsHandler` now stores a `working_dir: PathBuf`.\n- Added `FsHandler::new(working_dir: PathBuf)` and `resolve(&self, path: &str) -> PathBuf`.\n- Updated `FsRead` and `FsWrite` handlers to use `resolve`.\n- Modified `examples/tide/src/main.rs` to pass `std::env::current_dir()` to `FsHandler`.\n- Added a loop around `vm.run` in `main.rs` that only retries on `EffectError::Handler`.\n- Verified that `examples/viz/` does not exist (it was already removed).\n- Updated `flake.nix` with `openssl` and `pkg-config`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/135",
+          "additions": 37,
+          "deletions": 8,
+          "mergedAt": "2026-03-04T06:21:18Z",
+          "closedAt": "2026-03-04T06:21:18Z"
+        }
+      ],
+      "additions": 37,
+      "deletions": 8,
       "status": "merged"
     },
     {
@@ -1572,6 +3764,138 @@
       "status": "merged"
     },
     {
+      "id": "main.gc-forwarding-panic",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-forwarding-panic",
+      "prs": [
+        {
+          "number": 161,
+          "title": "feat(gc): panic on forwarding table lookup failure during compaction",
+          "body": "This PR escalates a GC forwarding failure from `eprintln!` to `panic!` in `tidepool-heap/src/gc/compact.rs`.\n\nA missed forwarding-table lookup during GC compaction indicates a fundamental violation of GC invariants—a reachable object was not traced. Continuing with a stale `ThunkId` would result in a dangling reference, leading to silent and hard-to-diagnose corruption. Making this fail loudly with a `panic!` ensures that such bugs are caught immediately.\n\nVerified with `cargo check -p tidepool-heap` and `cargo test -p tidepool-heap`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/161",
+          "additions": 2,
+          "deletions": 3,
+          "mergedAt": "2026-03-08T00:33:54Z",
+          "closedAt": "2026-03-08T00:33:54Z"
+        }
+      ],
+      "additions": 2,
+      "deletions": 3,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-heap-force-stale",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-heap-force-stale",
+      "prs": [
+        {
+          "number": 171,
+          "title": "fix: update current pointer after GC in heap_force",
+          "body": "In `tidepool-codegen/src/host_fns.rs`, the `heap_force` function holds a `current` pointer to a thunk. At line 334 (in the original file), it calls the thunk's entry function, which may trigger a GC. After the call, `current` might point to the from-space copy of the thunk. Subsequent writes to set the indirection and state update would then go to from-space, leaving the to-space copy in a permanent `BLACKHOLE` state.\n\nThis PR adds a forwarding check after the JIT call in `heap_force`. If `current` was forwarded during the call, it is updated to point to the to-space copy by following the forwarding pointer at offset 8.\n\nVerified by running `cargo check` and `cargo test` in `tidepool-codegen`. All tests pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/171",
+          "additions": 6,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:20:15Z",
+          "closedAt": "2026-03-08T01:20:15Z"
+        }
+      ],
+      "additions": 6,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-pressure",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "gc-pressure",
+      "prs": [
+        {
+          "number": 110,
+          "title": "test: add GC pressure proptests with tiny nurseries",
+          "body": "Creates tidepool-runtime/tests/proptest_gc_pressure.rs with tests for:\n- allocation_heavy_tiny_nursery (2KB)\n- nested_con_chain (4KB)\n- jit_1kb_nursery_agrees (1KB, currently ignored due to SIGILL)\n- optimize_then_tiny_nursery (2KB)\n- nested_pair_chain (2KB)",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/110",
+          "additions": 250,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T11:10:22Z",
+          "closedAt": "2026-02-25T11:10:22Z"
+        }
+      ],
+      "additions": 250,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-raw-copy",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-raw-copy",
+      "prs": [
+        {
+          "number": 111,
+          "title": "feat: implement Cheney Copying GC for Raw HeapObjects",
+          "body": "Implement Cheney Copying GC",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/111",
+          "additions": 422,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T21:48:17Z",
+          "closedAt": "2026-02-25T21:48:17Z"
+        }
+      ],
+      "additions": 422,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-scaffolding",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-scaffolding",
+      "prs": [
+        {
+          "number": 112,
+          "title": "feat: Add GcState and graceful OOM scaffolding",
+          "body": "Implement graceful OOM scaffolding for copying GC",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/112",
+          "additions": 198,
+          "deletions": 79,
+          "mergedAt": "2026-02-25T21:48:25Z",
+          "closedAt": "2026-02-25T21:48:25Z"
+        }
+      ],
+      "additions": 198,
+      "deletions": 79,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-tests",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-tests",
+      "prs": [
+        {
+          "number": 114,
+          "title": "test: Fix test masking and add end-to-end GC validation tests",
+          "body": "",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/114",
+          "additions": 197,
+          "deletions": 239,
+          "mergedAt": "2026-02-26T00:35:17Z",
+          "closedAt": "2026-02-26T00:35:17Z"
+        }
+      ],
+      "additions": 197,
+      "deletions": 239,
+      "status": "merged"
+    },
+    {
       "id": "main.gc-trace",
       "parent": "main.core-heap",
       "depth": 2,
@@ -1591,6 +3915,50 @@
       ],
       "additions": 277,
       "deletions": 1,
+      "status": "merged"
+    },
+    {
+      "id": "main.gc-wire",
+      "parent": "main.gc-rewrite",
+      "depth": 2,
+      "label": "gc-wire",
+      "prs": [
+        {
+          "number": 113,
+          "title": "feat: Wire gc_trigger to perform actual Cheney GC",
+          "body": "## Summary\n\n- gc_trigger now calls cheney_copy with roots from walk_frames, updates VMContext alloc_ptr/alloc_limit after GC, and swaps GcState to the new tospace buffer\n- run_pure and run call set_gc_state/clear_gc_state around JIT execution so gc_trigger knows the nursery bounds\n- Existing test hook and LAST_ROOTS storage preserved\n\n## Test plan\n\n- [x] cargo check --workspace passes\n- [ ] cargo test -p tidepool-codegen passes  \n- [ ] GC actually fires and programs survive nursery exhaustion (validated in Leaf 4)",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/113",
+          "additions": 49,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T22:37:48Z",
+          "closedAt": "2026-02-25T22:37:48Z"
+        }
+      ],
+      "additions": 49,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.generator-depth",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "generator-depth",
+      "prs": [
+        {
+          "number": 108,
+          "title": "feat: expand arb_core_expr structural complexity",
+          "body": "Expands the structural complexity of the arb_core_expr generator:\n- Added Case on Pair with DataConId(4) and 2 field binders.\n- Added Case on Int with 1 LitAlt + DEFAULT.\n- Increased LetRec group size range to 1..6.\n- Expanded gen_prim_op to support unary and binary operators for Int, Word, Double, and Float.\n- Increased Join param list range to 1..5.\n- Added Word, Double, and Float to SimpleType.\n- Verified with cargo test -p tidepool-testing.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/108",
+          "additions": 216,
+          "deletions": 38,
+          "mergedAt": "2026-02-25T11:26:14Z",
+          "closedAt": "2026-02-25T11:26:14Z"
+        }
+      ],
+      "additions": 216,
+      "deletions": 38,
       "status": "merged"
     },
     {
@@ -1638,6 +4006,28 @@
       "status": "merged"
     },
     {
+      "id": "main.haskell-lib-fixes",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "haskell-lib-fixes",
+      "prs": [
+        {
+          "number": 184,
+          "title": "fix: haskell library issues (ix, converge, dedent, parseDelimited)",
+          "body": "This PR addresses four issues in the Haskell library:\n\n1.  **Fixed `ix` lens out-of-bounds behavior**: It now returns the list unchanged instead of crashing. Move Applicative constraint to the front per review.\n2.  **Added iteration limit to `converge`**: It now uses `convergeN 1000` to prevent infinite loops in the MCP eval timeout. Added guard for non-positive iteration counts per review.\n3.  **Fixed `dedent` magic constant**: Replaced the `999999` magic constant with the indentation of the first non-empty line.\n4.  **Fixed `parseDelimited` whitespace handling**: It now filters out whitespace-only lines using `strip`.\n\nVerified with `cabal build` and manual verification tests for the new behaviors. Note that some existing tests in `user_library.rs` (`test_compose_hylo_is_fused_ana_cata` and `test_compose_producer_consumer`) are already failing/segfaulting in the baseline; these failures persist but are not introduced by this PR.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/184",
+          "additions": 15,
+          "deletions": 11,
+          "mergedAt": "2026-03-08T02:32:12Z",
+          "closedAt": "2026-03-08T02:32:12Z"
+        }
+      ],
+      "additions": 15,
+      "deletions": 11,
+      "status": "merged"
+    },
+    {
       "id": "main.haskell-macro",
       "parent": "main.core-bridge",
       "depth": 2,
@@ -1679,6 +4069,94 @@
       ],
       "additions": 335,
       "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.heap-gc-stress-proptests",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "heap-gc-stress-proptests",
+      "prs": [
+        {
+          "number": 104,
+          "title": "feat: add heap GC stress proptests",
+          "body": "This PR adds stress tests for the garbage collector in `tidepool-heap`.\n\nNew tests:\n- `prop_gc_preserves_chain`: Verifies that long chains of thunks survive GC if the head is reachable.\n- `prop_repeated_gc_stable`: Verifies that surviving objects remain stable across multiple GC cycles.\n- `prop_gc_reclaims_proportionally`: Verifies that GC correctly reclaims space from unreachable objects and resets the nursery.\n\nAll tests pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/104",
+          "additions": 137,
+          "deletions": 2,
+          "mergedAt": "2026-02-25T09:26:53Z",
+          "closedAt": "2026-02-25T09:26:53Z"
+        }
+      ],
+      "additions": 137,
+      "deletions": 2,
+      "status": "merged"
+    },
+    {
+      "id": "main.heap-gc-tests",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "heap-gc-tests",
+      "prs": [
+        {
+          "number": 178,
+          "title": "test: add coverage for heap_force, GC, and heap_bridge",
+          "body": "This PR adds comprehensive test coverage for `heap_force`, GC raw pointer traversal, and `heap_bridge` conversion logic.\n\n### Changes:\n- Added `tidepool-codegen/tests/heap_force_tests.rs`:\n    - Tests `heap_force` on evaluated thunks, literals, and constructors.\n    - Verified thunk evaluation via `compile_and_run`.\n- Added `tidepool-heap/tests/gc_unit.rs`:\n    - Tests `for_each_pointer_field` for objects with zero fields/captures.\n    - Verified layout constant sanity and offset calculations.\n    - Verified thunk state machine transitions.\n- Added `tidepool-codegen/tests/heap_bridge_tests.rs`:\n    - Tests `heap_to_value` for literals, constructors, and deeply nested structures.\n\nAll tests pass and no existing source code was modified.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/178",
+          "additions": 343,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:37:17Z",
+          "closedAt": "2026-03-08T01:37:17Z"
+        }
+      ],
+      "additions": 343,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.host-fns-overflow",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "host-fns-overflow",
+      "prs": [
+        {
+          "number": 182,
+          "title": "feat: add integer overflow guards and bounds checks in host_fns.rs",
+          "body": "This PR adds integer overflow guards and bounds checks to `tidepool-codegen/src/host_fns.rs` for all `i64` -> `usize` conversions in array-related host functions. \n\nSpecific changes include:\n- `runtime_new_byte_array` and `runtime_new_boxed_array`: Added checks for negative size/length and overflow in size calculation.\n- `runtime_resize_byte_array` and `runtime_clone_boxed_array`: Added negative size checks, overflow guards, and source bounds validation.\n- `runtime_copy_byte_array`, `runtime_copy_addr_to_byte_array`, `runtime_copy_boxed_array`: Added negative offset/length checks and silent early return for out-of-bounds access.\n- `runtime_set_byte_array`, `runtime_compare_byte_arrays`, `runtime_cas_boxed_array`: Added bounds validation and negative value guards.\n- `runtime_shrink_byte_array` and `runtime_shrink_boxed_array`: Added negative size/length checks.\n\nAll 71 existing tests in `tidepool-codegen` passed, including the proptests for host functions. Addressing review comments, `runtime_copy_addr_to_byte_array` now also uses silent early return for OOB to match other array operations and GHC behavior.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/182",
+          "additions": 167,
+          "deletions": 27,
+          "mergedAt": "2026-03-08T02:54:29Z",
+          "closedAt": "2026-03-08T02:54:29Z"
+        }
+      ],
+      "additions": 167,
+      "deletions": 27,
+      "status": "merged"
+    },
+    {
+      "id": "main.improve-survey",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "improve-survey",
+      "prs": [
+        {
+          "number": 138,
+          "title": "feat(mcp): improve survey helper by dropping Ord constraint and using manual tally",
+          "body": "This PR improves the `survey` helper in `tidepool-mcp/src/lib.rs` by:\n1. Dropping the `Ord` constraint, requiring only `Eq`.\n2. Replacing the `sort` and `groupBy` implementation with a manual tallying mechanism using `tallyList` and `findTally`.\n3. Updating the test assertion for the `survey` function's type signature.\n\nThis change makes the `survey` function more robust and efficient for tallying labels from `pick`, which typically doesn't need `Ord`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/138",
+          "additions": 12,
+          "deletions": 3,
+          "mergedAt": "2026-03-04T20:44:58Z",
+          "closedAt": "2026-03-04T20:44:59Z"
+        }
+      ],
+      "additions": 12,
+      "deletions": 3,
       "status": "merged"
     },
     {
@@ -1726,6 +4204,160 @@
       "status": "merged"
     },
     {
+      "id": "main.lazy-thunks-ws1-force",
+      "parent": "main.lazy-thunks",
+      "depth": 2,
+      "label": "lazy-thunks-ws1-force",
+      "prs": [
+        {
+          "number": 146,
+          "title": "feat: implement TAG_THUNK handling in heap_force and heap_to_value",
+          "body": "This PR implements `TAG_THUNK` handling in `heap_force` and `heap_to_value_inner`, as specified in the lazy thunk implementation plan.\n\nKey changes:\n- `tidepool-codegen/src/host_fns.rs`: Updated `heap_force` to handle the three thunk states:\n    - `Unevaluated`: Transitions to `BlackHole`, executes the thunk code, writes the indirection, and updates the state to `Evaluated`.\n    - `BlackHole`: Triggers a `RuntimeError::BlackHole` (infinite loop detection).\n    - `Evaluated`: Returns the cached indirection pointer.\n- `tidepool-codegen/src/host_fns.rs`: Added `RuntimeError::BlackHole` and `runtime_blackhole_trap`.\n- `tidepool-codegen/src/heap_bridge.rs`: Updated `heap_to_value_inner` to recursively follow indirections for `Evaluated` thunks or return an error for other states.\n- `tidepool-codegen/src/yield_type.rs`: Added `YieldError::BlackHole` and its conversion from `RuntimeError`.\n- Added unit tests in `host_fns.rs` to verify `heap_force` behavior for all three thunk states.\n\nAll 69 unit tests in `tidepool-codegen` are passing, along with all tests in `tidepool-heap`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/146",
+          "additions": 248,
+          "deletions": 5,
+          "mergedAt": "2026-03-05T20:03:58Z",
+          "closedAt": "2026-03-05T20:03:58Z"
+        }
+      ],
+      "additions": 248,
+      "deletions": 5,
+      "status": "merged"
+    },
+    {
+      "id": "main.lazy-thunks-ws2-codegen",
+      "parent": "main.lazy-thunks",
+      "depth": 2,
+      "label": "lazy-thunks-ws2-codegen",
+      "prs": [
+        {
+          "number": 149,
+          "title": "feat: lazy thunk codegen (WS2) — emit thunks for non-trivial Con fields",
+          "body": "## Summary\n\nImplements lazy thunk creation in the Cranelift codegen pipeline (WS2 of the lazy thunk plan). Non-trivial Con fields (App, Case, PrimOp, Let, Join, Jump) are now compiled as thunk objects with entry functions instead of being evaluated eagerly.\n\n- **emit/expr.rs**: `is_trivial_field()` cheapness analysis, `EmitFrame::ThunkCon` variant, `emit_thunk()` entry function compilation\n- **emit/mod.rs**: Thunk layout constants, `next_thunk_name()`\n- **emit/case.rs**: Force TAG_THUNK fields in case alt binders before use\n- **effect_machine.rs**: `force_ptr()`, force all Con field pointers in effect dispatch\n- **host_fns.rs**: Simplified `heap_force` — only forces TAG_THUNK (closures are WHNF, not forced)\n- **heap_bridge.rs**: `heap_to_value_forcing` with vmctx parameter\n- **jit_machine.rs**: Use `heap_to_value_forcing` for result/request conversion\n- **tests/emit_expr.rs**: Test infra for thunk forcing, fixed 2 primop tests with thunked Con fields\n\n## Test plan\n\n- [x] All 262 tidepool-codegen tests pass\n- [x] All 65 tidepool binary tests pass (including previously-failing `test_jit_console_roundtrip` and `test_jit_git_show_roundtrip`)\n- [x] `thunk_cycle` and `thunk_zipwith` failures are pre-existing on main (WS3 fixtures, not regressions)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/149",
+          "additions": 659,
+          "deletions": 104,
+          "mergedAt": "2026-03-05T23:42:02Z",
+          "closedAt": "2026-03-05T23:42:02Z"
+        }
+      ],
+      "additions": 659,
+      "deletions": 104,
+      "status": "merged"
+    },
+    {
+      "id": "main.lazy-thunks-ws3-tests",
+      "parent": "main.lazy-thunks",
+      "depth": 2,
+      "label": "lazy-thunks-ws3-tests",
+      "prs": [
+        {
+          "number": 145,
+          "title": "feat: lazy thunk test fixtures and cases",
+          "body": "This PR adds Haskell test fixtures and Rust test cases for lazy thunks as part of WS3.\n\nKey changes:\n- Added 8 lazy thunk test bindings to `haskell/test/Suite.hs`.\n- Fixed `tidepool-extract-bin` by updating `DataCon` metadata to include the qualified name (6-tuple structure), fixing a compilation error in `Main.hs`.\n- Regenerated all CBOR fixtures in `haskell/test/suite_cbor/`.\n- Added `collect_int_list` helper and `suite_int_list` macro to `tidepool-eval/tests/haskell_suite.rs`.\n- Added 8 test cases for the new lazy thunk fixtures in `tidepool-eval/tests/haskell_suite.rs`.\n\nNote: Some of the new tests (thunk_cycle, thunk_zipwith_inf) are expected to fail until codegen changes land.\n",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/145",
+          "additions": 132,
+          "deletions": 17,
+          "mergedAt": "2026-03-05T20:04:07Z",
+          "closedAt": "2026-03-05T20:04:07Z"
+        }
+      ],
+      "additions": 132,
+      "deletions": 17,
+      "status": "merged"
+    },
+    {
+      "id": "main.letrec-stress",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "letrec-stress",
+      "prs": [
+        {
+          "number": 109,
+          "title": "test: add dedicated LetRec codegen stress proptests",
+          "body": "This PR adds a new test file `tidepool-runtime/tests/proptest_letrec.rs` with 5 dedicated stress tests for LetRec codegen:\n1. `letrec_mutual_recursion`: Tests mutual recursion between two functions.\n2. `letrec_lam_captures_con_binder`: Tests a lambda capturing a binder from a constructor match inside a letrec.\n3. `letrec_multiple_deferred_simple`: Tests multiple deferred bindings with simple dependencies.\n4. `letrec_five_bindings`: Tests a more complex chain of 5 bindings.\n5. `letrec_random_wrapped`: Wraps random expressions from `arb_core_expr()` in a letrec.\n\nAll tests are verified to pass with `cargo test -p tidepool-runtime --test proptest_letrec`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/109",
+          "additions": 480,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T11:26:07Z",
+          "closedAt": "2026-02-25T11:26:07Z"
+        }
+      ],
+      "additions": 480,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.magic-constants",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "magic-constants",
+      "prs": [
+        {
+          "number": 163,
+          "title": "feat: name magic constants (0x45, 0x1000, lit tags in heap_bridge)",
+          "body": "This PR replaces magic constants with named constants and addresses review feedback:\n- `0x45` (error sentinel tag) -> `ERROR_SENTINEL_TAG` in `tidepool-repr`\n- `0x1000` (pointer validity threshold) -> `MIN_VALID_ADDR` in `host_fns.rs`\n- Raw integer literal tags in `heap_bridge.rs` -> named constants from `crate::emit`\n- Fixed pointer guards in `host_fns.rs` to use signed checks, correctly catching negative `i64` addresses.\n\nVerification:\n- `cargo check --workspace` passed.\n- `cargo test -p tidepool-codegen -p tidepool-eval -p tidepool-repr` passed.\n- All proptests in `proptest_cbor` passed on rerun.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/163",
+          "additions": 32,
+          "deletions": 22,
+          "mergedAt": "2026-03-08T00:37:15Z",
+          "closedAt": "2026-03-08T00:37:15Z"
+        }
+      ],
+      "additions": 32,
+      "deletions": 22,
+      "status": "merged"
+    },
+    {
+      "id": "main.mcp-cache-tests",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "mcp-cache-tests",
+      "prs": [
+        {
+          "number": 174,
+          "title": "feat: fix ignored cache tests and add MCP test coverage",
+          "body": "This PR addresses several test gaps and fixes ignored tests in `tidepool-runtime` and `tidepool-mcp`.\n\n### Changes:\n1.  **Cache Tests Fix**: Added `serial_test` as a dev-dependency to `tidepool-runtime` and updated `tidepool-runtime/tests/cache_tests.rs` to use `#[serial]` instead of `#[ignore]`. This allows environment-variable-mutating tests to run safely in parallel with other tests.\n2.  **MCP Test Coverage**: \n    *   Improved `rejected_import` logic to correctly handle `qualified` imports and added edge-case tests.\n    *   Added tests for `format_error_with_source` with multi-line input and empty source.\n    *   Added tests for `CapturedOutput` draining.\n3.  **Concurrent Evaluation Test**: Added `tidepool-runtime/tests/concurrent_eval.rs` which verifies that the JIT compilation and execution pipeline is thread-safe by running multiple Haskell expressions concurrently.\n\n### Verification:\nRan the following commands, all passing:\n```bash\ncargo test -p tidepool-runtime --test cache_tests\ncargo test -p tidepool-mcp\ncargo test -p tidepool-runtime --test concurrent_eval\n```",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/174",
+          "additions": 115,
+          "deletions": 14,
+          "mergedAt": "2026-03-08T01:29:39Z",
+          "closedAt": "2026-03-08T01:29:39Z"
+        }
+      ],
+      "additions": 115,
+      "deletions": 14,
+      "status": "merged"
+    },
+    {
+      "id": "main.mcp-dedup-misc",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "mcp-dedup-misc",
+      "prs": [
+        {
+          "number": 166,
+          "title": "feat: MCP eval/resume dedup + miscellaneous fixes (updated)",
+          "body": "This PR addresses 5 small fixes across several crates in the Tidepool project, now updated to address review comments:\n\n1.  **tidepool-mcp**: Extracted a shared `handle_session_result` method in `TidepoolMcpServerImpl` to deduplicate code between `eval` and `resume`.\n    - Added an `op` label parameter to distinguish between 'eval' and 'resume' in logs.\n    - Switched to `tokio::fs::read_to_string` for crash logs to avoid blocking the executor.\n    - Added focused unit tests for `handle_session_result` covering all result variants and timeouts.\n2.  **tidepool-runtime**: Updated the doc comment for `compile_and_run` to correctly state the default nursery size as 64 MiB.\n3.  **tidepool-mcp**: Relaxed the `schemars` version pin from `=1.2.1` to `1.2`. Added `fs` and `test-util` features to `tokio`.\n4.  **tidepool-codegen**: Removed the unused `heap_alloc` placeholder function and its registration.\n5.  **tidepool**: Removed debug `eprintln!` statements from the `LlmHandler` structured output logic.\n\nVerified with `cargo check --workspace` and relevant crate tests. New unit tests for `handle_session_result` in `tidepool-mcp` are passing.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/166",
+          "additions": 267,
+          "deletions": 182,
+          "mergedAt": "2026-03-08T00:34:32Z",
+          "closedAt": "2026-03-08T00:34:32Z"
+        }
+      ],
+      "additions": 267,
+      "deletions": 182,
+      "status": "merged"
+    },
+    {
       "id": "main.mcp-mature",
       "parent": "main.mcp",
       "depth": 2,
@@ -1745,6 +4377,72 @@
       ],
       "additions": 141,
       "deletions": 45,
+      "status": "merged"
+    },
+    {
+      "id": "main.mcp-string-schema",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "mcp-string-schema",
+      "prs": [
+        {
+          "number": 136,
+          "title": "feat(mcp): change eval tool schema from array-of-strings to single-string",
+          "body": "This PR changes the `tidepool-mcp` eval tool schema from array-of-strings to a single string for the `code`, `helpers`, and `imports` fields in `EvalRequest`. This is a breaking change that removes array support for these fields.\n\nAddress Copilot review feedback:\n- Remove unused `imports` bindings in `tidepool-runtime/tests/sort_crash.rs`.\n- Trim and skip empty lines in `EvalRequest.imports` before checking against the blocklist in `eval` and before rendering in `template_haskell`.\n- Improve `helpers` rendering in `template_haskell` to ensure consistent trailing newlines and avoid redundant blank lines when empty.\n\nFix CI failures:\n- Fix workspace-wide formatting issues using `cargo fmt --all`.\n- Fix trailing whitespace in `tidepool-optimize/tests/proptest_partial_eval.rs` that was causing `rustfmt` to fail.\n- Add `openssl` to `flake.nix` devShell `buildInputs` to resolve `openssl-sys` compilation failure.\n\nVerified with `cargo check -p tidepool-mcp` and `cargo test -p tidepool-mcp`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/136",
+          "additions": 266,
+          "deletions": 236,
+          "mergedAt": "2026-03-04T06:21:51Z",
+          "closedAt": "2026-03-04T06:21:51Z"
+        }
+      ],
+      "additions": 266,
+      "deletions": 236,
+      "status": "merged"
+    },
+    {
+      "id": "main.optimizer-tree-utils",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "optimizer-tree-utils",
+      "prs": [
+        {
+          "number": 164,
+          "title": "feat: extract shared tree traversal utilities from optimizer passes",
+          "body": "This PR extracts shared tree traversal utilities (`get_children`, `replace_subtree`, and `rebuild`) from several optimizer passes in `tidepool-optimize` and moves them into `tidepool-repr/src/tree.rs`.\n\n### Changes:\n- Added `get_children`, `replace_subtree`, and `rebuild` to `tidepool-repr/src/tree.rs`.\n- Re-exported them from `tidepool-repr/src/lib.rs` (via `pub use tree::*;`).\n- Removed local copies of these functions from:\n    - `tidepool-optimize/src/dce.rs`\n    - `tidepool-optimize/src/inline.rs`\n    - `tidepool-optimize/src/case_reduce.rs`\n    - `tidepool-optimize/src/beta.rs`\n- In `tidepool-optimize/src/case_reduce.rs`, replaced local `extract_subtree` with the existing `expr.extract_subtree(idx)` method.\n- Cleaned up unused imports (`HashMap`, `MapLayer`) in the optimizer passes.\n\n### Verification:\n- `cargo check -p tidepool-repr`\n- `cargo check -p tidepool-optimize`\n- `cargo test -p tidepool-optimize`\n- `cargo test -p tidepool-repr`\n- All tests passed and clippy is clean for the modified files.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/164",
+          "additions": 172,
+          "deletions": 309,
+          "mergedAt": "2026-03-08T00:34:02Z",
+          "closedAt": "2026-03-08T00:34:02Z"
+        }
+      ],
+      "additions": 172,
+      "deletions": 309,
+      "status": "merged"
+    },
+    {
+      "id": "main.partial-eval-proptest",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "partial-eval-proptest",
+      "prs": [
+        {
+          "number": 106,
+          "title": "test: add proptests for PartialEval pass",
+          "body": "Implements property-based tests for the PartialEval pass in tidepool-optimize.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/106",
+          "additions": 317,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T11:26:02Z",
+          "closedAt": "2026-02-25T11:26:02Z"
+        }
+      ],
+      "additions": 317,
+      "deletions": 0,
       "status": "merged"
     },
     {
@@ -1792,6 +4490,28 @@
       "status": "merged"
     },
     {
+      "id": "main.prelude-text-tests",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "prelude-text-tests",
+      "prs": [
+        {
+          "number": 177,
+          "title": "feat: add runtime coverage tests for Prelude and Text modules",
+          "body": "Adds runtime-level coverage tests for Tidepool's Prelude functions, Text operations, and Map/Set types.\n- `tidepool-runtime/tests/prelude_coverage.rs`: 34 tests for list operations, text operations, parsing, and Map/Set.\n- `tidepool-runtime/tests/text_module_coverage.rs`: 8 tests for Tidepool.Text utility functions.\nAll tests follow the established `run_plain` pattern and use explicit type annotations as required.\nVerified with `cargo test -p tidepool-runtime --test prelude_coverage` and `cargo test -p tidepool-runtime --test text_module_coverage`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/177",
+          "additions": 300,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:37:13Z",
+          "closedAt": "2026-03-08T01:37:13Z"
+        }
+      ],
+      "additions": 300,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
       "id": "main.pretty",
       "parent": "main.core-repr",
       "depth": 2,
@@ -1811,6 +4531,226 @@
       ],
       "additions": 448,
       "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.primop-name-macro",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "primop-name-macro",
+      "prs": [
+        {
+          "number": 167,
+          "title": "feat: unify PrimOpKind name mapping with declarative macro",
+          "body": "This PR unifies the mapping between `PrimOpKind` variants and their string names (both for display and CBOR serialization) using a single declarative macro `define_primops!` in `tidepool-repr/src/types.rs`.\n\nKey changes:\n- Defined `define_primops!` macro to generate the `PrimOpKind` enum, `Display` implementation, `serial_name()` method, and `from_serial_name()` static method.\n- Replaced the manual enum definition and ~200 match arms in `Display` impl with a single macro invocation.\n- Updated `tidepool-repr/src/serial/write.rs` and `tidepool-repr/src/serial/read.rs` to delegate to the methods generated by the macro.\n- Verified that all ~205 variants are preserved with correct mappings.\n- Verified that existing tests pass (excluding pre-existing failures).\n\nThis reduces code duplication and ensures consistency between display names and serialization names.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/167",
+          "additions": 265,
+          "deletions": 860,
+          "mergedAt": "2026-03-08T00:34:39Z",
+          "closedAt": "2026-03-08T00:34:40Z"
+        }
+      ],
+      "additions": 265,
+      "deletions": 860,
+      "status": "merged"
+    },
+    {
+      "id": "main.primop-test-coverage",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "primop-test-coverage",
+      "prs": [
+        {
+          "number": 173,
+          "title": "Add comprehensive tests for PrimOp variants",
+          "body": "This PR adds a new test file `tidepool-codegen/tests/emit_primop.rs` which covers 47 `PrimOp` variants, including:\n- Float arithmetic (11 tests)\n- Float conversions (4 tests)\n- Transcendental Double (13 tests)\n- Integer bitwise (7 tests)\n- Word operations (7 tests)\n- Word8 operations (5 tests)\n\nAll tests follow the established pattern from `emit_expr.rs` and verify the correctness of the generated code for these operations.\n\nNote: Transcendental Float operations (FloatSin, FloatCos, FloatSqrt) were skipped as they are not currently present in `PrimOpKind`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/173",
+          "additions": 908,
+          "deletions": 0,
+          "mergedAt": "2026-03-08T01:29:36Z",
+          "closedAt": "2026-03-08T01:29:36Z"
+        }
+      ],
+      "additions": 908,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-bridge-text",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-bridge-text",
+      "prs": [
+        {
+          "number": 98,
+          "title": "test: add property-based round-trip tests for Text bridge values",
+          "body": "This PR adds property-based tests to verify the round-trip conversion between Rust `String` and Tidepool `Text` values in the `tidepool-bridge` crate.\n\nTests included:\n- `string_round_trip`: General round-trip for any random string.\n- `empty_string_round_trip`: Specific check for empty strings.\n- `ascii_only_round_trip`: Verification of standard ASCII characters.\n- `emoji_round_trip`: Testing with complex Unicode characters including ZWJ and flags.\n- `all_unicode_planes_round_trip`: Broad coverage across BMP, SMP, SIP, and TIP planes.\n- `mixed_width_chars`: Mix of 1, 2, 3, and 4-byte UTF-8 characters.\n- `length_preserved`: Verifies that the internal `Text` length field matches the Rust `String` length.\n- `to_value_is_deterministic`: Ensures that `ToCore` produces identical heap representations for the same input.\n\nVerification:\n- `cargo test -p tidepool-bridge --test proptest_text` passes with 8 tests.\n- `cargo check --workspace` is clean.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/98",
+          "additions": 118,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T06:00:35Z",
+          "closedAt": "2026-02-25T06:00:36Z"
+        }
+      ],
+      "additions": 118,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-cbor-roundtrip",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-cbor-roundtrip",
+      "prs": [
+        {
+          "number": 96,
+          "title": "test: CBOR round-trip proptests",
+          "body": "Adds property-based tests for CBOR serialization round-trips of CoreExpr and DataConTable in tidepool-repr.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/96",
+          "additions": 160,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T06:09:18Z",
+          "closedAt": "2026-02-25T06:09:18Z"
+        }
+      ],
+      "additions": 160,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-effect",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-effect",
+      "prs": [
+        {
+          "number": 100,
+          "title": "test: property-based tests for effect dispatch",
+          "body": "Adds property-based tests for the effect dispatch system in tidepool-effect. Tests routing by tag, unknown tag errors, request value preservation, and HList order consistency.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/100",
+          "additions": 122,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T06:23:49Z",
+          "closedAt": "2026-02-25T06:23:50Z"
+        }
+      ],
+      "additions": 122,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-heap",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-heap",
+      "prs": [
+        {
+          "number": 99,
+          "title": "test: add property-based tests for heap allocator and GC",
+          "body": "",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/99",
+          "additions": 166,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T06:34:25Z",
+          "closedAt": "2026-02-25T06:34:25Z"
+        }
+      ],
+      "additions": 166,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-host-fns",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-host-fns",
+      "prs": [
+        {
+          "number": 95,
+          "title": "test: add property-based tests for text FFI host functions",
+          "body": "Add proptest dependency to tidepool-codegen and write property-based tests for the text FFI host functions and ByteArray primops in tidepool-codegen/tests/proptest_host_fns.rs. All 11 tests pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/95",
+          "additions": 179,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T05:53:03Z",
+          "closedAt": "2026-02-25T05:53:03Z"
+        }
+      ],
+      "additions": 179,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-jit-vs-eval",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-jit-vs-eval",
+      "prs": [
+        {
+          "number": 101,
+          "title": "test: add JIT vs Eval property-based tests",
+          "body": "This PR adds property-based tests verifying that JIT compilation and tree-walking interpretation produce identical results for pure CoreExpr programs.\n\nThe tests are currently marked as `#[ignore]` because they discovered a fatal bug in the JIT backend:\n1. `unresolved_var_trap` calls `process::abort()` instead of returning an error, killing the test process.\n2. The JIT hits this trap even on closed expressions, suggesting an environment/shadowing bug in `tidepool-codegen`.\n\nThese tests will serve as valuable regression-finding tools once the underlying JIT issues are resolved.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/101",
+          "additions": 222,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T06:50:41Z",
+          "closedAt": "2026-02-25T06:50:42Z"
+        }
+      ],
+      "additions": 222,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.proptest-optimizer-ext",
+      "parent": "main.proptests",
+      "depth": 2,
+      "label": "proptest-optimizer-ext",
+      "prs": [
+        {
+          "number": 97,
+          "title": "test: add extended proptests for optimizer",
+          "body": "This PR adds a new property-based test file `tidepool-optimize/tests/proptest_optimizer_extended.rs` to verify the semantic preservation, idempotence, and size reduction properties of the optimizer.\n\nThe following property tests were implemented:\n- `beta_reduction_preserves_eval`: Generates `App(Lam, arg)` expressions and verifies evaluation results match.\n- `dce_preserves_eval`: Generates `LetNonRec` where the binding is unused and verifies results match.\n- `inline_preserves_eval`: Generates `LetNonRec` where the binding is used exactly once and verifies inlining doesn't change results.\n- `case_of_known_con_preserves_eval`: Generates `Case(Con(...), alts)` and verifies case reduction doesn't change results.\n- `multiple_passes_preserve_eval`: Runs all optimization passes in sequence and verifies result unchanged.\n- `optimization_is_idempotent`: Verifies that `optimize(optimize(expr)) == optimize(expr)`.\n- `dce_does_not_increase_size`: Verifies that Dead Code Elimination does not increase the number of nodes in the expression tree.\n\nAll tests pass and the workspace is clean.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/97",
+          "additions": 415,
+          "deletions": 0,
+          "mergedAt": "2026-02-25T05:57:54Z",
+          "closedAt": "2026-02-25T05:57:54Z"
+        }
+      ],
+      "additions": 415,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.registry-raii-guard",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "registry-raii-guard",
+      "prs": [
+        {
+          "number": 169,
+          "title": "feat: Add RAII guard for thread-local JIT registry cleanup",
+          "body": "This PR introduces a `RegistryGuard` RAII struct in `tidepool-codegen/src/jit_machine.rs` to handle the cleanup of thread-local JIT registries (`gc_state`, `stack_map_registry`, `lambda_registry`).\n\nPreviously, these registries were cleaned up manually at the end of `run()` and `run_pure()`. However, early returns (e.g., via the `?` operator or explicit error paths) would bypass this cleanup, leaving stale state in the thread-local storage.\n\n### Changes:\n- Defined `RegistryGuard` with a `Drop` implementation that calls the `clear_*` functions.\n- Updated `run()` and `run_pure()` to use `RegistryGuard` after installing the registries.\n- Removed all manual cleanup blocks from `run()` and `run_pure()`.\n\nVerified with `cargo check -p tidepool-codegen` and `cargo test -p tidepool-codegen`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/169",
+          "additions": 13,
+          "deletions": 17,
+          "mergedAt": "2026-03-08T01:04:58Z",
+          "closedAt": "2026-03-08T01:04:58Z"
+        }
+      ],
+      "additions": 13,
+      "deletions": 17,
       "status": "merged"
     },
     {
@@ -1858,6 +4798,28 @@
       "status": "merged"
     },
     {
+      "id": "main.sandbox-path-traversal",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "sandbox-path-traversal",
+      "prs": [
+        {
+          "number": 170,
+          "title": "fix: path traversal in RunIn, SgReplace, and FsGlob handlers",
+          "body": "This PR fixes several path traversal vulnerabilities in the `tidepool` MCP server handlers:\n\n1. **RunIn path traversal**: `ExecReq::RunIn` now canonicalizes the target directory and verifies that it is within the sandbox root using `starts_with`.\n2. **SgReplace/SgRuleReplace path traversal**: `SgHandler::collect_files` now canonicalizes all user-provided paths and verifies they are within the sandbox root.\n3. **FsGlob path traversal**: `FsHandler::handle` for `FsGlob` now rejects patterns containing `..` to prevent probing outside the sandbox.\n\nAll changes follow the existing style and use `EffectError::Handler` for error reporting. `cargo check` passes for the workspace.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/170",
+          "additions": 34,
+          "deletions": 12,
+          "mergedAt": "2026-03-08T01:43:39Z",
+          "closedAt": "2026-03-08T01:43:39Z"
+        }
+      ],
+      "additions": 34,
+      "deletions": 12,
+      "status": "merged"
+    },
+    {
       "id": "main.serial",
       "parent": "main.core-repr",
       "depth": 2,
@@ -1880,6 +4842,28 @@
       "status": "merged"
     },
     {
+      "id": "main.sigsegv-context",
+      "parent": "main.signal-safety",
+      "depth": 2,
+      "label": "sigsegv-context",
+      "prs": [
+        {
+          "number": 152,
+          "title": "feat: add SIGSEGV/SIGILL crash context and diagnostics",
+          "body": "This PR enhances the diagnostics for JIT crashes (SIGSEGV, SIGILL) by providing execution context and lambda registry info.\n\nKey changes:\n- Added thread-local `EXEC_CONTEXT` and an async-signal-safe `SIGNAL_SAFE_CTX` buffer in `host_fns.rs`.\n- Updated the signal handler in `signal_safety.rs` to capture the faulting address and include the execution context in the `crash.log`.\n- Enhanced `LambdaRegistry` in `debug.rs` with `lookup_lambda_by_address` to identify which JIT function contained the faulting address.\n- Updated `JitEffectMachine` to set the execution context before `step()`, `resume()`, and `run_pure()`.\n- Enhanced `YieldError::Signal` display to include the execution context.\n- Updated MCP error reporting to include the last few lines of `crash.log` and JIT diagnostics when the eval thread crashes.\n\nVerification:\n- All 71 tests in `tidepool-codegen` pass.\n- MCP tests pass.\n- `cargo check --workspace` passes.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/152",
+          "additions": 153,
+          "deletions": 6,
+          "mergedAt": "2026-03-06T18:42:51Z",
+          "closedAt": "2026-03-06T18:42:51Z"
+        }
+      ],
+      "additions": 153,
+      "deletions": 6,
+      "status": "merged"
+    },
+    {
       "id": "main.structured-errors",
       "parent": "main.polish",
       "depth": 2,
@@ -1899,6 +4883,358 @@
       ],
       "additions": 8,
       "deletions": 8,
+      "status": "merged"
+    },
+    {
+      "id": "main.tco",
+      "parent": "main.features",
+      "depth": 2,
+      "label": "tco",
+      "prs": [
+        {
+          "number": 154,
+          "title": "feat: tail-call optimization for JIT-compiled lambdas",
+          "body": "## Summary\n\n- Tail-position `App` nodes in lambda bodies store callee+arg into VMContext fields and return null instead of `call_indirect`, enabling deep recursion (100K+ iterations) without stack overflow\n- Non-tail callers detect null returns and resolve pending tail calls via `trampoline_resolve` host function\n- Frame walker updated to skip non-JIT frames, supporting JIT→Host→JIT sandwiches (heap_force, trampoline_resolve)\n- Resolution loops added to `effect_machine.rs` (step/call_closure) and `jit_machine.rs` (run_pure)\n\n## Changes\n\n| File | What |\n|------|------|\n| `emit/expr.rs` (+215) | `SetTailPosition` work item, `emit_tail_app` for tail Apps, null-check + trampoline call for non-tail Apps |\n| `effect_machine.rs` (+26) | `resolve_tail_calls` helper called from `step()` and `call_closure()` |\n| `jit_machine.rs` (+25) | Inline resolution loop in `run_pure()` with signal protection |\n| `gc/frame_walker.rs` (+9/-13) | Skip non-JIT frames instead of breaking on first non-JIT frame |\n| `tests/tco.rs` (new) | 3 integration tests: deep 100K recursion, moderate 1K, mixed tail/non-tail |\n\n## Design\n\nBuilds on the VMContext infrastructure from ec050b6 (`tail_callee`/`tail_arg` fields, `trampoline_resolve`).\n\nKey correctness arguments:\n- No new GC safepoints in JIT tail-call path (null check is just a branch)\n- VMContext tail fields don't need GC roots (set immediately before return, consumed immediately by resolver)\n- `compile_expr` intentionally does NOT enable tail position — only lambda bodies get TCO, since raw JIT callers (test harnesses) may lack resolution loops\n\n## Test plan\n\n- [x] `cargo test -p tidepool-codegen test_tco` — 3 TCO tests pass\n- [x] `cargo test --workspace` — no regressions\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/154",
+          "additions": 472,
+          "deletions": 13,
+          "mergedAt": "2026-03-07T01:07:44Z",
+          "closedAt": "2026-03-07T01:07:44Z"
+        }
+      ],
+      "additions": 472,
+      "deletions": 13,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-bitwise-narrow",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-bitwise-narrow",
+      "prs": [
+        {
+          "number": 80,
+          "title": "test: add bitwise, narrowing, carry, and char primop tests",
+          "body": "This PR adds 23 new integration tests to `tidepool-codegen/tests/emit_expr.rs` to cover bitwise operations (Int and Word), narrowing (Int and Word), carry-arithmetic (Word), and character operations (Eq, Lt, Ord, Chr).\n\nThese operations were previously implemented but lacked test coverage. \n\nVerified that all 58 tests in `emit_expr.rs` pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/80",
+          "additions": 247,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:00:34Z",
+          "closedAt": "2026-02-24T21:00:34Z"
+        }
+      ],
+      "additions": 247,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-bytearray-remaining",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-bytearray-remaining",
+      "prs": [
+        {
+          "number": 85,
+          "title": "test: add remaining ByteArray primop tests",
+          "body": "This PR adds tests for the remaining ByteArray primops in `tidepool-codegen`:\n- `SetByteArray`\n- `ShrinkMutableByteArray`\n- `SizeofMutableByteArray`\n- `CompareByteArrays` (equal and unequal cases)\n- `CopyMutableByteArray`\n- `IndexWord8Array`\n- `CopyAddrToByteArray`\n- `ResizeMutableByteArray`\n\nVerified with `cargo test -p tidepool-codegen --test emit_expr`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/85",
+          "additions": 213,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:17:28Z",
+          "closedAt": "2026-02-24T21:17:28Z"
+        }
+      ],
+      "additions": 213,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-case-expr",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-case-expr",
+      "prs": [
+        {
+          "number": 79,
+          "title": "test: add 8 JIT case expression tests",
+          "body": "This PR adds 8 new JIT case expression tests to `tidepool-codegen/tests/emit_case.rs`. These tests cover:\n- Case on Bool (True/False)\n- Case on computed values (Int comparison result)\n- Case with multiple literal alts\n- Case on Word literals\n- Case on Char literals\n- Nested case on constructor fields\n- Case where scrutinee is a lambda application (needs forcing)\n- Case with same result in multiple alts\n\nAll existing and new tests in `emit_case.rs` are passing.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/79",
+          "additions": 195,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:00:12Z",
+          "closedAt": "2026-02-24T21:00:13Z"
+        }
+      ],
+      "additions": 195,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-cbor-serial",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-cbor-serial",
+      "prs": [
+        {
+          "number": 78,
+          "title": "test: add CBOR roundtrip tests for CoreExpr and DataConTable",
+          "body": "This PR adds unit tests for CBOR serialization and deserialization in `tidepool-repr`.\n\nChanges:\n- Implemented `write_metadata` in `tidepool-repr/src/serial/write.rs` to support `DataConTable` serialization.\n- Added `PartialEq` and `Eq` to `DataConTable` to facilitate comparison in tests.\n- Added `test_roundtrip_metadata` to `tidepool-repr/src/serial/mod.rs`.\n- Verified all 20 serial tests pass, covering `CoreExpr` frames and `DataConTable`.\n\nThe base branch for this PR is `main`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/78",
+          "additions": 69,
+          "deletions": 1,
+          "mergedAt": "2026-02-24T21:00:06Z",
+          "closedAt": "2026-02-24T21:00:06Z"
+        }
+      ],
+      "additions": 69,
+      "deletions": 1,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-comparison-complete",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-comparison-complete",
+      "prs": [
+        {
+          "number": 88,
+          "title": "test: add Float, Double, Char, and Word comparison tests",
+          "body": "Add comparison primop tests for Float, Double, Char, and Word types.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/88",
+          "additions": 137,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:19:29Z",
+          "closedAt": "2026-02-24T21:19:29Z"
+        }
+      ],
+      "additions": 137,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-effect-cont",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-effect-cont",
+      "prs": [
+        {
+          "number": 82,
+          "title": "test: continuation logic in CompiledEffectMachine",
+          "body": "This PR adds 5 new test functions to `tidepool-codegen/tests/effect_machine.rs` to cover the continuation application logic in `CompiledEffectMachine` (`apply_cont_heap`).\n\nTests added:\n1. `test_resume_leaf_identity`: Tests `Leaf` continuation with an identity closure.\n2. `test_resume_node_identity`: Tests `Node` continuation composing two identity `Leaf`s.\n3. `test_resume_null_continuation`: Verifies graceful handling of null continuation pointers.\n4. `test_resume_unknown_tag`: Verifies error handling for unexpected heap tags in continuation position.\n5. `test_resume_node_with_effect_result`: Tests `Node` composition where the first continuation returns an effect request (`Yield::Request`).\n\nAdditionally:\n- Fixed pre-existing clippy warnings in `heap_bridge.rs`, `host_fns.rs`, and `emit_case.rs` that were blocking lint verification.\n- Improved `debug_app_check` with safety documentation.\n- Standardized `transmute` calls in `effect_machine.rs` tests with explicit annotations.\n\nAll 13 tests in `effect_machine.rs` pass. `cargo check` and `cargo clippy` pass for the crate (with remaining unrelated warnings in other test files).",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/82",
+          "additions": 1072,
+          "deletions": 12,
+          "mergedAt": "2026-02-24T21:04:07Z",
+          "closedAt": "2026-02-24T21:04:07Z"
+        }
+      ],
+      "additions": 1072,
+      "deletions": 12,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-error-sentinel",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-error-sentinel",
+      "prs": [
+        {
+          "number": 87,
+          "title": "feat: add tests for error sentinel deferral",
+          "body": "This PR adds comprehensive tests for the error sentinel deferral feature in `tidepool-codegen`.\nGHC Core often hoists `error` calls into `let` bindings that are only intended to be forced on impossible branches. This feature ensures such bindings are bound to a poison closure instead of being evaluated eagerly by our JIT, preventing premature runtime errors.\n\nAdded tests cover:\n- `LetNonRec` with error sentinel RHS (deferred correctly)\n- `LetNonRec` forced (returns poison closure)\n- `LetRec` with error sentinel in a binding (deferred correctly)\n- `LetRec` with no recursive bindings (deferred correctly)\n- Error sentinel detection in complex RHS (e.g., `Con(error_var)`)\n- Verification that non-error bindings are not deferred.\n\nVerified with `cargo test -p tidepool-codegen --test emit_expr`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/87",
+          "additions": 104,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:18:43Z",
+          "closedAt": "2026-02-24T21:18:43Z"
+        }
+      ],
+      "additions": 104,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-eval-edges",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-eval-edges",
+      "prs": [
+        {
+          "number": 84,
+          "title": "feat: add eval.rs error path and edge case tests",
+          "body": "Adds 8 new inline tests to `tidepool-eval/src/eval.rs` covering error paths and edge cases:\n- Case with no matching alternative\n- PrimOp arity mismatch\n- Force on non-thunk (identity)\n- Deeply nested constructor evaluation\n- Case DEFAULT binder scoping\n- Empty constructor application\n- Lazy/forced unbound variable behavior\n\nVerified that all 30 tests in `tidepool-eval` pass and no warnings are introduced in `eval.rs`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/84",
+          "additions": 183,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:15:29Z",
+          "closedAt": "2026-02-24T21:15:29Z"
+        }
+      ],
+      "additions": 183,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-float-double",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-float-double",
+      "prs": [
+        {
+          "number": 77,
+          "title": "test: add Float and Double primop tests",
+          "body": "This PR adds test coverage for Float and Double primitive operations in `tidepool-codegen`.\n\n### Changes\n- Added `read_lit_double` and `read_lit_float` helper functions to `tidepool-codegen/tests/emit_expr.rs` to extract floating point values from the heap.\n- Added 15 new test cases covering:\n    - Double arithmetic: Add, Sub, Mul, Div, Negate\n    - Double comparisons: Eq, Lt\n    - Float arithmetic: Add, Mul, Negate\n    - Float comparisons: Lt\n    - Type conversions: `Int2Double`, `Double2Int`, `Int2Float`, `Float2Double`\n\nAll tests pass (50 total in `emit_expr.rs`).",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/77",
+          "additions": 169,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T20:59:26Z",
+          "closedAt": "2026-02-24T20:59:26Z"
+        }
+      ],
+      "additions": 169,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-heap-bridge",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-heap-bridge",
+      "prs": [
+        {
+          "number": 73,
+          "title": "test: add roundtrip unit tests for heap_bridge",
+          "body": "This PR adds 12 inline unit tests to `tidepool-codegen/src/heap_bridge.rs` covering:\n- Roundtrip conversion for `LitInt`, `LitWord`, `LitChar`, `LitDouble`, `LitFloat`, and `LitString`.\n- Roundtrip conversion for `Con` (nullary, with literals, and nested).\n- Roundtrip conversion for `ByteArray`.\n- `bump_alloc_from_vmctx` alignment and bounds checking.\n\nThese tests help ensure that the mapping between Rust `Value` ADTs and raw heap objects is consistent and correctly implemented, preventing the type representation mismatches that have previously caused SIGSEGV bugs.\n\nVerified with `cargo test -p tidepool-codegen -- heap_bridge::tests` and `cargo check -p tidepool-codegen`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/73",
+          "additions": 218,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T20:48:22Z",
+          "closedAt": "2026-02-24T20:48:22Z"
+        }
+      ],
+      "additions": 218,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-host-fns",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-host-fns",
+      "prs": [
+        {
+          "number": 74,
+          "title": "test: add unit tests for host functions in tidepool-codegen",
+          "body": "Adds 16 unit tests to `tidepool-codegen/src/host_fns.rs` covering:\n- `runtime_new_byte_array`\n- `runtime_copy_addr_to_byte_array`\n- `runtime_set_byte_array`\n- `runtime_shrink_byte_array`\n- `runtime_resize_byte_array`\n- `runtime_copy_byte_array`\n- `runtime_compare_byte_arrays`\n- `runtime_strlen`\n- `runtime_text_measure_off` (ASCII and multi-byte UTF-8)\n- `runtime_text_memchr`\n- `runtime_text_reverse` (ASCII and multi-byte UTF-8)\n\nAll tests pass and `cargo check` is clean. Memory is manually managed in tests using `std::alloc` to match the runtime's behavior.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/74",
+          "additions": 220,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T20:48:27Z",
+          "closedAt": "2026-02-24T20:48:27Z"
+        }
+      ],
+      "additions": 220,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-int64-word64",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-int64-word64",
+      "prs": [
+        {
+          "number": 83,
+          "title": "test: add Int64 and Word64 primop tests",
+          "body": "Adds comprehensive tests for 64-bit integer and word primops in `tidepool-codegen`.\n\nTested ops:\n- `Int64Add`, `Int64Sub`, `Int64Mul`, `Int64Negate`\n- `Int64Lt`, `Int64Le`, `Int64Gt`, `Int64Ge`\n- `Int64Shl`, `Int64Shra`\n- `Word64And`, `Word64Or`, `Word64Shl`\n- Conversions: `Int64ToInt`, `IntToInt64`, `Int64ToWord64`, `Word64ToInt64`\n\nVerified that all 90 tests in `emit_expr.rs` pass.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/83",
+          "additions": 182,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:15:24Z",
+          "closedAt": "2026-02-24T21:15:24Z"
+        }
+      ],
+      "additions": 182,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-pipeline-nursery",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-pipeline-nursery",
+      "prs": [
+        {
+          "number": 86,
+          "title": "test: add unit tests for nursery and pipeline in tidepool-codegen",
+          "body": "This PR adds unit tests for `nursery.rs` and `pipeline.rs` in the `tidepool-codegen` crate, covering:\n\n### nursery.rs\n- Nursery creation and buffer allocation.\n- `make_vmctx` correctly initializing `VMContext` pointers.\n- Alignment of `alloc_ptr`.\n- Multiple `make_vmctx` calls returning consistent pointers.\n\n### pipeline.rs\n- Empty pipeline finalization.\n- Full declare-define-finalize cycle for a simple function.\n- Handling of duplicate function declarations.\n- Lambda registry population and lookup.\n- Integration with host function symbols.\n\nAll tests pass and no warnings are generated.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/86",
+          "additions": 190,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T21:15:53Z",
+          "closedAt": "2026-02-24T21:15:53Z"
+        }
+      ],
+      "additions": 190,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-primops",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-primops",
+      "prs": [
+        {
+          "number": 76,
+          "title": "test: expand primop integration tests in emit_expr.rs",
+          "body": "This PR expands the inline unit test coverage for `tidepool-codegen/src/emit/primop.rs` by adding 15 new integration tests to `tidepool-codegen/tests/emit_expr.rs`.\n\nThe new tests cover:\n- **ByteArray primops**: `NewByteArray`, `SizeofByteArray`, `WriteWord8Array`, `ReadWord8Array`, `WriteWordArray`, `IndexWordArray`, `CopyByteArray`, `UnsafeFreezeByteArray`.\n- **Addr primops**: `PlusAddr`, `IndexCharOffAddr`.\n- **Char primops**: `Ord`, `Chr` roundtrip.\n- **Comparison primops**: `IntLt`, `IntGt`, `IntLe`, `IntGe` (extended with negative numbers), `WordLt`, `WordGt`, `WordLe`, `WordGe`.\n- **Arithmetic edge cases**: `IntQuot`, `IntRem` with negative numbers, `QuotRemWordVal`, `QuotRemWordRem`.\n- **Miscellaneous**: `Narrow16Int`, `Word8Add`, `Word8Sub`, `Clz8`, `AddIntCVal`, `AddIntCCarry`.\n\nVerification:\n- All 35 tests in `tidepool-codegen/tests/emit_expr.rs` are passing.\n- `cargo check -p tidepool-codegen` passed without warnings.\n- Side-effecting primops (writes, copies) are correctly sequenced using `LetNonRec` and forced by ensuring their results are used in the final expression to avoid dead-code elimination.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/76",
+          "additions": 258,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T20:48:37Z",
+          "closedAt": "2026-02-24T20:48:37Z"
+        }
+      ],
+      "additions": 258,
+      "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.test-render-bridge",
+      "parent": "main.test-coverage",
+      "depth": 2,
+      "label": "test-render-bridge",
+      "prs": [
+        {
+          "number": 75,
+          "title": "test: add unit tests for render.rs and impls.rs",
+          "body": "This PR adds comprehensive unit tests to `tidepool-runtime/src/render.rs` to verify JSON rendering of Haskell values. It also expands the unit tests in `tidepool-bridge/src/impls.rs` to cover more types and specifically verifies that `String::to_value` produces unboxed fields (JIT requirement).\n\nTests added in `render.rs`:\n- `LitInt` -> JSON number\n- `LitString` -> JSON string\n- `Bool` (True/False) -> JSON true/false\n- `Option None` (Nothing) -> JSON null\n- `Option Some` (Just) -> unwrapped inner value\n- List of ints -> JSON array\n- `Text` constructor -> JSON string\n- List of strings -> JSON array\n- Tuples -> JSON array\n- Char list -> JSON string\n\nTests expanded in `impls.rs`:\n- `String::to_value` unboxed fields check (fixed potential move per review)\n- `()` roundtrip\n- `f64` roundtrip\n- `u64` roundtrip\n- `char` roundtrip\n- `Vec<String>` roundtrip\n- `Option` nested roundtrip\n- `Result` nested roundtrip\n\nAll tests pass and `cargo check` is clean.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/75",
+          "additions": 225,
+          "deletions": 0,
+          "mergedAt": "2026-02-24T20:48:32Z",
+          "closedAt": "2026-02-24T20:48:33Z"
+        }
+      ],
+      "additions": 225,
+      "deletions": 0,
       "status": "merged"
     },
     {
@@ -2056,6 +5392,28 @@
       "status": "merged"
     },
     {
+      "id": "main.translate-safety",
+      "parent": "main.hardening",
+      "depth": 2,
+      "label": "translate-safety",
+      "prs": [
+        {
+          "number": 179,
+          "title": "fix: Haskell translation safety improvements",
+          "body": "This PR addresses several safety issues in the Haskell translation code:\n- Replaces unsafe `head` calls with pattern matching in `Translate.hs`.\n- Adds bounds checks for `!!` indexing in `reachableBinds`.\n- Converts `trace` catch-alls to `error` in `mapPrimOp` and `mapFfiCall` to fail loudly on unsupported operations.\n- Removes `Debug.Trace` import.\n- Replaces silent module fallback with a descriptive error in `GhcPipeline.hs`.\n\nVerified with `cd haskell && cabal build tidepool-extract-bin` and `cargo check --workspace`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/179",
+          "additions": 19,
+          "deletions": 13,
+          "mergedAt": "2026-03-08T02:32:08Z",
+          "closedAt": "2026-03-08T02:32:08Z"
+        }
+      ],
+      "additions": 19,
+      "deletions": 13,
+      "status": "merged"
+    },
+    {
       "id": "main.types-and-datacon",
       "parent": "main.core-repr",
       "depth": 2,
@@ -2075,6 +5433,28 @@
       ],
       "additions": 202,
       "deletions": 0,
+      "status": "merged"
+    },
+    {
+      "id": "main.update-claude-md",
+      "parent": "main.polish",
+      "depth": 2,
+      "label": "update-claude-md",
+      "prs": [
+        {
+          "number": 72,
+          "title": "docs: update CLAUDE.md to remove stale references",
+          "body": "This PR updates `CLAUDE.md` to reflect the current state of the project:\n- Replaced stale reference to `plans/decisions.md` with the \"Key Decisions Reference\" section within `CLAUDE.md`.\n- Simplified the \"Plans\" section to reflect that `plans/README.md` tracks the current active plan.\n- Removed the \"Research\" section as the referenced files in `plans/research/` no longer exist.\n- Updated the \"Project Structure\" diagram to match the current `plans/` directory contents.\n\nVerified that all referenced paths exist and stale strings are removed.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/72",
+          "additions": 5,
+          "deletions": 16,
+          "mergedAt": "2026-02-24T20:34:28Z",
+          "closedAt": "2026-02-24T20:34:28Z"
+        }
+      ],
+      "additions": 5,
+      "deletions": 16,
       "status": "merged"
     },
     {
@@ -2100,6 +5480,94 @@
       "status": "merged"
     },
     {
+      "id": "main.wu1-signal-protection-scope",
+      "parent": "main.signal-safety",
+      "depth": 2,
+      "label": "wu1-signal-protection-scope",
+      "prs": [
+        {
+          "number": 143,
+          "title": "feat: expand signal protection scope in jit_machine.rs",
+          "body": "This PR expands the signal protection scope in `jit_machine.rs` to include calls to `heap_to_value` and `value_to_heap`. \n\n### Changes:\n1. Added `Signal(crate::signal_safety::SignalError)` variant to `JitError` enum.\n2. Updated `JitError::fmt` to handle the new `Signal` variant.\n3. Wrapped 4 unprotected calls with `with_signal_protection` in `run` and `run_pure` methods of `JitEffectMachine`.\n\nThese changes ensure that any `SIGSEGV` or other fatal signals occurring during marshalling between the Rust heap and the JIT heap are caught and returned as a `JitError::Signal` instead of crashing the entire process.\n\nVerified with `cargo test -p tidepool-codegen`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/143",
+          "additions": 30,
+          "deletions": 8,
+          "mergedAt": "2026-03-04T23:59:40Z",
+          "closedAt": "2026-03-04T23:59:40Z"
+        }
+      ],
+      "additions": 30,
+      "deletions": 8,
+      "status": "merged"
+    },
+    {
+      "id": "main.wu2-pthread-exit-fallback",
+      "parent": "main.signal-safety",
+      "depth": 2,
+      "label": "wu2-pthread-exit-fallback",
+      "prs": [
+        {
+          "number": 141,
+          "title": "feat: use pthread_exit in signal handler fallback",
+          "body": "This PR updates the signal handler fallback path in `tidepool-codegen/src/signal_safety.rs`. \n\nWhen a signal (SIGILL, SIGSEGV, etc.) occurs outside of the JIT context (i.e., `JMP_BUF` is null), we now use `pthread_exit` instead of re-raising the signal with `SIG_DFL`. This ensures that only the faulting thread (the detached eval thread) is terminated, rather than the entire process.\n\nThe MCP server already handles the case where the eval thread's channel sender drops as \"Eval thread crashed\", so this change allows the server to remain alive and report the error instead of being killed by the signal.\n\n`pthread_exit` is POSIX async-signal-safe.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/141",
+          "additions": 10,
+          "deletions": 3,
+          "mergedAt": "2026-03-05T00:08:02Z",
+          "closedAt": "2026-03-05T00:08:02Z"
+        }
+      ],
+      "additions": 10,
+      "deletions": 3,
+      "status": "merged"
+    },
+    {
+      "id": "main.wu3-heap-bridge-validation",
+      "parent": "main.signal-safety",
+      "depth": 2,
+      "label": "wu3-heap-bridge-validation",
+      "prs": [
+        {
+          "number": 142,
+          "title": "feat: defensive validation in heap_bridge",
+          "body": "This PR adds defensive validation to `tidepool-codegen/src/heap_bridge.rs` to catch corrupted heap data before it causes SIGSEGV.\n\nChanges:\n1. Added new `BridgeError` variants: `TooManyFields`, `DataTooLarge`, and `TooDeep`.\n2. Refactored `heap_to_value` into `heap_to_value` (wrapper) and `heap_to_value_inner` with recursion depth tracking and a `MAX_DEPTH` limit (10,000).\n3. Added `MAX_FIELDS` (1024) check in `TAG_CON` branch.\n4. Added `MAX_DATA_SIZE` (64MB) check for `LitString`, `ByteArray`, and `Array` lengths.\n5. Added null-check for `runtime_new_byte_array` return in `value_to_heap`.\n6. Added unit tests for null pointer and invalid heap tag scenarios.\n\nVerified with `cargo test -p tidepool-codegen`.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/142",
+          "additions": 47,
+          "deletions": 2,
+          "mergedAt": "2026-03-04T23:59:33Z",
+          "closedAt": "2026-03-04T23:59:33Z"
+        }
+      ],
+      "additions": 47,
+      "deletions": 2,
+      "status": "merged"
+    },
+    {
+      "id": "main.wu4-crash-logging",
+      "parent": "main.signal-safety",
+      "depth": 2,
+      "label": "wu4-crash-logging",
+      "prs": [
+        {
+          "number": 140,
+          "title": "feat(codegen): improve crash logging with thread ID and better path resolution",
+          "body": "This PR improves crash logging in `tidepool-codegen` by:\n- Adding thread ID (`tid=`) to the crash dump.\n- Increasing the crash dump buffer size from 256 to 384 bytes.\n- Extracting formatting into a testable `format_crash_line` function.\n- Improving crash log path resolution and directory creation.\n- **Addressing feedback**: \n    - Made `tid` calculation portable (Linux vs macOS).\n    - Added fallback to `/tmp/tidepool-crash.log` if chosen path is too long (avoid silently disabling logging).\n    - Correctly handle empty parent path (relative paths like `crash.log`).\n    - Use `std::fs::create_dir_all` for robust directory creation in non-signal context.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/140",
+          "additions": 145,
+          "deletions": 65,
+          "mergedAt": "2026-03-04T23:59:27Z",
+          "closedAt": "2026-03-04T23:59:27Z"
+        }
+      ],
+      "additions": 145,
+      "deletions": 65,
+      "status": "merged"
+    },
+    {
       "id": "prelude-closure",
       "parent": "main.runtime",
       "depth": 2,
@@ -2119,6 +5587,28 @@
       ],
       "additions": 86,
       "deletions": 21,
+      "status": "merged"
+    },
+    {
+      "id": "main.ask-effect.ask-mcp",
+      "parent": "main.ask-effect",
+      "depth": 3,
+      "label": "ask-mcp",
+      "prs": [
+        {
+          "number": 117,
+          "title": "feat: implement Ask effect with channel-based suspension in tidepool-mcp",
+          "body": "This PR implements the `Ask` effect with channel-based suspension in the `tidepool-mcp` crate.\n\nKey changes:\n- Added `tidepool-bridge` and `tidepool-repr` dependencies to `tidepool-mcp/Cargo.toml`.\n- Added `ask_decl()` and included it in `standard_decls()`.\n- Implemented `AskDispatcher` to intercept the `Ask` effect and communicate with the server via channels.\n- Refactored `eval()` to use `tokio::sync::mpsc` channels for communicating between the evaluation thread and the MCP server.\n- Added a `resume` tool to allow LLMs to provide answers to `Ask` prompts.\n- Implemented continuation storage in `TidepoolMcpServerImpl` with a 5-minute TTL.\n- Added comprehensive unit tests for the new functionality.\n- Verified that all existing tests pass and the workspace compiles without errors.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/117",
+          "additions": 383,
+          "deletions": 60,
+          "mergedAt": "2026-02-26T11:04:30Z",
+          "closedAt": "2026-02-26T11:04:30Z"
+        }
+      ],
+      "additions": 383,
+      "deletions": 60,
       "status": "merged"
     },
     {
@@ -2229,6 +5719,28 @@
       ],
       "additions": 274,
       "deletions": 3,
+      "status": "merged"
+    },
+    {
+      "id": "main.lazy-thunks-ws2-codegen.fix-jit-console-sigsegv",
+      "parent": "main.lazy-thunks-ws2-codegen",
+      "depth": 3,
+      "label": "fix-jit-console-sigsegv",
+      "prs": [
+        {
+          "number": 147,
+          "title": "Fix SIGSEGV in JIT by preventing heap_force from forcing TAG_CLOSURE",
+          "body": "`test_jit_console_roundtrip` (and likely other complex JIT tests involving closures within effect handlers) was failing with a `SIGSEGV` during execution.\n\nThe root cause was that `heap_force` in `tidepool-codegen/src/host_fns.rs` was still attempting to force `TAG_CLOSURE` objects. It did this by reading the closure's `code_ptr` and invoking it with a `null` argument. \n\nSince the addition of lazy thunk codegen (`TAG_THUNK`), `TAG_CLOSURE` strictly represents lambda values, which are already in Weak Head Normal Form (WHNF). Furthermore, the JIT-compiled closure code expects its arguments, and passing `null` resulted in a segmentation fault when the closure attempted to use the missing argument.\n\nThis PR updates `heap_force` to immediately return the current object for all tags other than `TAG_THUNK`, correctly treating `TAG_CLOSURE`, `TAG_CON`, and `TAG_LIT` as WHNF.",
+          "state": "merged",
+          "url": "https://github.com/tidepool-heavy-industries/tidepool/pull/147",
+          "additions": 41,
+          "deletions": 69,
+          "mergedAt": "2026-03-05T22:32:09Z",
+          "closedAt": "2026-03-05T22:32:09Z"
+        }
+      ],
+      "additions": 41,
+      "deletions": 69,
       "status": "merged"
     }
   ]

@@ -60,3 +60,6 @@ haskell/test/Suite_cbor/
 
 # Experimental Haskell modules (none currently)
 haskell/test-prelude.hs
+
+# Generated viz output
+viz/index.html
