@@ -1,83 +1,12 @@
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
 use tidepool_eval::pass::Pass;
-use tidepool_eval::{eval, Env, Value, VecHeap};
 use tidepool_optimize::partial::PartialEval;
 use tidepool_repr::frame::CoreFrame;
 use tidepool_repr::types::{Alt, AltCon, DataConId, Literal, PrimOpKind, VarId};
 use tidepool_repr::{CoreExpr, TreeBuilder};
 use tidepool_testing::gen::arb_core_expr;
-
-/// Recursive structural comparison of values.
-/// Skips closures, thunks, and join points by returning true.
-fn values_equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Lit(l1), Value::Lit(l2)) => l1 == l2,
-        (Value::Con(tag1, fields1), Value::Con(tag2, fields2)) => {
-            tag1 == tag2
-                && fields1.len() == fields2.len()
-                && fields1
-                    .iter()
-                    .zip(fields2.iter())
-                    .all(|(f1, f2)| values_equal(f1, f2))
-        }
-        _ => true,
-    }
-}
-
-/// Helper that verifies an optimization pass preserves evaluation results.
-fn check_pass_preserves_eval(pass: &dyn Pass, expr: CoreExpr) -> Result<(), TestCaseError> {
-    let mut heap1 = VecHeap::new();
-    let env = Env::new();
-
-    // Evaluate original
-    let original_res = eval(&expr, &env, &mut heap1);
-
-    // Run the pass
-    let mut optimized = expr.clone();
-    pass.run(&mut optimized);
-
-    let mut heap2 = VecHeap::new();
-    // Evaluate optimized
-    let optimized_res = eval(&optimized, &env, &mut heap2);
-
-    match (original_res, optimized_res) {
-        (Ok(v1), Ok(v2)) => {
-            prop_assert!(
-                values_equal(&v1, &v2),
-                "Evaluation results differ after pass {}.
-Original: {:?}
-Optimized: {:?}
-Expr: {:#?}
-Optimized Expr: {:#?}",
-                pass.name(),
-                v1,
-                v2,
-                expr,
-                optimized
-            );
-        }
-        (Err(_), _) => {
-            // If original eval fails, we skip this case.
-            // Passes are only guaranteed to preserve behavior of well-defined programs.
-        }
-        (Ok(_), Err(e)) => {
-            prop_assert!(
-                false,
-                "Optimized evaluation failed but original succeeded.
-Pass: {}
-Error: {:?}
-Expr: {:#?}
-Optimized Expr: {:#?}",
-                pass.name(),
-                e,
-                expr,
-                optimized
-            );
-        }
-    }
-    Ok(())
-}
+use tidepool_testing::proptest::check_pass_preserves_eval;
 
 #[allow(dead_code)]
 fn expr_to_builder(expr: CoreExpr) -> TreeBuilder {

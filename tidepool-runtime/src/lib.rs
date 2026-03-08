@@ -132,6 +132,25 @@ impl From<JitError> for RuntimeError {
 /// # Returns
 /// * `Ok((CoreExpr, DataConTable))` on success.
 /// * `Err(CompileError)` if compilation fails, the extractor is missing, or output is invalid.
+
+/// Extract module name from Haskell source (e.g. "module Expr where" → "Expr").
+fn extract_module_name(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            // "module Foo.Bar where" or "module Foo (" → take until whitespace/paren
+            let name: String = rest.trim_start()
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '.' || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
 pub fn compile_haskell(
     source: &str,
     target: &str,
@@ -149,8 +168,13 @@ pub fn compile_haskell(
     }
 
     // 1. Setup temporary workspace
+    // Derive filename from the module declaration so GHC's module name matches
+    // the filename (GhcPipeline uses capitalize(takeBaseName(path)) as target).
     let temp_dir = TempDir::new()?;
-    let input_path = temp_dir.path().join("input.hs");
+    let filename = extract_module_name(source)
+        .map(|m| format!("{}.hs", m))
+        .unwrap_or_else(|| "Input.hs".to_string());
+    let input_path = temp_dir.path().join(&filename);
     std::fs::write(&input_path, source)?;
 
     // 2. Execute tidepool-extract
@@ -300,9 +324,35 @@ pub fn compile_and_run<U, H: DispatchEffect<U>>(
 mod tests {
     use super::*;
 
+    /// Set up TIDEPOOL_EXTRACT env var and check GHC availability.
+    /// Returns false if GHC is not available (test should skip).
+    fn ensure_extract_available() -> bool {
+        if std::env::var("TIDEPOOL_EXTRACT").is_err() {
+            let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("haskell")
+                .join("tidepool-extract");
+            if bin.exists() {
+                std::env::set_var("TIDEPOOL_EXTRACT", &bin);
+            }
+        }
+        // GHC is needed by tidepool-extract; only available inside `nix develop`
+        std::process::Command::new("ghc")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
     #[test]
-    #[ignore] // Manual test: requires tidepool-extract on PATH
     fn test_compile_identity() {
+        if !ensure_extract_available() {
+            eprintln!("Skipping: GHC not available (run inside `nix develop`)");
+            return;
+        }
         let source = "module Test where\nidentity x = x";
         let (expr, _table, _warnings) =
             compile_haskell(source, "identity", &[]).expect("Failed to compile identity");
@@ -312,8 +362,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Manual test: requires tidepool-extract on PATH
     fn test_compile_error() {
+        if !ensure_extract_available() {
+            eprintln!("Skipping: GHC not available (run inside `nix develop`)");
+            return;
+        }
         let source = "module Test where\nfoo = garbage";
         let res = compile_haskell(source, "foo", &[]);
         assert!(res.is_err());

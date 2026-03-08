@@ -28,6 +28,7 @@ import Prelude
 import Data.Text (Text)
 import qualified Data.Text as T
 import Tidepool.Prelude (enumFromTo, lines, splitOn, sortBy, comparing, strip)
+import Tidepool.Text (padRightWith)
 
 -- ---------------------------------------------------------------------------
 -- Parsing
@@ -87,18 +88,13 @@ renderRow sep pad widths fields =
   let sepT = T.singleton sep
       padT = T.singleton pad
       cells = zipPad widths fields
-      rendered = map (\(w, f) -> padT <> padRight w pad f <> padT) cells
+      rendered = map (\(w, f) -> padT <> padRightWith w pad f <> padT) cells
   in  sepT <> T.intercalate sepT rendered <> sepT
 
 zipPad :: [Int] -> [Text] -> [(Int, Text)]
 zipPad [] _ = []
 zipPad (w:ws) [] = (w, T.empty) : zipPad ws []
 zipPad (w:ws) (f:fs) = (w, f) : zipPad ws fs
-
-padRight :: Int -> Char -> Text -> Text
-padRight w pad t
-  | T.length t >= w = t
-  | otherwise = t <> T.replicate (w - T.length t) (T.singleton pad)
 
 safeDrop :: Int -> [a] -> [a]
 safeDrop 0 xs     = xs

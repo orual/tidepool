@@ -7,3 +7,4 @@
 pub mod compare;
 pub mod gen;
 pub mod oracle;
+pub mod proptest;

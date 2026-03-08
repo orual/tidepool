@@ -5,11 +5,10 @@
 //! The same pattern on `[Int]` works fine, implicating Text's inner
 //! ByteArray# pointer during GC copying.
 
-use std::path::Path;
+mod common;
 
 fn prelude_path() -> std::path::PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest.parent().unwrap().join("haskell").join("lib")
+    common::prelude_path()
 }
 
 fn run(body: &str) -> serde_json::Value {

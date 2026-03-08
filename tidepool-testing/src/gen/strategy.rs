@@ -835,8 +835,10 @@ fn gen_prim_op(ty: SimpleType, depth: u32, ctx: Context) -> BoxedStrategy<(TreeB
             ));
         }
         SimpleType::Char => {
-            // Chr: Int -> Char
-            ops.push(PrimOpSpec::Unary(PrimOpKind::Chr, SimpleType::Int));
+            // No primops for Char — leaf generates valid chars directly via any::<char>().
+            // Chr# from arbitrary Int mostly produces invalid codepoints (rejected by both
+            // interpreter and JIT). GHC Core guarantees chr# receives valid codepoints.
+            return gen_leaf(ty, ctx);
         }
         _ => return gen_leaf(ty, ctx),
     };
@@ -905,6 +907,7 @@ mod tests {
     use crate::compare;
     use proptest::strategy::ValueTree;
     use proptest::test_runner::{Config, TestRunner};
+    use std::cell::Cell;
     use std::collections::HashSet;
     use tidepool_eval::{env::Env, eval::eval, heap::VecHeap};
 
@@ -1053,6 +1056,10 @@ mod tests {
                     cases: 100,
                     ..Config::default()
                 });
+                let compared = Cell::new(0u64);
+                let both_error = Cell::new(0u64);
+                let deep_force_fail = Cell::new(0u64);
+
                 runner
                     .run(&arb_ground_expr(), |expr| {
                         let bytes = tidepool_repr::serial::write_cbor(&expr).unwrap();
@@ -1070,8 +1077,9 @@ mod tests {
                                 match (f1, f2) {
                                     (Ok(fv1), Ok(fv2)) => {
                                         compare::assert_values_eq(&fv1, &fv2);
+                                        compared.set(compared.get() + 1);
                                     }
-                                    (Err(_), Err(_)) => {} // both error during deep_force — ok
+                                    (Err(_), Err(_)) => { deep_force_fail.set(deep_force_fail.get() + 1); }
                                     (Ok(v), Err(e)) => {
                                         panic!(
                                             "CBOR roundtrip broke deep_force: original Ok({}) but recovered Err({:?})",
@@ -1086,15 +1094,27 @@ mod tests {
                                     }
                                 }
                             }
-                            (Err(_), Err(_)) => {} // both error — acceptable
+                            (Err(_), Err(_)) => { both_error.set(both_error.get() + 1); }
                             (Ok(_), Err(e)) => {
                                 panic!("CBOR roundtrip broke eval: original Ok but recovered Err({:?})", e)
                             }
-                            (Err(_), Ok(_)) => {} // original errors, recovered succeeds — acceptable
+                            (Err(_), Ok(_)) => { both_error.set(both_error.get() + 1); }
                         }
                         Ok(())
                     })
                     .unwrap();
+
+                let compared = compared.get();
+                let both_error = both_error.get();
+                let deep_force_fail = deep_force_fail.get();
+                eprintln!(
+                    "\nCBOR roundtrip: compared={compared}, both_error={both_error}, \
+                     deep_force_fail={deep_force_fail}"
+                );
+                assert!(
+                    compared >= 25,
+                    "Only {compared} of 100 cases reached value comparison"
+                );
             })
             .unwrap();
         handle.join().unwrap();

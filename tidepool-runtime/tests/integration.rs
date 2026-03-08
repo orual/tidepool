@@ -1,10 +1,10 @@
-use std::path::Path;
+mod common;
+
 use tidepool_repr::Literal;
 use tidepool_runtime::{compile_and_run_pure, compile_haskell, Value};
 
 fn prelude_path() -> std::path::PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest.parent().unwrap().join("haskell").join("lib")
+    common::prelude_path()
 }
 
 /// Run compile_and_run_pure on a larger stack with Prelude includes.

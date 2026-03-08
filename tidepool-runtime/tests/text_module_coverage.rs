@@ -58,10 +58,10 @@ fn test_truncate_text() {
 
 #[test]
 fn test_pad_left() {
-    assert_eq!(run_plain(r#"padLeft 10 ' ' "hello""#), json!("     hello"));
+    assert_eq!(run_plain(r#"padLeft 10 "hello""#), json!("     hello"));
 }
 
 #[test]
 fn test_pad_right() {
-    assert_eq!(run_plain(r#"padRight 10 ' ' "hello""#), json!("hello     "));
+    assert_eq!(run_plain(r#"padRight 10 "hello""#), json!("hello     "));
 }

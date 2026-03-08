@@ -180,13 +180,7 @@ tracedUnfoldM emit step seed = do
 -- § Text Utilities
 -- ===========================================================================
 
--- | Pad a string to a given width with spaces on the right
-padRight :: Int -> [Char] -> [Char]
-padRight n s = s ++ Prelude.replicate (max 0 (n - Prelude.length s)) ' '
-
--- | Pad a string to a given width with spaces on the left
-padLeft :: Int -> [Char] -> [Char]
-padLeft n s = Prelude.replicate (max 0 (n - Prelude.length s)) ' ' ++ s
+-- padLeft/padRight removed — use Tidepool.Text versions (Text, not [Char])
 
 -- | Split a list into chunks of size n
 chunksOf :: Int -> [a] -> [[a]]

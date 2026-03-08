@@ -10,9 +10,12 @@ module Tidepool.Text
   , capitalize
   , titleCase
     -- * Formatting
-  , center
   , padLeft
   , padRight
+  , padLeftWith
+  , padRightWith
+  , center
+  , centerWith
   , indent
   , dedent
   , wrap
@@ -83,27 +86,39 @@ titleCase = T.unwords . map capitalize . words
 -- Formatting
 -- ---------------------------------------------------------------------------
 
--- | Center text in a field of given width, padding with the given character.
-center :: Int -> Char -> Text -> Text
-center w pad t
+-- | Pad text on the left with spaces to a given width.
+padLeft :: Int -> Text -> Text
+padLeft w = padLeftWith w ' '
+
+-- | Pad text on the right with spaces to a given width.
+padRight :: Int -> Text -> Text
+padRight w = padRightWith w ' '
+
+-- | Pad text on the left to a given width with a custom character.
+padLeftWith :: Int -> Char -> Text -> Text
+padLeftWith w pad t
+  | T.length t >= w = t
+  | otherwise = T.replicate (w - T.length t) (T.singleton pad) <> t
+
+-- | Pad text on the right to a given width with a custom character.
+padRightWith :: Int -> Char -> Text -> Text
+padRightWith w pad t
+  | T.length t >= w = t
+  | otherwise = t <> T.replicate (w - T.length t) (T.singleton pad)
+
+-- | Center text in a field of given width, padding with spaces.
+center :: Int -> Text -> Text
+center w = centerWith w ' '
+
+-- | Center text in a field of given width, padding with a custom character.
+centerWith :: Int -> Char -> Text -> Text
+centerWith w pad t
   | T.length t >= w = t
   | otherwise =
       let total = w - T.length t
           lpad  = total `div` 2
           rpad  = total - lpad
       in  T.replicate lpad (T.singleton pad) <> t <> T.replicate rpad (T.singleton pad)
-
--- | Pad text on the left to a given width.
-padLeft :: Int -> Char -> Text -> Text
-padLeft w pad t
-  | T.length t >= w = t
-  | otherwise = T.replicate (w - T.length t) (T.singleton pad) <> t
-
--- | Pad text on the right to a given width.
-padRight :: Int -> Char -> Text -> Text
-padRight w pad t
-  | T.length t >= w = t
-  | otherwise = t <> T.replicate (w - T.length t) (T.singleton pad)
 
 -- | Indent every line of text by n spaces.
 indent :: Int -> Text -> Text

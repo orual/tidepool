@@ -16,9 +16,9 @@ fn run_pure(src: &str, target: &str) -> EvalResult {
 fn test_concurrent_eval_pure() {
     let mut handles = vec![];
 
-    // Thread 1: Simple math
+    // Thread 1: Simple math (explicit Int to avoid Integer defaulting)
     handles.push(thread::spawn(|| {
-        let res = run_pure("module T1 where\nval = 2 + 2", "val");
+        let res = run_pure("module T1 where\nval :: Int\nval = 2 + 2", "val");
         let json = value_to_json(res.value(), res.table(), 0);
         assert_eq!(json, serde_json::json!(4));
     }));
@@ -30,16 +30,16 @@ fn test_concurrent_eval_pure() {
         assert_eq!(json, serde_json::json!("hello world"));
     }));
 
-    // Thread 3: List operations
+    // Thread 3: List operations (explicit [Int] to avoid Integer/gmpn_cmp)
     handles.push(thread::spawn(|| {
-        let res = run_pure("module T3 where\nimport Data.List (sort)\nval = sort [3, 1, 2]", "val");
+        let res = run_pure("module T3 where\nimport Data.List (sort)\nval :: [Int]\nval = sort [3, 1, 2]", "val");
         let json = value_to_json(res.value(), res.table(), 0);
         assert_eq!(json, serde_json::json!([1, 2, 3]));
     }));
 
-    // Thread 4: Higher-order functions
+    // Thread 4: Higher-order functions (explicit [Int])
     handles.push(thread::spawn(|| {
-        let res = run_pure("module T4 where\nval = map (+1) [1, 2, 3]", "val");
+        let res = run_pure("module T4 where\nval :: [Int]\nval = map (+1) [1, 2, 3]", "val");
         let json = value_to_json(res.value(), res.table(), 0);
         assert_eq!(json, serde_json::json!([2, 3, 4]));
     }));

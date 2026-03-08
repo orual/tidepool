@@ -103,6 +103,13 @@ unsafe fn heap_to_value_inner(
         return Value::ByteArray(std::sync::Arc::new(std::sync::Mutex::new(vec![])));
     }
 
+    // Follow forwarding pointer if GC moved this object during a previous
+    // recursive call (e.g., thunk forcing in a sibling Con field).
+    let mut ptr = ptr;
+    if layout::read_tag(ptr) == layout::TAG_FORWARDED {
+        ptr = *(ptr.add(8) as *const *const u8);
+    }
+
     let tag = layout::read_tag(ptr);
     match tag {
         layout::TAG_LIT => {

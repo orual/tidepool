@@ -46,9 +46,12 @@ fn haskell_suite_differential() {
 
             let mut tested = 0;
             let mut skipped = 0;
-            let mut matched = 0;
+            let mut compared = 0;
+            let mut closure_skip = 0;
+            let mut mismatch = 0;
             let mut both_error = 0;
             let mut jit_only_error = 0;
+            let mut eval_jit_diverge = 0;
 
             for entry in std::fs::read_dir(&cbor_dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -114,17 +117,16 @@ fn haskell_suite_differential() {
                         // Haskell fixtures can evaluate to closures — keep closure checks here
                         if !compare::contains_closure(eval_val) && !compare::contains_closure(jit_val) {
                             if compare::values_equal(eval_val, jit_val) {
-                                matched += 1;
+                                compared += 1;
                             } else {
-                                // Log mismatch but don't fail — real programs may have
-                                // legitimate differences (e.g., ByteArray, String handling)
+                                mismatch += 1;
                                 eprintln!(
                                     "MISMATCH {}: eval={} jit={}",
                                     name, eval_val, jit_val
                                 );
                             }
                         } else {
-                            matched += 1; // closure results — can't compare, count as match
+                            closure_skip += 1;
                         }
                     }
                     (Err(_), Err(_)) | (Err(_), Ok(None)) => {
@@ -134,15 +136,16 @@ fn haskell_suite_differential() {
                         jit_only_error += 1;
                     }
                     (Err(_), Ok(Some(_))) => {
-                        // JIT succeeded where eval failed — possible but ok
-                        matched += 1;
+                        eval_jit_diverge += 1;
                     }
                 }
             }
 
             eprintln!(
-                "\nHaskell suite differential: tested={tested}, matched={matched}, \
-                 both_error={both_error}, jit_only_error={jit_only_error}, skipped={skipped}"
+                "\nHaskell suite differential: tested={tested}, compared={compared}, \
+                 closure_skip={closure_skip}, mismatch={mismatch}, \
+                 both_error={both_error}, jit_only_error={jit_only_error}, \
+                 eval_jit_diverge={eval_jit_diverge}, skipped={skipped}"
             );
 
             // At least some fixtures should have been tested
