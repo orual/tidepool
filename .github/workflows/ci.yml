@@ -5,9 +5,19 @@ on:
 jobs:
   test:
     runs-on: self-hosted
+    env:
+      CABAL_STORE: /var/lib/github-runner-cache/cabal/store
+      CABAL_BUILDDIR: /var/lib/github-runner-cache/cabal/dist-newstyle
     steps:
       - uses: actions/checkout@v4
+
+      - name: build tidepool-extract
+        run: |
+          WRAPPER_DIR=$(nix develop --command .github/ci-build-extract.sh)
+          echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
+
       - name: cargo test
         run: nix develop --command cargo test --workspace
+
       - name: cargo clippy
         run: nix develop --command cargo clippy --workspace -- -D warnings
