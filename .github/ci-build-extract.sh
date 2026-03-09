@@ -9,13 +9,11 @@ CABAL_BUILDDIR="${CABAL_BUILDDIR:-/var/lib/github-runner-cache/cabal/dist-newsty
 
 cd "$(dirname "$0")/../haskell"
 
-cabal update
-cabal build exe:tidepool-extract-bin \
-  --store-dir="$CABAL_STORE" \
+cabal --store-dir="$CABAL_STORE" update
+cabal --store-dir="$CABAL_STORE" build exe:tidepool-extract-bin \
   --builddir="$CABAL_BUILDDIR"
 
-BIN=$(cabal list-bin tidepool-extract-bin \
-  --store-dir="$CABAL_STORE" \
+BIN=$(cabal --store-dir="$CABAL_STORE" list-bin tidepool-extract-bin \
   --builddir="$CABAL_BUILDDIR")
 
 GHC_DIR=$(dirname "$(which ghc)")
