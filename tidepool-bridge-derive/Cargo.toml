@@ -21,4 +21,4 @@ proc-macro2 = "1"
 tidepool-bridge = { version = "0.1.0", path = "../tidepool-bridge" }
 tidepool-repr = { version = "0.1.0", path = "../tidepool-repr" }
 tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
-tidepool-testing = { version = "0.1.0", path = "../tidepool-testing" }
+tidepool-testing = { path = "../tidepool-testing" }
