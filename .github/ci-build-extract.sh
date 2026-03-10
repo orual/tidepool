@@ -4,8 +4,8 @@
 #   This prints PATH=... to stdout; sourcing it adds tidepool-extract to PATH.
 set -euo pipefail
 
-CABAL_STORE="${CABAL_STORE:-/var/lib/github-runner-cache/cabal/store}"
-CABAL_BUILDDIR="${CABAL_BUILDDIR:-/var/lib/github-runner-cache/cabal/dist-newstyle}"
+CABAL_STORE="${CABAL_STORE:-$HOME/.local/state/cabal/store}"
+CABAL_BUILDDIR="${CABAL_BUILDDIR:-/var/lib/github-runner/tidepool/cache/cabal-dist}"
 
 cd "$(dirname "$0")/../haskell"
 
