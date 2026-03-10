@@ -299,6 +299,8 @@ pub struct TracingClosureCaller {
 }
 
 impl TracingClosureCaller {
+    /// # Safety
+    /// Caller must ensure callee and arg are valid heap object pointers.
     pub unsafe fn call(&self, callee: *mut u8, arg: *mut u8) -> Result<*mut u8, String> {
         // SAFETY: callee and arg must point to valid HeapObjects.
         // Tracing is controlled by TIDEPOOL_TRACE=heap.

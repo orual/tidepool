@@ -285,7 +285,7 @@ impl JitEffectMachine {
 
         // Check for runtime error FIRST — runtime_error now returns a poison
         // object instead of null, so we can't rely on null-check alone.
-        let result = if let Some(err) = crate::host_fns::take_runtime_error() {
+        if let Some(err) = crate::host_fns::take_runtime_error() {
             Err(JitError::Yield(crate::yield_type::YieldError::from(err)))
         } else if result_ptr.is_null() {
             Err(JitError::Yield(crate::yield_type::YieldError::NullPointer))
@@ -300,9 +300,7 @@ impl JitEffectMachine {
             }
             .map_err(JitError::Signal)?
             .map_err(JitError::HeapBridge)
-        };
-
-        result
+        }
     }
 }
 

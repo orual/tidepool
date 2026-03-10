@@ -52,6 +52,7 @@ pub struct ScopedEnv {
     inner: HashMap<VarId, SsaVal>,
 }
 
+#[allow(clippy::new_without_default)]
 impl ScopedEnv {
     pub fn new() -> Self {
         Self {
@@ -133,11 +134,13 @@ impl Default for EnvScope {
 /// parent `EmitContext` needs to be used (e.g., in `emit_node` calls) since it
 /// mutably borrows `ctx.env`. It is primarily for use in future refactorings
 /// that split `EmitContext` or in simple leaf functions.
+#[allow(dead_code)]
 pub(crate) struct EnvGuard<'a> {
     env: &'a mut ScopedEnv,
     scope: EnvScope,
 }
 
+#[allow(dead_code)]
 impl<'a> EnvGuard<'a> {
     pub fn new(env: &'a mut ScopedEnv) -> Self {
         Self {

@@ -190,7 +190,7 @@ unsafe fn heap_to_value_inner(
                 _ if !vmctx.is_null() => {
                     // Force the thunk via heap_force when vmctx is available
                     let forced = crate::host_fns::heap_force(vmctx, ptr as *mut u8);
-                    if !forced.is_null() && forced != ptr as *mut u8 {
+                    if !forced.is_null() && !std::ptr::eq(forced, ptr) {
                         heap_to_value_inner(forced as *const u8, depth + 1, vmctx)
                     } else {
                         Err(BridgeError::UnevaluatedThunk)

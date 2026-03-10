@@ -1220,7 +1220,7 @@ impl LlmHandler {
         let api_key = std::env::var("ANTHROPIC_API_KEY")
             .ok()
             .filter(|s| !s.is_empty())
-            .or_else(|| Self::read_key_file())
+            .or_else(Self::read_key_file)
             .unwrap_or_default();
         Self {
             api_key,

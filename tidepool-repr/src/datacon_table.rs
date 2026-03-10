@@ -81,7 +81,7 @@ impl DataConTable {
                 .find(|&&id| {
                     self.by_id
                         .get(&id)
-                        .map_or(false, |dc| dc.rep_arity == arity)
+                        .is_some_and(|dc| dc.rep_arity == arity)
                 })
                 .copied()
         })

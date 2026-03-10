@@ -114,26 +114,7 @@ impl From<JitError> for RuntimeError {
     }
 }
 
-/// Compiles Haskell source code to Tidepool Core at runtime.
-///
-/// This function shells out to `tidepool-extract` (which must be available on the system `$PATH`)
-/// to perform GHC parsing, type-checking, and Core translation. It writes the source to a
-/// temporary file, executes the extractor, and reads back the resulting CBOR and metadata.
-///
-/// Compiled results are cached in the XDG cache directory (typically `~/.cache/tidepool`)
-/// to speed up repeated compilations. The cache key is derived from the source code,
-/// the target binder, and a fingerprint of any included dependency directories.
-///
-/// # Arguments
-/// * `source` - The Haskell source code to compile.
-/// * `target` - The name of the top-level binder to use as the entry point (e.g., "main").
-/// * `include` - Paths to directories containing Haskell modules to include in the search path.
-///
-/// # Returns
-/// * `Ok((CoreExpr, DataConTable))` on success.
-/// * `Err(CompileError)` if compilation fails, the extractor is missing, or output is invalid.
-
-/// Extract module name from Haskell source (e.g. "module Expr where" → "Expr").
+/// Extract module name from Haskell source (e.g. "module Expr where" -> "Expr").
 fn extract_module_name(source: &str) -> Option<String> {
     for line in source.lines() {
         let trimmed = line.trim();
@@ -152,6 +133,24 @@ fn extract_module_name(source: &str) -> Option<String> {
     None
 }
 
+/// Compiles Haskell source code to Tidepool Core at runtime.
+///
+/// This function shells out to `tidepool-extract` (which must be available on the system `$PATH`)
+/// to perform GHC parsing, type-checking, and Core translation. It writes the source to a
+/// temporary file, executes the extractor, and reads back the resulting CBOR and metadata.
+///
+/// Compiled results are cached in the XDG cache directory (typically `~/.cache/tidepool`)
+/// to speed up repeated compilations. The cache key is derived from the source code,
+/// the target binder, and a fingerprint of any included dependency directories.
+///
+/// # Arguments
+/// * `source` - The Haskell source code to compile.
+/// * `target` - The name of the top-level binder to use as the entry point (e.g., "main").
+/// * `include` - Paths to directories containing Haskell modules to include in the search path.
+///
+/// # Returns
+/// * `Ok((CoreExpr, DataConTable))` on success.
+/// * `Err(CompileError)` if compilation fails, the extractor is missing, or output is invalid.
 pub fn compile_haskell(
     source: &str,
     target: &str,

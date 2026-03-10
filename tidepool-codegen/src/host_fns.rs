@@ -504,6 +504,7 @@ pub extern "C" fn runtime_error(kind: u64) -> *mut u8 {
 }
 
 /// Called by JIT code for runtime errors with a specific message.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn runtime_error_with_msg(kind: u64, msg_ptr: *const u8, msg_len: u64) -> *mut u8 {
     let msg = if !msg_ptr.is_null() && msg_len > 0 {
         // SAFETY: msg_ptr is non-null and points to msg_len bytes of valid memory
@@ -775,7 +776,6 @@ fn check_ptr_invalid(ptr: *const u8, fn_name: &str) -> bool {
 /// # Safety
 ///
 /// `fun_ptr` must point to a valid HeapObject if not null.
-
 /// Maximum call depth before raising StackOverflow. This catches infinite
 /// recursion (e.g. `[0..]` in non-fusing context) with a clean error
 /// instead of SIGSEGV from stack overflow.
@@ -783,6 +783,9 @@ const MAX_CALL_DEPTH: u32 = 50_000;
 
 /// Returns 0 if the call is safe to proceed, or a poison pointer if the call
 /// should be short-circuited (runtime error already set or call depth exceeded).
+///
+/// # Safety
+/// fun_ptr must point to a valid HeapObject or be null.
 pub unsafe extern "C" fn debug_app_check(fun_ptr: *const u8) -> *mut u8 {
     // If a runtime error is already pending, don't abort on tag mismatches —
     // we're in error-propagation mode and the effect machine will handle it.

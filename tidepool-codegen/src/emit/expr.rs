@@ -1577,7 +1577,7 @@ impl EmitContext {
                 } => {
                     let lam_body_tree = sess.tree.extract_subtree(*lam_body);
                     let mut fvs = tidepool_repr::free_vars::free_vars(&lam_body_tree);
-                    fvs.remove(&lam_binder);
+                    fvs.remove(lam_binder);
                     let dropped_fvs: Vec<VarId> = fvs
                         .iter()
                         .filter(|v| {
@@ -1891,7 +1891,7 @@ impl EmitContext {
             } = pa
             {
                 let needs_simple = field_indices.iter().any(|&f_idx| {
-                    matches!(&sess.tree.nodes[f_idx], CoreFrame::Var(v) if simple_binder_set.contains(&v))
+                    matches!(&sess.tree.nodes[f_idx], CoreFrame::Var(v) if simple_binder_set.contains(v))
                 });
                 if needs_simple {
                     deferred_cons.push((*binder, *ptr, field_indices.clone()));

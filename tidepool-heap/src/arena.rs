@@ -144,10 +144,8 @@ impl ArenaHeap {
         if reachable_count > 0 {
             let pre_gc_capacity = self.nursery_limit;
             let live_bytes = self.thunks.len() * std::mem::size_of::<ThunkState>();
-            if live_bytes > pre_gc_capacity * 3 / 4 {
-                if self.nursery_limit < MAX_NURSERY_SIZE {
-                    self.nursery_limit = (self.nursery_limit * 2).min(MAX_NURSERY_SIZE);
-                }
+            if live_bytes > pre_gc_capacity * 3 / 4 && self.nursery_limit < MAX_NURSERY_SIZE {
+                self.nursery_limit = (self.nursery_limit * 2).min(MAX_NURSERY_SIZE);
             }
         }
     }

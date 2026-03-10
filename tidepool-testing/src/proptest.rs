@@ -97,7 +97,7 @@ pub fn check_jit_vs_eval(expr: CoreExpr, nursery_size: usize) -> Result<(), Test
 
     // JIT compilation and execution
     let res_jit = match JitEffectMachine::compile(&expr, &table, nursery_size) {
-        Ok(mut machine) => machine.run_pure().map_err(JitError::from),
+        Ok(mut machine) => machine.run_pure(),
         Err(e) => Err(e),
     };
 
