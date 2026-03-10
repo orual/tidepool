@@ -335,7 +335,7 @@ pub fn emit_primop(
         }
 
         // Double comparison
-        PrimOpKind::DoubleEq => emit_float_compare(
+        PrimOpKind::DoubleEq => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -344,7 +344,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::DoubleNe => emit_float_compare(
+        PrimOpKind::DoubleNe => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -353,7 +353,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::DoubleLt => emit_float_compare(
+        PrimOpKind::DoubleLt => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -362,7 +362,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::DoubleLe => emit_float_compare(
+        PrimOpKind::DoubleLe => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -371,7 +371,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::DoubleGt => emit_float_compare(
+        PrimOpKind::DoubleGt => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -380,7 +380,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::DoubleGe => emit_float_compare(
+        PrimOpKind::DoubleGe => emit_double_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1473,7 +1473,7 @@ pub fn emit_primop(
             let b = unbox_float(sess.pipeline, builder, sess.vmctx, args[1]);
             Ok(SsaVal::Raw(builder.ins().fdiv(a, b), LIT_TAG_FLOAT))
         }
-        PrimOpKind::FloatEq => emit_float_compare(
+        PrimOpKind::FloatEq => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1482,7 +1482,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::FloatNe => emit_float_compare(
+        PrimOpKind::FloatNe => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1491,7 +1491,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::FloatLt => emit_float_compare(
+        PrimOpKind::FloatLt => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1500,7 +1500,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::FloatLe => emit_float_compare(
+        PrimOpKind::FloatLe => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1509,7 +1509,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::FloatGt => emit_float_compare(
+        PrimOpKind::FloatGt => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1518,7 +1518,7 @@ pub fn emit_primop(
             args,
             LIT_TAG_INT,
         ),
-        PrimOpKind::FloatGe => emit_float_compare(
+        PrimOpKind::FloatGe => emit_f32_compare(
             sess.pipeline,
             builder,
             sess.vmctx,
@@ -1827,7 +1827,7 @@ fn emit_int_compare(
     Ok(SsaVal::Raw(builder.ins().uextend(types::I64, cmp), tag))
 }
 
-fn emit_float_compare(
+fn emit_double_compare(
     pipeline: &mut CodegenPipeline,
     builder: &mut FunctionBuilder,
     vmctx: Value,
@@ -1839,6 +1839,22 @@ fn emit_float_compare(
     check_arity(op, 2, args.len())?;
     let a = unbox_double(pipeline, builder, vmctx, args[0]);
     let b = unbox_double(pipeline, builder, vmctx, args[1]);
+    let cmp = builder.ins().fcmp(cc, a, b);
+    Ok(SsaVal::Raw(builder.ins().uextend(types::I64, cmp), tag))
+}
+
+fn emit_f32_compare(
+    pipeline: &mut CodegenPipeline,
+    builder: &mut FunctionBuilder,
+    vmctx: Value,
+    op: &PrimOpKind,
+    cc: FloatCC,
+    args: &[SsaVal],
+    tag: i64,
+) -> Result<SsaVal, EmitError> {
+    check_arity(op, 2, args.len())?;
+    let a = unbox_float(pipeline, builder, vmctx, args[0]);
+    let b = unbox_float(pipeline, builder, vmctx, args[1]);
     let cmp = builder.ins().fcmp(cc, a, b);
     Ok(SsaVal::Raw(builder.ins().uextend(types::I64, cmp), tag))
 }
