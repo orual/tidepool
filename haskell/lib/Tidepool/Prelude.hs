@@ -51,7 +51,7 @@ module Tidepool.Prelude
   , nubBy
   , sort
   , sortBy
-  , concatMap
+  , concatMap, concatMapM
   , append
   , (++)
   , dropWhile
@@ -86,6 +86,7 @@ module Tidepool.Prelude
   , forM, forM_
   , (=<<), (>=>), (<=<)
   , foldM, foldM_
+  , filterM, replicateM, zipWithM
     -- * Maybe/Either utilities
   , maybe, fromMaybe, isJust, isNothing, catMaybes, mapMaybe
   , either
@@ -144,7 +145,7 @@ import Prelude
   , fst, snd, curry, uncurry
   , error, undefined
   , maybe, either
-  , map, filter, foldl, foldr
+  , map, foldl, foldr
   , take, drop, zip, zipWith, unzip
   , lookup, elem, notElem
   , any, all, and, or
@@ -161,7 +162,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Char (ord, chr)
 import Data.Maybe (fromMaybe, isJust, isNothing, catMaybes, mapMaybe)
-import Data.List (foldl', find, partition, groupBy, takeWhile, tails, unfoldr, mapAccumL, transpose, genericLength, sort, sortBy, nub, nubBy)
+import Data.List (foldl', find, partition, groupBy, takeWhile, tails, unfoldr, mapAccumL, transpose, genericLength, sort, sortBy)
 import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Control.Monad
@@ -350,6 +351,35 @@ concatMap :: (a -> [b]) -> [a] -> [b]
 concatMap _ []     = []
 concatMap f (x:xs) = f x `append` concatMap f xs
 {-# INLINE concatMap #-}
+
+-- | Monadic concatMap: map an effectful function over a list and concatenate results.
+-- @concatMapM f xs = fmap concat (mapM f xs)@
+concatMapM :: Monad m => (a -> m [b]) -> [a] -> m [b]
+concatMapM f xs = fmap concat (mapM f xs)
+{-# INLINE concatMapM #-}
+
+-- | Monadic filter: keep elements for which the effectful predicate returns True.
+-- @filterM (\\f -> isInfixOf "unsafe" \<$\> fsRead f) files@
+filterM :: Monad m => (a -> m Bool) -> [a] -> m [a]
+filterM _ []     = pure []
+filterM p (x:xs) = do
+  keep <- p x
+  rest <- filterM p xs
+  pure (if keep then x : rest else rest)
+
+-- | Repeat an effect N times, collecting results.
+-- @replicateM 3 (ask "next?")@
+replicateM :: Monad m => Int -> m a -> m [a]
+replicateM n act = go n
+  where
+    go i | i <= 0    = pure []
+         | otherwise = do { x <- act; xs <- go (i - 1); pure (x : xs) }
+
+-- | Zip two lists with an effectful function.
+-- @zipWithM (\\a b -> llmJson (a \<\> b) schema) prompts contexts@
+zipWithM :: Monad m => (a -> b -> m c) -> [a] -> [b] -> m [c]
+zipWithM f (a:as) (b:bs) = do { c <- f a b; cs <- zipWithM f as bs; pure (c : cs) }
+zipWithM _ _      _      = pure []
 
 -- | Length of a list.
 length :: [a] -> Int
@@ -774,4 +804,32 @@ unzip3 :: [(a, b, c)] -> ([a], [b], [c])
 unzip3 [] = ([], [], [])
 unzip3 ((a,b,c):rest) = let (as, bs, cs) = unzip3 rest in (a:as, b:bs, c:cs)
 {-# INLINE unzip3 #-}
+
+-- | Tail-recursive filter (accumulator-based, avoids (:) in non-tail position).
+filter :: (a -> Bool) -> [a] -> [a]
+filter p = go []
+  where
+    go acc []     = reverse acc
+    go acc (x:xs)
+      | p x       = go (x : acc) xs
+      | otherwise  = go acc xs
+{-# INLINE filter #-}
+
+-- | Tail-recursive nubBy (foldl'-style accumulator + linear scan).
+nubBy :: (a -> a -> Bool) -> [a] -> [a]
+nubBy _ [] = []
+nubBy eq xs = go [] xs
+  where
+    go acc []     = reverse acc
+    go acc (x:rest)
+      | elemBy x acc = go acc rest
+      | otherwise    = go (x : acc) rest
+    elemBy _ []     = False
+    elemBy x (y:ys)
+      | eq x y      = True
+      | otherwise    = elemBy x ys
+
+-- | Tail-recursive nub (uses nubBy).
+nub :: (Eq a) => [a] -> [a]
+nub = nubBy (==)
 

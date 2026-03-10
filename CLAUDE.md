@@ -186,7 +186,7 @@ Everything MCP users need in one import.
 - **Numeric**: even/odd, abs'/signum'/min'/max' (monomorphic Int), round (Double→Int), parseIntM/parseInt, parseDoubleM/parseDouble
 - **JSON**: Value(..), toJSON, (.=), object, lenses (key/nth/_String/_Number/_Bool/_Array/_Object, ^?/^../preview/toListOf), helpers (?./lookupKey/asText/asInt). **No JSON parsing in Haskell** — `encode`/`decode` removed; use `runJson`/`httpGet` (parsed on Rust side)
 - **Map**: fromList/toList, insert/delete/adjust, union/intersection/difference/unionWith/intersectionWith, singleton/empty, findWithDefault, foldlWithKey'/foldrWithKey, mapKeys/mapWithKey/filterWithKey
-- **Monadic**: mapM/forM/foldM, when/unless/void/join/guard, (>=>)/(<=<)
+- **Monadic**: mapM/forM/foldM, when/unless/void/join/guard, (>=>)/(<=<), filterM, replicateM, zipWithM, concatMapM
 
 ### Tidepool.Text (import explicitly)
 
