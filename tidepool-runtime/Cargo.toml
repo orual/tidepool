@@ -27,6 +27,6 @@ tidepool-bridge-derive = { version = "0.1.0", path = "../tidepool-bridge-derive"
 tidepool-bridge = { version = "0.1.0", path = "../tidepool-bridge" }
 tidepool-effect = { version = "0.1.0", path = "../tidepool-effect" }
 tidepool-eval = { version = "0.1.0", path = "../tidepool-eval" }
-tidepool-mcp = { version = "0.1.0", path = "../tidepool-mcp" }
+tidepool-mcp = { path = "../tidepool-mcp" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 serial_test = "3"
