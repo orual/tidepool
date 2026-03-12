@@ -779,7 +779,7 @@ fn check_ptr_invalid(ptr: *const u8, fn_name: &str) -> bool {
 /// Maximum call depth before raising StackOverflow. This catches infinite
 /// recursion (e.g. `[0..]` in non-fusing context) with a clean error
 /// instead of SIGSEGV from stack overflow.
-const MAX_CALL_DEPTH: u32 = 50_000;
+const MAX_CALL_DEPTH: u32 = 20_000;
 
 /// Returns 0 if the call is safe to proceed, or a poison pointer if the call
 /// should be short-circuited (runtime error already set or call depth exceeded).

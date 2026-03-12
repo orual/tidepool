@@ -358,14 +358,8 @@ impl Lang {
 enum SgReq {
     #[core(name = "SgFind")]
     Find(Lang, String, Vec<String>),
-    #[core(name = "SgPreview")]
-    Preview(Lang, String, String, Vec<String>),
-    #[core(name = "SgReplace")]
-    Replace(Lang, String, String, Vec<String>),
     #[core(name = "SgRuleFind")]
     RuleFind(Lang, Value, Vec<String>),
-    #[core(name = "SgRuleReplace")]
-    RuleReplace(Lang, Value, String, Vec<String>),
 }
 
 /// Rust-side Match value returned to Haskell.
@@ -498,43 +492,6 @@ impl SgHandler {
         Ok(results)
     }
 
-    fn run_replace(
-        &self,
-        lang: Lang,
-        pattern: &str,
-        rewrite: &str,
-        paths: &[String],
-    ) -> Result<i64, EffectError> {
-        let sl = lang.to_support_lang()?;
-        let files = self.collect_files(sl, paths)?;
-        let mut total = 0i64;
-
-        for file_path in files {
-            let source = std::fs::read_to_string(&file_path)
-                .map_err(|e| EffectError::Handler(e.to_string()))?;
-            let mut grep = sl.ast_grep(&source);
-            let mut file_count = 0i64;
-
-            loop {
-                let pat = Pattern::try_new(pattern, sl)
-                    .map_err(|e| EffectError::Handler(format!("invalid pattern: {}", e)))?;
-                match grep.replace(pat, rewrite) {
-                    Ok(true) => file_count += 1,
-                    Ok(false) => break,
-                    Err(e) => return Err(EffectError::Handler(e)),
-                }
-            }
-
-            if file_count > 0 {
-                let modified = grep.generate();
-                std::fs::write(&file_path, &modified)
-                    .map_err(|e| EffectError::Handler(e.to_string()))?;
-                total += file_count;
-            }
-        }
-        Ok(total)
-    }
-
     fn deserialize_rule(
         &self,
         lang: Lang,
@@ -600,42 +557,6 @@ impl SgHandler {
         Ok(results)
     }
 
-    fn run_rule_replace(
-        &self,
-        lang: Lang,
-        rule_json: &Value,
-        rewrite: &str,
-        paths: &[String],
-        table: &tidepool_repr::DataConTable,
-    ) -> Result<i64, EffectError> {
-        let (sl, rule) = self.deserialize_rule(lang, rule_json, table)?;
-        let files = self.collect_files(sl, paths)?;
-        let mut total = 0i64;
-
-        for file_path in files {
-            let source = std::fs::read_to_string(&file_path)
-                .map_err(|e| EffectError::Handler(e.to_string()))?;
-            let grep = sl.ast_grep(&source);
-            let edits = grep.root().replace_all(&rule, rewrite);
-
-            if !edits.is_empty() {
-                total += edits.len() as i64;
-                let mut new_source = source.clone();
-                // Apply edits in reverse order to preserve positions
-                let mut sorted_edits = edits;
-                sorted_edits.sort_by(|a, b| b.position.cmp(&a.position));
-                for edit in sorted_edits {
-                    let start = edit.position;
-                    let end = start + edit.deleted_length;
-                    let replacement = String::from_utf8_lossy(&edit.inserted_text);
-                    new_source.replace_range(start..end, &replacement);
-                }
-                std::fs::write(&file_path, &new_source)
-                    .map_err(|e| EffectError::Handler(e.to_string()))?;
-            }
-        }
-        Ok(total)
-    }
 }
 
 impl DescribeEffect for SgHandler {
@@ -656,22 +577,9 @@ impl EffectHandler<CapturedOutput> for SgHandler {
                 let matches = self.run_find(lang, &pattern, &paths, None)?;
                 cx.respond(matches)
             }
-            SgReq::Preview(lang, pattern, rewrite, paths) => {
-                let matches = self.run_find(lang, &pattern, &paths, Some(&rewrite))?;
-                cx.respond(matches)
-            }
-            SgReq::Replace(lang, pattern, rewrite, paths) => {
-                let count = self.run_replace(lang, &pattern, &rewrite, &paths)?;
-                cx.respond(count)
-            }
             SgReq::RuleFind(lang, rule_json, paths) => {
                 let matches = self.run_rule_find(lang, &rule_json, &paths, None, cx.table())?;
                 cx.respond(matches)
-            }
-            SgReq::RuleReplace(lang, rule_json, rewrite, paths) => {
-                let count =
-                    self.run_rule_replace(lang, &rule_json, &rewrite, &paths, cx.table())?;
-                cx.respond(count)
             }
         }
     }
@@ -685,8 +593,6 @@ enum HttpReq {
     Get(String),
     #[core(name = "HttpPost")]
     Post(String, Value),
-    #[core(name = "HttpRequest")]
-    Request(String, String, Vec<(String, String)>, String),
 }
 
 #[derive(Clone)]
@@ -786,28 +692,6 @@ impl EffectHandler<CapturedOutput> for HttpHandler {
                 let json = Self::parse_response(&url_str, &body)?;
                 cx.respond(json)
             }
-            HttpReq::Request(method, url_str, headers, body_str) => {
-                let url = Self::validate_url(&url_str)?;
-                let mut req = ureq::request(&method, url.as_str())
-                    .timeout(std::time::Duration::from_secs(30));
-                for (k, v) in &headers {
-                    req = req.set(k, v);
-                }
-                let resp = if body_str.is_empty() {
-                    req.call()
-                } else {
-                    req.set("Content-Type", "application/json")
-                        .send_string(&body_str)
-                }
-                .map_err(|e| {
-                    EffectError::Handler(format!("HTTP {} '{}' failed: {}", method, url_str, e))
-                })?;
-                let body = resp.into_string().map_err(|e| {
-                    EffectError::Handler(format!("Read body from '{}' failed: {}", url_str, e))
-                })?;
-                let json = Self::parse_response(&url_str, &body)?;
-                cx.respond(json)
-            }
         }
     }
 }
@@ -820,8 +704,6 @@ enum ExecReq {
     Run(String),
     #[core(name = "RunIn")]
     RunIn(String, String),
-    #[core(name = "RunJson")]
-    RunJson(String),
 }
 
 #[derive(Clone)]
@@ -834,9 +716,6 @@ impl ExecHandler {
         Self { root }
     }
 
-    /// Maximum stdout size for RunJson (512 KB). Large JSON creates tens of
-    /// thousands of Value nodes that can crash the JIT.
-    const MAX_JSON_OUTPUT_BYTES: usize = 512 * 1024;
     /// Maximum stdout/stderr size for Run/RunIn (2 MB). Prevents OOM from
     /// commands that produce unbounded output (e.g. `find /`, `yes`).
     const MAX_EXEC_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
@@ -914,28 +793,6 @@ impl EffectHandler<CapturedOutput> for ExecHandler {
                 let (code, stdout, stderr) = self.run_command(&cmd, &self.root)?;
                 cx.respond((code, stdout, stderr))
             }
-            ExecReq::RunJson(cmd) => {
-                let (code, stdout, stderr) = self.run_command(&cmd, &self.root)?;
-                if code != 0 {
-                    return Err(EffectError::Handler(format!(
-                        "command failed (exit {}): {}\n{}",
-                        code, cmd, stderr
-                    )));
-                }
-                if stdout.len() > Self::MAX_JSON_OUTPUT_BYTES {
-                    return Err(EffectError::Handler(format!(
-                        "runJson: stdout too large ({} bytes, limit {}). Large JSON creates \
-                         too many Value nodes for the JIT. Pipe through jq or use flags like \
-                         --no-deps to reduce output.",
-                        stdout.len(),
-                        Self::MAX_JSON_OUTPUT_BYTES,
-                    )));
-                }
-                let json_val: serde_json::Value = serde_json::from_str(&stdout).map_err(|e| {
-                    EffectError::Handler(format!("runJson: invalid JSON from '{}': {}", cmd, e))
-                })?;
-                cx.respond(json_val)
-            }
             ExecReq::RunIn(dir, cmd) => {
                 let target = self.resolve_dir(&dir)?;
                 let (code, stdout, stderr) = self.run_command(&cmd, &target)?;
@@ -945,256 +802,7 @@ impl EffectHandler<CapturedOutput> for ExecHandler {
     }
 }
 
-// === Tag 7: Git (repository access) ===
-
-#[derive(FromCore)]
-enum GitReq {
-    #[core(name = "GitLog")]
-    Log(String, i64),
-    #[core(name = "GitShow")]
-    Show(String),
-    #[core(name = "GitDiff")]
-    Diff(String),
-    #[core(name = "GitBlame")]
-    Blame(String, i64, i64),
-    #[core(name = "GitTree")]
-    Tree(String, String),
-    #[core(name = "GitBranches")]
-    Branches,
-}
-
-#[derive(Clone)]
-struct GitHandler {
-    root: PathBuf,
-}
-
-impl GitHandler {
-    fn new(root: PathBuf) -> Self {
-        Self { root }
-    }
-
-    fn open_repo(&self) -> Result<git2::Repository, EffectError> {
-        git2::Repository::open(&self.root)
-            .map_err(|e| EffectError::Handler(format!("git: failed to open repo: {}", e)))
-    }
-}
-
-impl DescribeEffect for GitHandler {
-    fn effect_decl() -> EffectDecl {
-        tidepool_mcp::git_decl()
-    }
-}
-
-impl EffectHandler<CapturedOutput> for GitHandler {
-    type Request = GitReq;
-    fn handle(
-        &mut self,
-        req: GitReq,
-        cx: &EffectContext<'_, CapturedOutput>,
-    ) -> Result<Value, EffectError> {
-        let repo = self.open_repo()?;
-        match req {
-            GitReq::Log(refspec, count) => {
-                let obj = repo.revparse_single(&refspec).map_err(|e| {
-                    EffectError::Handler(format!("git log: bad ref '{}': {}", refspec, e))
-                })?;
-                let mut revwalk = repo
-                    .revwalk()
-                    .map_err(|e| EffectError::Handler(format!("git log: revwalk: {}", e)))?;
-                revwalk
-                    .push(obj.id())
-                    .map_err(|e| EffectError::Handler(format!("git log: push: {}", e)))?;
-                revwalk.set_sorting(git2::Sort::TIME).ok();
-                let mut entries = Vec::new();
-                for (i, oid_result) in revwalk.enumerate() {
-                    if i >= count.max(0) as usize {
-                        break;
-                    }
-                    let oid = oid_result
-                        .map_err(|e| EffectError::Handler(format!("git log: walk: {}", e)))?;
-                    let commit = repo.find_commit(oid).map_err(|e| {
-                        EffectError::Handler(format!("git log: find commit: {}", e))
-                    })?;
-                    entries.push(serde_json::json!({
-                        "hash": oid.to_string(),
-                        "subject": commit.summary().unwrap_or(""),
-                        "author": commit.author().name().unwrap_or(""),
-                        "date": commit.time().seconds(),
-                    }));
-                }
-                cx.respond(entries)
-            }
-            GitReq::Show(hash) => {
-                let oid = repo
-                    .revparse_single(&hash)
-                    .map_err(|e| {
-                        EffectError::Handler(format!("git show: bad ref '{}': {}", hash, e))
-                    })?
-                    .id();
-                let commit = repo
-                    .find_commit(oid)
-                    .map_err(|e| EffectError::Handler(format!("git show: {}", e)))?;
-                let parents: Vec<String> = commit.parent_ids().map(|id| id.to_string()).collect();
-                let result = serde_json::json!({
-                    "hash": oid.to_string(),
-                    "subject": commit.summary().unwrap_or(""),
-                    "author": commit.author().name().unwrap_or(""),
-                    "date": commit.time().seconds(),
-                    "body": commit.body().unwrap_or(""),
-                    "parents": parents,
-                });
-                cx.respond(result)
-            }
-            GitReq::Diff(hash) => {
-                let oid = repo
-                    .revparse_single(&hash)
-                    .map_err(|e| {
-                        EffectError::Handler(format!("git diff: bad ref '{}': {}", hash, e))
-                    })?
-                    .id();
-                let commit = repo
-                    .find_commit(oid)
-                    .map_err(|e| EffectError::Handler(format!("git diff: {}", e)))?;
-                let tree = commit
-                    .tree()
-                    .map_err(|e| EffectError::Handler(format!("git diff: tree: {}", e)))?;
-                let parent_tree = if commit.parent_count() > 0 {
-                    Some(
-                        commit
-                            .parent(0)
-                            .map_err(|e| EffectError::Handler(format!("git diff: parent: {}", e)))?
-                            .tree()
-                            .map_err(|e| {
-                                EffectError::Handler(format!("git diff: parent tree: {}", e))
-                            })?,
-                    )
-                } else {
-                    None
-                };
-                let diff = repo
-                    .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
-                    .map_err(|e| EffectError::Handler(format!("git diff: diff: {}", e)))?;
-                let mut files = Vec::new();
-                for delta in diff.deltas() {
-                    let status_char = match delta.status() {
-                        git2::Delta::Added => "A",
-                        git2::Delta::Deleted => "D",
-                        git2::Delta::Modified => "M",
-                        git2::Delta::Renamed => "R",
-                        git2::Delta::Copied => "C",
-                        _ => "?",
-                    };
-                    let path = delta
-                        .new_file()
-                        .path()
-                        .or_else(|| delta.old_file().path())
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    files.push(serde_json::json!({
-                        "path": path,
-                        "status": status_char,
-                    }));
-                }
-                cx.respond(files)
-            }
-            GitReq::Blame(file, start, end) => {
-                let mut opts = git2::BlameOptions::new();
-                if start > 0 && end > 0 {
-                    opts.min_line(start as usize);
-                    opts.max_line(end as usize);
-                }
-                let blame = repo
-                    .blame_file(std::path::Path::new(&file), Some(&mut opts))
-                    .map_err(|e| EffectError::Handler(format!("git blame '{}': {}", file, e)))?;
-                // Read file content to get line text
-                let file_path = self.root.join(&file);
-                let content = std::fs::read_to_string(&file_path).unwrap_or_default();
-                let lines: Vec<&str> = content.lines().collect();
-                let mut hunks = Vec::new();
-                for hunk_idx in 0..blame.len() {
-                    let Some(hunk) = blame.get_index(hunk_idx) else {
-                        continue;
-                    };
-                    let sig = hunk.final_signature();
-                    let line_start = hunk.final_start_line();
-                    let line_count = hunk.lines_in_hunk();
-                    for offset in 0..line_count {
-                        let line_no = line_start + offset;
-                        let line_text = if line_no > 0 && line_no <= lines.len() {
-                            lines[line_no - 1]
-                        } else {
-                            ""
-                        };
-                        hunks.push(serde_json::json!({
-                            "commit": hunk.final_commit_id().to_string(),
-                            "author": sig.name().unwrap_or(""),
-                            "line": line_no,
-                            "content": line_text,
-                        }));
-                    }
-                }
-                cx.respond(hunks)
-            }
-            GitReq::Tree(commitish, path) => {
-                let obj = repo.revparse_single(&commitish).map_err(|e| {
-                    EffectError::Handler(format!("git tree: bad ref '{}': {}", commitish, e))
-                })?;
-                let commit = obj
-                    .peel_to_commit()
-                    .map_err(|e| EffectError::Handler(format!("git tree: peel: {}", e)))?;
-                let tree = commit
-                    .tree()
-                    .map_err(|e| EffectError::Handler(format!("git tree: {}", e)))?;
-                let target_tree = if path == "." || path.is_empty() {
-                    tree
-                } else {
-                    let entry = tree.get_path(std::path::Path::new(&path)).map_err(|e| {
-                        EffectError::Handler(format!("git tree: path '{}': {}", path, e))
-                    })?;
-                    repo.find_tree(entry.id())
-                        .map_err(|e| EffectError::Handler(format!("git tree: subtree: {}", e)))?
-                };
-                let mut entries = Vec::new();
-                for entry in target_tree.iter() {
-                    let kind = match entry.kind() {
-                        Some(git2::ObjectType::Blob) => "blob",
-                        Some(git2::ObjectType::Tree) => "tree",
-                        _ => "other",
-                    };
-                    entries.push(serde_json::json!({
-                        "name": entry.name().unwrap_or(""),
-                        "type": kind,
-                        "oid": entry.id().to_string(),
-                    }));
-                }
-                cx.respond(entries)
-            }
-            GitReq::Branches => {
-                let branches = repo
-                    .branches(None)
-                    .map_err(|e| EffectError::Handler(format!("git branches: {}", e)))?;
-                let mut result = Vec::new();
-                for branch_result in branches {
-                    let (branch, _branch_type) = branch_result
-                        .map_err(|e| EffectError::Handler(format!("git branches: iter: {}", e)))?;
-                    let name = branch.name().ok().flatten().unwrap_or("").to_string();
-                    let is_head = branch.is_head();
-                    let commit_hash = branch
-                        .get()
-                        .peel_to_commit()
-                        .map(|c| c.id().to_string())
-                        .unwrap_or_default();
-                    result.push(serde_json::json!({
-                        "name": name,
-                        "is_head": is_head,
-                        "commit": commit_hash,
-                    }));
-                }
-                cx.respond(result)
-            }
-        }
-    }
-}
+// (GitHandler removed — use `run "git ..."` instead)
 
 // === Tag 8: Llm (LLM calls via Anthropic API) ===
 
@@ -1658,6 +1266,10 @@ struct Args {
     /// Serve over HTTP on 0.0.0.0:<PORT>. Shorthand for --http 0.0.0.0:<PORT>
     #[arg(long, conflicts_with = "http")]
     port: Option<u16>,
+
+    /// Enable debug effects (Meta introspection)
+    #[arg(long)]
+    debug: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -1753,37 +1365,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cwd = std::env::current_dir()?;
     let tidepool_dir = cwd.join(".tidepool");
     let kv_path = tidepool_dir.join("kv.json");
-    let decls = tidepool_mcp::standard_decls();
-    let effect_names: Vec<String> = decls.iter().map(|d| d.type_name.to_string()).collect();
-    let mut helper_sigs: Vec<String> = Vec::new();
-    // Preamble-generated helpers
-    helper_sigs.push("say :: Text -> M ()".into());
-    helper_sigs.push("showI :: Int -> Text".into());
-    // Effect-declared helpers
-    for decl in &decls {
-        for h in decl.helpers {
-            if let Some(sig) = h.lines().next() {
-                helper_sigs.push(sig.to_string());
+    if args.debug {
+        // Build Meta's effect_names/helper_sigs from full decls (standard + meta)
+        let mut decls = tidepool_mcp::standard_decls();
+        decls.insert(decls.len() - 2, tidepool_mcp::meta_decl()); // before Llm, Ask
+        let effect_names: Vec<String> = decls.iter().map(|d| d.type_name.to_string()).collect();
+        let mut helper_sigs: Vec<String> = Vec::new();
+        helper_sigs.push("say :: Text -> M ()".into());
+        helper_sigs.push("showI :: Int -> Text".into());
+        for decl in &decls {
+            for h in decl.helpers {
+                if let Some(sig) = h.lines().next() {
+                    helper_sigs.push(sig.to_string());
+                }
             }
         }
-    }
-    let handlers = frunk::hlist![
-        ConsoleHandler,
-        KvHandler::new(kv_path),
-        FsHandler::new(cwd.clone()),
-        SgHandler::new(cwd.clone()),
-        HttpHandler,
-        ExecHandler::new(cwd.clone()),
-        MetaHandler::new(effect_names, helper_sigs),
-        GitHandler::new(cwd.clone()),
-        LlmHandler::new()
-    ];
-
-    let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
-    if let Some(addr) = http_addr {
-        server.serve_http(addr).await
+        let handlers = frunk::hlist![
+            ConsoleHandler,
+            KvHandler::new(kv_path),
+            FsHandler::new(cwd.clone()),
+            SgHandler::new(cwd.clone()),
+            HttpHandler,
+            ExecHandler::new(cwd.clone()),
+            MetaHandler::new(effect_names, helper_sigs),
+            LlmHandler::new()
+        ];
+        let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
+        if let Some(addr) = http_addr {
+            server.serve_http(addr).await
+        } else {
+            server.serve_stdio().await
+        }
     } else {
-        server.serve_stdio().await
+        let handlers = frunk::hlist![
+            ConsoleHandler,
+            KvHandler::new(kv_path),
+            FsHandler::new(cwd.clone()),
+            SgHandler::new(cwd.clone()),
+            HttpHandler,
+            ExecHandler::new(cwd.clone()),
+            LlmHandler::new()
+        ];
+        let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
+        if let Some(addr) = http_addr {
+            server.serve_http(addr).await
+        } else {
+            server.serve_stdio().await
+        }
     }
 }
 
@@ -1792,7 +1420,7 @@ mod tests {
     use super::*;
     use tidepool_bridge::{FromCore, ToCore};
     use tidepool_effect::dispatch::DispatchEffect;
-    use tidepool_repr::{DataCon, DataConId, DataConTable, Literal};
+    use tidepool_repr::{DataCon, DataConId, DataConTable};
 
     /// Prelude include path for JIT tests.
     fn prelude_include() -> PathBuf {
@@ -1827,8 +1455,6 @@ mod tests {
             SgHandler::new(cwd.clone()),
             HttpHandler,
             ExecHandler::new(cwd.clone()),
-            MetaHandler::new(vec![], vec![]),
-            GitHandler::new(cwd),
             LlmHandler::new()
         ];
         let result = tidepool_runtime::compile_and_run(
@@ -1857,103 +1483,13 @@ mod tests {
         }
     }
 
-    /// Helper: open the repo at the workspace root and run a GitHandler operation.
-    fn git_handler() -> (GitHandler, git2::Repository) {
-        let dir = repo_root();
-        let repo = git2::Repository::open(&dir).unwrap();
-        (GitHandler::new(dir), repo)
-    }
-
-    /// Create a temporary git repo with known state for deterministic git tests.
-    /// Returns (tempdir_guard, path) — the repo has:
-    ///   - 2 commits on "main" branch
-    ///   - A file "hello.txt" with known content
-    ///   - A file "data.csv" with 3 lines
-    fn test_git_repo() -> (tempfile::TempDir, PathBuf) {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().to_path_buf();
-        let repo = git2::Repository::init(&path).unwrap();
-
-        // Configure committer identity (required by libgit2)
-        let mut config = repo.config().unwrap();
-        config.set_str("user.name", "Test User").unwrap();
-        config.set_str("user.email", "test@example.com").unwrap();
-
-        // First commit
-        std::fs::write(path.join("hello.txt"), "hello world\n").unwrap();
-        std::fs::write(path.join("data.csv"), "a,1\nb,2\nc,3\n").unwrap();
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("hello.txt")).unwrap();
-        index.add_path(std::path::Path::new("data.csv")).unwrap();
-        let tree_oid = index.write_tree().unwrap();
-        index.write().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let sig = repo.signature().unwrap();
-        let c1 = repo
-            .commit(Some("HEAD"), &sig, &sig, "initial commit", &tree, &[])
-            .unwrap();
-
-        // Create "main" branch pointing at HEAD
-        let commit1 = repo.find_commit(c1).unwrap();
-        repo.branch("main", &commit1, false).ok(); // may already exist
-
-        // Second commit
-        std::fs::write(path.join("hello.txt"), "hello world\nupdated\n").unwrap();
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("hello.txt")).unwrap();
-        let tree_oid = index.write_tree().unwrap();
-        index.write().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "second commit",
-            &tree,
-            &[&commit1],
-        )
-        .unwrap();
-
-        (tmp, path)
-    }
-
-    /// Like jit_eval but uses a custom git repo path instead of the workspace root.
-    fn jit_eval_in_git_repo(code: &[&str], git_root: &std::path::Path) -> serde_json::Value {
-        let source = jit_test_source(code);
-        let include = prelude_include();
-        let include_paths: Vec<&std::path::Path> = vec![include.as_path()];
-        let kv_path = std::env::temp_dir().join("tidepool_jit_git_test_kv.json");
-        let cwd = repo_root();
-        let captured = CapturedOutput::new();
-        let mut handlers = frunk::hlist![
-            ConsoleHandler,
-            KvHandler::new(kv_path),
-            FsHandler::new(cwd.clone()),
-            SgHandler::new(cwd.clone()),
-            HttpHandler,
-            ExecHandler::new(cwd),
-            MetaHandler::new(vec![], vec![]),
-            GitHandler::new(git_root.to_path_buf()),
-            LlmHandler::new()
-        ];
-        let result = tidepool_runtime::compile_and_run(
-            &source,
-            "result",
-            &include_paths,
-            &mut handlers,
-            &captured,
-        );
-        match result {
-            Ok(eval_result) => eval_result.to_json(),
-            Err(e) => panic!("JIT eval failed: {:?}", e),
-        }
-    }
-
     /// Build a DataConTable with standard types + all effect constructors + response types.
     /// Auto-generated from `standard_decls()` so it never goes stale.
     fn full_effect_test_table() -> DataConTable {
         let mut t = tidepool_testing::gen::datacon_table::standard_datacon_table();
-        let decls = tidepool_mcp::standard_decls();
+        let mut decls = tidepool_mcp::standard_decls();
+        // Include Meta for unit tests even though it's not in the default stack
+        decls.push(tidepool_mcp::meta_decl());
         let mut next_id = 100u64;
 
         // Auto-add all effect constructors from declarations
@@ -2057,233 +1593,11 @@ mod tests {
         }
     }
 
-    /// Get HEAD commit hash for tests that need a valid oid.
-    fn head_hash() -> String {
-        let repo = git2::Repository::open(repo_root()).unwrap();
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
-        head.id().to_string()
-    }
-
     // === Request FromCore tests ===
-
-    #[test]
-    fn test_git_req_from_core_branches() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitBranches").unwrap();
-        let val = Value::Con(con_id, vec![]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Branches));
-    }
-
-    #[test]
-    fn test_git_req_from_core_log() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitLog").unwrap();
-        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
-        let count_val = Value::Lit(Literal::LitInt(5));
-        let val = Value::Con(con_id, vec![ref_val, count_val]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Log(ref s, 5) if s == "HEAD"));
-    }
-
-    #[test]
-    fn test_git_req_from_core_show() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitShow").unwrap();
-        let hash = head_hash();
-        let hash_val = hash.clone().to_value(&table).unwrap();
-        let val = Value::Con(con_id, vec![hash_val]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Show(ref s) if s == &hash));
-    }
-
-    #[test]
-    fn test_git_req_from_core_diff() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitDiff").unwrap();
-        let hash = head_hash();
-        let hash_val = hash.clone().to_value(&table).unwrap();
-        let val = Value::Con(con_id, vec![hash_val]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Diff(ref s) if s == &hash));
-    }
-
-    #[test]
-    fn test_git_req_from_core_blame() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitBlame").unwrap();
-        let file_val = "Cargo.toml".to_string().to_value(&table).unwrap();
-        let start_val = Value::Lit(Literal::LitInt(1));
-        let end_val = Value::Lit(Literal::LitInt(5));
-        let val = Value::Con(con_id, vec![file_val, start_val, end_val]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Blame(ref f, 1, 5) if f == "Cargo.toml"));
-    }
-
-    #[test]
-    fn test_git_req_from_core_tree() {
-        let table = full_effect_test_table();
-        let con_id = table.get_by_name("GitTree").unwrap();
-        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
-        let path_val = ".".to_string().to_value(&table).unwrap();
-        let val = Value::Con(con_id, vec![ref_val, path_val]);
-        let req = GitReq::from_value(&val, &table).unwrap();
-        assert!(matches!(req, GitReq::Tree(ref r, ref p) if r == "HEAD" && p == "."));
-    }
 
     // === Response structure tests ===
 
-    #[test]
-    fn test_git_response_branches_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let result = handler.handle(GitReq::Branches, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_response_log_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let result = handler.handle(GitReq::Log("HEAD".into(), 3), &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_response_show_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let hash = head_hash();
-        let result = handler.handle(GitReq::Show(hash), &cx).unwrap();
-        // Show returns a single JSON Object, not a list
-        assert_is_json_value(&result, &table);
-    }
-
-    #[test]
-    fn test_git_response_diff_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let hash = head_hash();
-        let result = handler.handle(GitReq::Diff(hash), &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_response_tree_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let result = handler
-            .handle(GitReq::Tree("HEAD".into(), ".".into()), &cx)
-            .unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_response_blame_structure() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let (mut handler, _) = git_handler();
-        let result = handler
-            .handle(GitReq::Blame("Cargo.toml".into(), 1, 5), &cx)
-            .unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
     // === Full dispatch round-trip tests ===
-
-    #[test]
-    fn test_git_dispatch_roundtrip_branches() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitBranches").unwrap();
-        let request = Value::Con(con_id, vec![]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_dispatch_roundtrip_log() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitLog").unwrap();
-        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
-        let count_val = Value::Lit(Literal::LitInt(3));
-        let request = Value::Con(con_id, vec![ref_val, count_val]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_dispatch_roundtrip_show() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitShow").unwrap();
-        let hash = head_hash();
-        let hash_val = hash.to_value(&table).unwrap();
-        let request = Value::Con(con_id, vec![hash_val]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_json_value(&result, &table);
-    }
-
-    #[test]
-    fn test_git_dispatch_roundtrip_diff() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitDiff").unwrap();
-        let hash = head_hash();
-        let hash_val = hash.to_value(&table).unwrap();
-        let request = Value::Con(con_id, vec![hash_val]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_dispatch_roundtrip_tree() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitTree").unwrap();
-        let ref_val = "HEAD".to_string().to_value(&table).unwrap();
-        let path_val = ".".to_string().to_value(&table).unwrap();
-        let request = Value::Con(con_id, vec![ref_val, path_val]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
-
-    #[test]
-    fn test_git_dispatch_roundtrip_blame() {
-        let table = full_effect_test_table();
-        let captured = CapturedOutput::new();
-        let cx = EffectContext::with_user(&table, &captured);
-        let mut handlers = frunk::hlist![GitHandler::new(repo_root())];
-        let con_id = table.get_by_name("GitBlame").unwrap();
-        let file_val = "Cargo.toml".to_string().to_value(&table).unwrap();
-        let start_val = Value::Lit(Literal::LitInt(1));
-        let end_val = Value::Lit(Literal::LitInt(5));
-        let request = Value::Con(con_id, vec![file_val, start_val, end_val]);
-        let result = handlers.dispatch(0, &request, &cx).unwrap();
-        assert_is_haskell_list(&result, &table);
-    }
 
     // === Structural guard tests ===
 
@@ -2310,7 +1624,7 @@ mod tests {
     }
 
     const EFFECTS_WITH_ROUNDTRIP_TESTS: &[&str] = &[
-        "Console", "KV", "Fs", "SG", "Http", "Exec", "Meta", "Git", "Llm", "Ask",
+        "Console", "KV", "Fs", "SG", "Http", "Exec", "Llm", "Ask",
     ];
 
     #[test]
@@ -2334,10 +1648,10 @@ mod tests {
     #[test]
     fn handler_order_matches_standard_decls() {
         let decls = tidepool_mcp::standard_decls();
-        // HList order from main(): Console(0), KV(1), Fs(2), SG(3), Http(4), Exec(5), Meta(6), Git(7), Llm(8)
-        // Ask(9) is handled by MCP server, not in main HList
+        // HList order from main(): Console(0), KV(1), Fs(2), SG(3), Http(4), Exec(5), Llm(6)
+        // Ask(7) is handled by MCP server, not in main HList
         let expected = [
-            "Console", "KV", "Fs", "SG", "Http", "Exec", "Meta", "Git", "Llm",
+            "Console", "KV", "Fs", "SG", "Http", "Exec", "Llm",
         ];
         for (i, name) in expected.iter().enumerate() {
             assert_eq!(
@@ -2647,193 +1961,6 @@ mod tests {
         assert_eq!(result, serde_json::json!(true));
     }
 
-    #[test]
-    fn test_jit_meta_version_roundtrip() {
-        let result = jit_eval(&["v <- metaVersion", "pure (toJSON v)"]);
-        assert!(
-            result.is_string(),
-            "metaVersion should return a string, got {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_jit_meta_primops_roundtrip() {
-        let result = jit_eval(&["ops <- metaPrimOps", "pure (toJSON (length ops > 0))"]);
-        assert_eq!(result, serde_json::json!(true));
-    }
-
-    #[test]
-    fn test_jit_git_log_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result = jit_eval_in_git_repo(
-            &[
-                "commits <- gitLog \"HEAD\" 3",
-                "pure (toJSON (length commits))",
-            ],
-            &path,
-        );
-        let n = result.as_i64().unwrap();
-        assert_eq!(n, 2, "test repo has exactly 2 commits, got {}", n);
-    }
-
-    #[test]
-    fn test_jit_git_show_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result = jit_eval_in_git_repo(
-            &[
-                "c <- gitShow \"HEAD\"",
-                "pure (toJSON (c ^? key \"subject\" . _String))",
-            ],
-            &path,
-        );
-        assert_eq!(result, serde_json::json!("second commit"));
-    }
-
-    #[test]
-    fn test_jit_git_diff_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result = jit_eval_in_git_repo(
-            &["diffs <- gitDiff \"HEAD\"", "pure (toJSON (length diffs))"],
-            &path,
-        );
-        // HEAD commit modified hello.txt → 1 diff entry
-        assert_eq!(result, serde_json::json!(1));
-    }
-
-    #[test]
-    fn test_jit_git_branches_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result =
-            jit_eval_in_git_repo(&["bs <- gitBranches", "pure (toJSON (length bs))"], &path);
-        // test repo has exactly 1 branch ("main")
-        // (HEAD detached + "main" branch = may be 1 or 2 depending on git2)
-        let n = result.as_i64().unwrap();
-        assert!(n >= 1 && n <= 2, "expected 1-2 branches, got {}", n);
-    }
-
-    #[test]
-    fn test_jit_git_tree_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result = jit_eval_in_git_repo(
-            &[
-                "entries <- gitTree \"HEAD\" \".\"",
-                "pure (toJSON (length entries))",
-            ],
-            &path,
-        );
-        // test repo has hello.txt and data.csv → 2 entries
-        assert_eq!(result, serde_json::json!(2));
-    }
-
-    #[test]
-    fn test_jit_git_blame_roundtrip() {
-        let (_tmp, path) = test_git_repo();
-        let result = jit_eval_in_git_repo(
-            &[
-                "hunks <- gitBlame \"data.csv\" 1 3",
-                "pure (toJSON (length hunks))",
-            ],
-            &path,
-        );
-        let n = result.as_i64().unwrap();
-        assert!(n > 0, "gitBlame should return at least 1 hunk, got {}", n);
-    }
-
-    // === Raw git2 tests (using tmpdir repo for determinism) ===
-
-    #[test]
-    fn test_git_open_repo() {
-        let (_tmp, path) = test_git_repo();
-        let handler = GitHandler::new(path);
-        handler.open_repo().expect("should open repo");
-    }
-
-    #[test]
-    fn test_git_branches() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let branches = repo.branches(None).unwrap();
-        let names: Vec<String> = branches
-            .filter_map(|b| b.ok())
-            .filter_map(|(b, _)| b.name().ok().flatten().map(String::from))
-            .collect();
-        assert!(!names.is_empty(), "should have at least one branch");
-        assert!(
-            names.iter().any(|n| n == "main"),
-            "should have main branch, got: {:?}",
-            names
-        );
-    }
-
-    #[test]
-    fn test_git_log() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let obj = repo.revparse_single("HEAD").unwrap();
-        let mut revwalk = repo.revwalk().unwrap();
-        revwalk.push(obj.id()).unwrap();
-        revwalk.set_sorting(git2::Sort::TIME).ok();
-        let commits: Vec<git2::Oid> = revwalk.take(5).filter_map(|r| r.ok()).collect();
-        assert_eq!(commits.len(), 2, "test repo has exactly 2 commits");
-        let commit = repo.find_commit(commits[0]).unwrap();
-        assert_eq!(commit.summary().unwrap(), "second commit");
-    }
-
-    #[test]
-    fn test_git_show() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
-        assert_eq!(head.summary().unwrap(), "second commit");
-        assert_eq!(head.author().name().unwrap(), "Test User");
-    }
-
-    #[test]
-    fn test_git_diff() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
-        let tree = head.tree().unwrap();
-        let parent_tree = head.parent(0).unwrap().tree().unwrap();
-        let diff = repo
-            .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
-            .unwrap();
-        assert_eq!(diff.deltas().count(), 1, "second commit changed 1 file");
-    }
-
-    #[test]
-    fn test_git_tree() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
-        let tree = head.tree().unwrap();
-        let entries: Vec<String> = tree
-            .iter()
-            .filter_map(|e| e.name().map(String::from))
-            .collect();
-        assert_eq!(entries.len(), 2);
-        assert!(entries.contains(&"hello.txt".to_string()));
-        assert!(entries.contains(&"data.csv".to_string()));
-    }
-
-    #[test]
-    fn test_git_blame() {
-        let (_tmp, path) = test_git_repo();
-        let repo = git2::Repository::open(&path).unwrap();
-        let mut opts = git2::BlameOptions::new();
-        opts.min_line(1);
-        opts.max_line(3);
-        let blame = repo
-            .blame_file(std::path::Path::new("data.csv"), Some(&mut opts))
-            .unwrap();
-        assert!(blame.len() > 0, "blame should have at least one hunk");
-        let hunk = blame.get_index(0).unwrap();
-        assert_eq!(hunk.final_signature().name().unwrap(), "Test User");
-        let content = std::fs::read_to_string(path.join("hello.txt")).unwrap();
-        assert_eq!(content, "hello world\nupdated\n");
-    }
-
     // === LLM structured JSON round-trip through JIT ===
 
     /// Mock LLM handler that returns a fixed JSON response instead of calling the API.
@@ -2879,8 +2006,6 @@ mod tests {
             SgHandler::new(cwd.clone()),
             HttpHandler,
             ExecHandler::new(cwd.clone()),
-            MetaHandler::new(vec![], vec![]),
-            GitHandler::new(cwd),
             MockLlmHandler {
                 response: mock_response
             }

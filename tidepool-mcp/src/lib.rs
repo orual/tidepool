@@ -161,7 +161,7 @@ pub fn sg_decl() -> EffectDecl {
     EffectDecl {
         type_name: "SG",
         description: concat!(
-            "Structural code search and rewrite via ast-grep. ",
+            "Structural code search via ast-grep. ",
             "Use patterns with $VAR for single-node captures and $$$VAR for multi-node. ",
             "Paths are relative to server working directory.",
         ),
@@ -174,17 +174,11 @@ pub fn sg_decl() -> EffectDecl {
         ],
         constructors: &[
             "SgFind    :: Lang -> Text -> [Text] -> SG [Match]",
-            "SgPreview :: Lang -> Text -> Text -> [Text] -> SG [Match]",
-            "SgReplace :: Lang -> Text -> Text -> [Text] -> SG Int",
             "SgRuleFind    :: Lang -> Value -> [Text] -> SG [Match]",
-            "SgRuleReplace :: Lang -> Value -> Text -> [Text] -> SG Int",
         ],
         helpers: &[
             "sgFind :: Lang -> Text -> [Text] -> M [Match]\nsgFind l p fs = send (SgFind l p fs)",
-            "sgPreview :: Lang -> Text -> Text -> [Text] -> M [Match]\nsgPreview l p r fs = send (SgPreview l p r fs)",
-            "sgReplace :: Lang -> Text -> Text -> [Text] -> M Int\nsgReplace l p r fs = send (SgReplace l p r fs)",
             "sgRuleFind :: Lang -> Value -> [Text] -> M [Match]\nsgRuleFind l r fs = send (SgRuleFind l r fs)",
-            "sgRuleReplace :: Lang -> Value -> Text -> [Text] -> M Int\nsgRuleReplace l r rw fs = send (SgRuleReplace l r rw fs)",
             "rPat :: Text -> Value\nrPat p = object [\"pattern\" .= p]",
             "rKind :: Text -> Value\nrKind k = object [\"kind\" .= k]",
             "rRegex :: Text -> Value\nrRegex r = object [\"regex\" .= r]",
@@ -205,7 +199,6 @@ pub fn sg_decl() -> EffectDecl {
             "infixl 7 <?\n(<?) :: Value -> Value -> Value\nchild <? ancestor = child .+. rInside ancestor",
             // Extra field helpers
             "rField :: Text -> Value\nrField name = object [\"field\" .= name]",
-            "rStopBy :: Text -> Value\nrStopBy s = object [\"stopBy\" .= s]",
         ],
     }
 }
@@ -218,13 +211,11 @@ pub fn http_decl() -> EffectDecl {
         constructors: &[
             "HttpGet :: Text -> Http Value",
             "HttpPost :: Text -> Value -> Http Value",
-            "HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value",
         ],
         type_defs: &[],
         helpers: &[
             "httpGet :: Text -> M Value\nhttpGet = send . HttpGet",
             "httpPost :: Text -> Value -> M Value\nhttpPost url body = send (HttpPost url body)",
-            "httpReq :: Text -> Text -> [(Text,Text)] -> Text -> M Value\nhttpReq method url headers body = send (HttpRequest method url headers body)",
         ],
     }
 }
@@ -237,7 +228,6 @@ pub fn exec_decl() -> EffectDecl {
         constructors: &[
             "Run :: Text -> Exec (Int, Text, Text)",
             "RunIn :: Text -> Text -> Exec (Int, Text, Text)",
-            "RunJson :: Text -> Exec Value",
         ],
         type_defs: &[],
         helpers: &[
@@ -288,31 +278,6 @@ pub fn ask_decl() -> EffectDecl {
     }
 }
 
-/// Git effect: native repository access via libgit2.
-pub fn git_decl() -> EffectDecl {
-    EffectDecl {
-        type_name: "Git",
-        description: "Native git repository access via libgit2.",
-        constructors: &[
-            "GitLog      :: Text -> Int -> Git [Value]",
-            "GitShow     :: Text -> Git Value",
-            "GitDiff     :: Text -> Git [Value]",
-            "GitBlame    :: Text -> Int -> Int -> Git [Value]",
-            "GitTree     :: Text -> Text -> Git [Value]",
-            "GitBranches :: Git [Value]",
-        ],
-        type_defs: &[],
-        helpers: &[
-            "gitLog :: Text -> Int -> M [Value]\ngitLog ref n = send (GitLog ref n)",
-            "gitShow :: Text -> M Value\ngitShow = send . GitShow",
-            "gitDiff :: Text -> M [Value]\ngitDiff = send . GitDiff",
-            "gitBlame :: Text -> Int -> Int -> M [Value]\ngitBlame file s e = send (GitBlame file s e)",
-            "gitTree :: Text -> Text -> M [Value]\ngitTree hash path = send (GitTree hash path)",
-            "gitBranches :: M [Value]\ngitBranches = send GitBranches",
-        ],
-    }
-}
-
 /// LLM effect: call a fast LLM (Haiku) for classification, extraction, or judgment.
 pub fn llm_decl() -> EffectDecl {
     EffectDecl {
@@ -344,8 +309,6 @@ pub fn standard_decls() -> Vec<EffectDecl> {
         sg_decl(),
         http_decl(),
         exec_decl(),
-        meta_decl(),
-        git_decl(),
         llm_decl(),
         ask_decl(),
     ]
@@ -707,10 +670,6 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
             "  else error (\"command failed: \" <> cmd <> \"\\n\" <> err)\n",
         ));
         out.push_str(concat!(
-            "runJson :: Text -> M Value\n",
-            "runJson = send . RunJson\n",
-        ));
-        out.push_str(concat!(
             "mapFile :: Text -> (Text -> Text) -> M ()\n",
             "mapFile path f = fsRead path >>= \\c -> fsWrite path (f c)\n",
         ));
@@ -749,160 +708,6 @@ pub fn build_preamble(effects: &[EffectDecl], user_library: bool) -> String {
         out.push_str(concat!(
             "runAll :: [Text] -> M [(Int, Text, Text)]\n",
             "runAll = mapM run\n",
-        ));
-
-        // --- Git-aware analysis + codebase search helpers ---
-
-        // extLang: detect ast-grep Lang from file extension
-        out.push_str(concat!(
-            "extLang :: Text -> Maybe Lang\n",
-            "extLang f\n",
-            "  | T.isSuffixOf \".rs\" f = Just Rust\n",
-            "  | T.isSuffixOf \".py\" f = Just Python\n",
-            "  | T.isSuffixOf \".ts\" f = Just TypeScript\n",
-            "  | T.isSuffixOf \".tsx\" f = Just TypeScript\n",
-            "  | T.isSuffixOf \".js\" f = Just JavaScript\n",
-            "  | T.isSuffixOf \".jsx\" f = Just JavaScript\n",
-            "  | T.isSuffixOf \".go\" f = Just Go\n",
-            "  | T.isSuffixOf \".java\" f = Just Java\n",
-            "  | T.isSuffixOf \".c\" f = Just C\n",
-            "  | T.isSuffixOf \".cpp\" f = Just Cpp\n",
-            "  | T.isSuffixOf \".cc\" f = Just Cpp\n",
-            "  | T.isSuffixOf \".hs\" f = Just Haskell\n",
-            "  | T.isSuffixOf \".nix\" f = Just Nix\n",
-            "  | otherwise = Nothing\n",
-        ));
-
-        // funcPattern: ast-grep pattern for function definitions per language
-        out.push_str(concat!(
-            "funcPattern :: Lang -> Text\n",
-            "funcPattern Rust = \"fn $NAME\"\n",
-            "funcPattern Python = \"def $NAME\"\n",
-            "funcPattern Go = \"func $NAME\"\n",
-            "funcPattern JavaScript = \"function $NAME\"\n",
-            "funcPattern TypeScript = \"function $NAME\"\n",
-            "funcPattern Java = \"$TYPE $NAME($$$PARAMS)\"\n",
-            "funcPattern C = \"$TYPE $NAME($$$PARAMS)\"\n",
-            "funcPattern Cpp = \"$TYPE $NAME($$$PARAMS)\"\n",
-            "funcPattern Haskell = \"$NAME $$$ARGS = $$$BODY\"\n",
-            "funcPattern _ = \"$NAME\"\n",
-        ));
-
-        // changedFunctions: git diff → changed files → function defs in each
-        out.push_str(concat!(
-            "changedFunctions :: Text -> M [Value]\n",
-            "changedFunctions ref = do\n",
-            "  diffs <- gitDiff ref\n",
-            "  let entries = catMaybes $ map (\\d -> do\n",
-            "        p <- d ?. \"path\" >>= asText\n",
-            "        s <- d ?. \"status\" >>= asText\n",
-            "        lang <- extLang p\n",
-            "        Just (p, s, lang)) diffs\n",
-            "  forM entries $ \\(p, s, lang) -> do\n",
-            "    fns <- if s == \"D\" then pure []\n",
-            "           else do\n",
-            "             ms <- sgFind lang (funcPattern lang) [p]\n",
-            "             pure $ map (\\m -> object [\"name\" .= var m \"NAME\", \"line\" .= mLine m]) ms\n",
-            "    pure $ object [\"file\" .= p, \"status\" .= s, \"functions\" .= fns]\n",
-        ));
-
-        // reviewCommit: enrich a commit with function-level detail
-        out.push_str(concat!(
-            "reviewCommit :: Text -> M Value\n",
-            "reviewCommit hash = do\n",
-            "  meta <- gitShow hash\n",
-            "  diffs <- gitDiff hash\n",
-            "  let h = maybe \"\" id (meta ?. \"hash\" >>= asText)\n",
-            "  let subj = maybe \"\" id (meta ?. \"subject\" >>= asText)\n",
-            "  let auth = maybe \"\" id (meta ?. \"author\" >>= asText)\n",
-            "  let dt = maybe 0 id (meta ?. \"date\" >>= asInt)\n",
-            "  let bod = maybe \"\" id (meta ?. \"body\" >>= asText)\n",
-            "  let entries = catMaybes $ map (\\d -> do\n",
-            "        p <- d ?. \"path\" >>= asText\n",
-            "        s <- d ?. \"status\" >>= asText\n",
-            "        Just (p, s, extLang p)) diffs\n",
-            "  files <- forM entries $ \\(p, s, ml) -> do\n",
-            "    fns <- case ml of\n",
-            "      Nothing -> pure []\n",
-            "      Just lang -> if s == \"D\" then pure []\n",
-            "        else do\n",
-            "          ms <- sgFind lang (funcPattern lang) [p]\n",
-            "          pure $ map (\\m -> object [\"name\" .= var m \"NAME\", \"line\" .= mLine m]) ms\n",
-            "    pure $ object [\"file\" .= p, \"status\" .= s, \"functions\" .= fns]\n",
-            "  pure $ object [\"hash\" .= h, \"subject\" .= subj, \"author\" .= auth,\n",
-            "                 \"date\" .= dt, \"body\" .= bod, \"files\" .= files]\n",
-        ));
-
-        // staleBranches: find branches older than N days
-        out.push_str(concat!(
-            "staleBranches :: Int -> M [Value]\n",
-            "staleBranches maxDays = do\n",
-            "  branches <- gitBranches\n",
-            "  (_, nowStr, _) <- run \"date +%s\"\n",
-            "  let now = maybe 0 id (parseIntM (T.strip nowStr))\n",
-            "  results <- fmap catMaybes $ forM branches $ \\b -> do\n",
-            "    let mname = b ?. \"name\" >>= asText\n",
-            "    let mcommit = b ?. \"commit\" >>= asText\n",
-            "    let isHead = maybe False id (b ?. \"is_head\" >>= asBool)\n",
-            "    case (mname, mcommit) of\n",
-            "      (Just name, Just c) -> do\n",
-            "        info <- gitShow c\n",
-            "        let date = maybe 0 id (info ?. \"date\" >>= asInt)\n",
-            "        let auth = maybe \"\" id (info ?. \"author\" >>= asText)\n",
-            "        let subj = maybe \"\" id (info ?. \"subject\" >>= asText)\n",
-            "        let age = quot (now - date) 86400\n",
-            "        if age >= maxDays\n",
-            "          then pure $ Just $ object [\"name\" .= name, \"author\" .= auth,\n",
-            "                 \"subject\" .= subj, \"days_old\" .= age, \"is_head\" .= isHead]\n",
-            "          else pure Nothing\n",
-            "      _ -> pure Nothing\n",
-            "  pure $ sortBy (\\a b -> let ga = maybe 0 id (a ?. \"days_old\" >>= asInt)\n",
-            "                             gb = maybe 0 id (b ?. \"days_old\" >>= asInt)\n",
-            "                         in compare gb ga) results\n",
-        ));
-
-        // findAndPreview: structured ast-grep preview
-        out.push_str(concat!(
-            "findAndPreview :: Lang -> Text -> Text -> [Text] -> M [Value]\n",
-            "findAndPreview lang pat repl paths = do\n",
-            "  ms <- sgPreview lang pat repl paths\n",
-            "  pure $ map (\\m -> object [\"file\" .= mFile m, \"line\" .= mLine m,\n",
-            "    \"original\" .= mText m, \"replacement\" .= mReplacement m]) ms\n",
-        ));
-
-        // todoScan: find TODO/FIXME/HACK/XXX with git blame attribution
-        out.push_str(concat!(
-            "todoScan :: Text -> M [Value]\n",
-            "todoScan pat = do\n",
-            "  files <- fsGlob pat\n",
-            "  fmap concat $ forM files $ \\path -> do\n",
-            "    content <- fsRead path\n",
-            "    let ls = zip [(1::Int)..] (T.lines content)\n",
-            "    let hits = concatMap (\\(n, l) ->\n",
-            "          let tags = filter (\\t -> T.isInfixOf t l) [\"TODO\", \"FIXME\", \"HACK\", \"XXX\"]\n",
-            "          in map (\\t -> (n, l, t)) tags) ls\n",
-            "    forM hits $ \\(n, l, tag) -> do\n",
-            "      bl <- gitBlame path n n\n",
-            "      let auth = case bl of { (x:_) -> maybe \"\" id (x ?. \"author\" >>= asText); _ -> \"\" }\n",
-            "      let comm = case bl of { (x:_) -> maybe \"\" id (x ?. \"commit\" >>= asText); _ -> \"\" }\n",
-            "      pure $ object [\"file\" .= path, \"line\" .= n, \"tag\" .= tag,\n",
-            "        \"text\" .= T.strip l, \"author\" .= auth, \"commit\" .= comm]\n",
-        ));
-
-        // deadCode: find unreferenced function definitions
-        out.push_str(concat!(
-            "deadCode :: Lang -> Text -> M [Value]\n",
-            "deadCode lang pat = do\n",
-            "  ms <- sgFind lang (funcPattern lang) [pat]\n",
-            "  let defs = take 50 $ catMaybes $ map (\\m ->\n",
-            "        let n = var m \"NAME\" in\n",
-            "        if T.null n then Nothing\n",
-            "        else Just (mFile m, mLine m, n)) ms\n",
-            "  fmap catMaybes $ forM defs $ \\(file, line, name) -> do\n",
-            "    refs <- searchFiles pat name\n",
-            "    let others = filter (\\(f, n, _) -> not (f == file && n == line)) refs\n",
-            "    if null others then pure $ Just $ object [\"file\" .= file, \"line\" .= line, \"name\" .= name]\n",
-            "    else pure Nothing\n",
         ));
 
         // --- Heuristic combinators: Q a (Haiku-first, Ask-on-uncertainty) ---
@@ -1062,9 +867,6 @@ fn build_eval_tool_description(effects: &[EffectDecl]) -> String {
         desc.push_str("\nAvailable effects (use `send` to invoke):\n");
         for eff in effects {
             desc.push_str(&format!("\n{}: {}\n", eff.type_name, eff.description));
-            for ctor in eff.constructors {
-                desc.push_str(&format!("  {}\n", ctor));
-            }
         }
 
         // List built-in helpers
@@ -1705,7 +1507,7 @@ impl TidepoolMcpServerImpl {
         let thread_session_tx = session_tx;
         let _handle = std::thread::Builder::new()
             .name("tidepool-eval".into())
-            .stack_size(32 * 1024 * 1024)
+            .stack_size(256 * 1024 * 1024)
             .spawn(move || {
                 let _permit = permit;
                 // Install signal handlers so SIGILL/SIGSEGV from JIT code
@@ -2180,7 +1982,7 @@ mod tests {
         }];
         let desc = build_eval_tool_description(&effects);
         assert!(desc.contains("Console: Print to console"));
-        assert!(desc.contains("Print :: Text -> Console ()"));
+        // Constructors not shown separately (helpers section covers them)
         assert!(desc.contains("say :: Text -> M ()"));
         assert!(desc.contains("Built-in helpers"));
     }
@@ -2193,10 +1995,7 @@ mod tests {
         assert!(preamble.contains("kvGet :: Text -> M (Maybe Value)\nkvGet = send . KvGet"));
         assert!(preamble.contains("fsRead :: Text -> M Text\nfsRead = send . FsRead"));
         assert!(preamble.contains("httpGet :: Text -> M Value\nhttpGet = send . HttpGet"));
-        assert!(preamble.contains(
-            "metaConstructors :: M [(Text, Int)]\nmetaConstructors = send MetaConstructors"
-        ));
-        assert!(preamble.contains("metaVersion :: M Text\nmetaVersion = send MetaVersion"));
+        // Meta helpers not in default preamble (Meta behind --debug)
         assert!(preamble.contains("ask :: Text -> M Value\nask = send . Ask"));
     }
 
@@ -2248,13 +2047,11 @@ mod tests {
     #[test]
     fn test_standard_decls_includes_ask() {
         let decls = standard_decls();
-        assert_eq!(decls.len(), 10);
+        assert_eq!(decls.len(), 8);
         assert_eq!(decls[4].type_name, "Http");
         assert_eq!(decls[5].type_name, "Exec");
-        assert_eq!(decls[6].type_name, "Meta");
-        assert_eq!(decls[7].type_name, "Git");
-        assert_eq!(decls[8].type_name, "Llm");
-        assert_eq!(decls[9].type_name, "Ask");
+        assert_eq!(decls[6].type_name, "Llm");
+        assert_eq!(decls[7].type_name, "Ask");
     }
 
     #[test]
@@ -2275,7 +2072,7 @@ mod tests {
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Value"));
         assert!(preamble
-            .contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Meta, Git, Llm, Ask]"));
+            .contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Llm, Ask]"));
     }
 
     #[test]
@@ -2284,7 +2081,7 @@ mod tests {
         let stack = build_effect_stack_type(&decls);
         assert_eq!(
             stack,
-            "'[Console, KV, Fs, SG, Http, Exec, Meta, Git, Llm, Ask]"
+            "'[Console, KV, Fs, SG, Http, Exec, Llm, Ask]"
         );
     }
 
@@ -2309,13 +2106,9 @@ mod tests {
     }
 
     #[test]
-    fn test_exec_decl_has_run_json() {
+    fn test_exec_decl() {
         let decl = exec_decl();
         assert_eq!(decl.type_name, "Exec");
-        assert!(decl
-            .constructors
-            .iter()
-            .any(|c| c.contains("RunJson :: Text -> Exec Value")));
         assert!(decl
             .constructors
             .iter()
@@ -2333,8 +2126,6 @@ mod tests {
         // runChecked uses our Text error, not String error
         assert!(preamble.contains("runChecked :: Text -> M Text"));
         assert!(preamble.contains("else error (\"command failed: \""));
-        // runJson is a thin wrapper over the effect constructor
-        assert!(preamble.contains("runJson :: Text -> M Value\nrunJson = send . RunJson"));
         // File manipulation helpers
         assert!(preamble.contains("mapFile :: Text -> (Text -> Text) -> M ()"));
         assert!(preamble.contains("mapFileM :: Text -> (Text -> M Text) -> M ()"));
@@ -2345,15 +2136,6 @@ mod tests {
         assert!(preamble.contains("kvAll :: M [(Text, Value)]"));
         assert!(preamble.contains("kvClear :: M ()"));
         assert!(preamble.contains("runAll :: [Text] -> M [(Int, Text, Text)]"));
-        // Git-aware analysis helpers
-        assert!(preamble.contains("extLang :: Text -> Maybe Lang"));
-        assert!(preamble.contains("funcPattern :: Lang -> Text"));
-        assert!(preamble.contains("changedFunctions :: Text -> M [Value]"));
-        assert!(preamble.contains("reviewCommit :: Text -> M Value"));
-        assert!(preamble.contains("staleBranches :: Int -> M [Value]"));
-        assert!(preamble.contains("findAndPreview :: Lang -> Text -> Text -> [Text] -> M [Value]"));
-        assert!(preamble.contains("todoScan :: Text -> M [Value]"));
-        assert!(preamble.contains("deadCode :: Lang -> Text -> M [Value]"));
         // Heuristic combinators
         assert!(preamble.contains("data Q a = Q Schema (Value -> a) Double"));
         assert!(preamble.contains("data Judged a = Sure a | Unsure Double a"));
@@ -2376,7 +2158,6 @@ mod tests {
         let preamble = build_preamble(&decls, false);
         // Orchestration helpers only appear with user_library=true
         assert!(!preamble.contains("runChecked"));
-        assert!(!preamble.contains("runJson :: Text -> M Value"));
     }
 
     #[test]
@@ -2395,7 +2176,6 @@ mod tests {
         assert!(preamble.contains("infixl 7 <?"));
         // Extra helpers
         assert!(preamble.contains("rField :: Text -> Value"));
-        assert!(preamble.contains("rStopBy :: Text -> Value"));
     }
 
     #[test]
@@ -2425,12 +2205,12 @@ mod tests {
     #[test]
     fn test_parse_constructor_nested_types() {
         let p =
-            parse_constructor("HttpRequest :: Text -> Text -> [(Text,Text)] -> Text -> Http Value")
+            parse_constructor("FakeReq :: Text -> Text -> [(Text,Text)] -> Text -> Fake Value")
                 .unwrap();
         assert_eq!(
             p,
             ParsedConstructor {
-                name: "HttpRequest".into(),
+                name: "FakeReq".into(),
                 arity: 4
             }
         );

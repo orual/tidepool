@@ -211,12 +211,117 @@ The `tidepool` binary provides these effect handlers:
 | **Console** | `Print :: Text -> Console ()` |
 | **KV** | `KvGet`, `KvSet`, `KvDelete`, `KvKeys` — persistent key-value store |
 | **Fs** | `FsRead`, `FsWrite`, `FsListDir`, `FsGlob`, `FsExists`, `FsMetadata` — sandboxed file I/O |
-| **SG** | `SgFind`, `SgPreview`, `SgReplace`, `SgRuleFind`, `SgRuleReplace` — structural code search via ast-grep |
-| **Http** | `HttpGet`, `HttpPost`, `HttpRequest` — outbound HTTP (no localhost) |
-| **Exec** | `Run`, `RunIn`, `RunJson` — shell command execution |
-| **Meta** | `MetaConstructors`, `MetaLookupCon`, `MetaPrimOps`, `MetaEffects`, `MetaDiagnostics`, `MetaVersion`, `MetaHelp` |
-| **Git** | `GitLog`, `GitShow`, `GitDiff`, `GitBlame`, `GitTree`, `GitBranches` — native git access via libgit2 |
+| **SG** | `SgFind`, `SgRuleFind` — structural code search via ast-grep |
+| **Http** | `HttpGet`, `HttpPost` — outbound HTTP (no localhost) |
+| **Exec** | `Run`, `RunIn` — shell command execution |
+| **Llm** | `LlmChat`, `LlmStructured` — call a fast LLM for classification/extraction |
 | **Ask** | `Ask :: Text -> Ask Value` — suspend execution and ask the calling LLM a question |
+
+> **`--debug` flag**: Run `tidepool --debug` to enable the **Meta** effect (`MetaConstructors`, `MetaLookupCon`, `MetaPrimOps`, `MetaEffects`, `MetaDiagnostics`, `MetaVersion`, `MetaHelp`) for runtime introspection. For git operations, use `run "git ..."` via the Exec effect.
+
+### MCP Server Usage Examples
+
+Tidepool also supports live compilation, in cases where the user has the Haskell compiler available. To demonstrate this, we have provided an MCP server that provides this functionality. It's a bit like GHCi (Haskell's REPL), but specialized for the monadic composition of pure effects that are executed by Rust code.
+
+#### Pure computation
+
+The simplest case — pure Haskell compiled to native code and back:
+
+```haskell
+pure (1 + 2 :: Int)
+-- → 3
+```
+
+#### Sequencing monadic effects
+
+Each effect operation (`say`, `fsRead`, `run`, etc.) is a monadic action. Chain them with `do`-notation:
+
+```haskell
+content <- fsRead "Cargo.toml"
+let lineCount = len (lines content)
+say ("Cargo.toml has " <> pack (show lineCount) <> " lines")
+pure lineCount
+```
+```
+## Output
+Cargo.toml has 29 lines
+
+## Result
+29
+```
+
+Effects compose freely — read files, run shell commands, query a KV store, all in one program:
+
+```haskell
+(_, rustc_out, _) <- run "rustc --version"
+say ("Rust: " <> strip rustc_out)
+kvSet "env" (object ["rustc" .= strip rustc_out])
+v <- kvGet "env"
+pure (case v of { Just val -> val; Nothing -> Null })
+```
+```json
+{ "rustc": "rustc 1.93.0 (254b59607 2026-01-19)" }
+```
+
+#### Codebase census in a single eval
+
+One eval replaces many tool calls. Glob for files, gather metadata, sort, return structured JSON:
+
+```haskell
+files <- fsGlob "tidepool-*/Cargo.toml"
+sizes <- mapM (\f -> do
+  (sz, _, _) <- fsMetadata f
+  pure (object ["file" .= f, "bytes" .= sz])) files
+pure (toJSON sizes)
+```
+```json
+[
+  {"bytes": 482, "file": "tidepool-bridge/Cargo.toml"},
+  {"bytes": 921, "file": "tidepool-codegen/Cargo.toml"},
+  ...
+]
+```
+
+#### Free pagination via continuation
+
+`ask` suspends the computation and returns control to the calling LLM. The LLM can do independent work (run other tools, think), then resume with an answer. The suspended eval is a coroutine checkpoint:
+
+```haskell
+files <- fsGlob "tidepool-*/src/lib.rs"
+info <- mapM (\f -> do
+  (sz, _, _) <- fsMetadata f
+  pure (f <> " (" <> pack (show sz) <> " bytes)")) files
+let numbered = map (\(i, f) -> pack (show i) <> ". " <> f) (zipWithIndex info)
+answer <- ask ("Which file to inspect?\n" <> unlines numbered)
+-- ← computation suspends here, LLM resumes with "9"
+let chosen = head (sdrop (round (answer ^? _Number)) files)
+content <- fsRead chosen
+pure (toJSON (take 10 (lines content)))
+```
+
+The LLM sees a menu of 12 files with sizes, picks one, and the eval resumes to read it — all within a single logical computation.
+
+#### Complex effect sequences
+
+Combine structural code search (ast-grep), file I/O, and LLM classification in one program:
+
+```haskell
+-- Find all struct definitions in the codegen crate
+matches <- sgFind Rust "struct $NAME { $$$FIELDS }" ["tidepool-codegen/src/"]
+say ("Found " <> pack (show (length matches)) <> " structs")
+
+-- Classify each one with a fast LLM
+results <- mapM (\m -> do
+  let text = case m of Match t _ _ _ _ -> t
+  category <- llm ("Classify this Rust struct as 'data', 'config', or 'handler': " <> text)
+  pure (object ["struct" .= text, "category" .= category])) (take 5 matches)
+
+-- Persist results for later evals
+kvSet "struct_analysis" (toJSON results)
+pure (toJSON results)
+```
+
+This MCP server requires GHC (it uses GHC's intermediate representation Core, instead of reimplementing the type checker). Tidepool also supports baking Haskell code into Rust at compile time via `haskell_inline!`, such that GHC is not required at runtime.
 
 ## Development
 
