@@ -2046,7 +2046,111 @@ cmp_fn!(cmp_char, bin_op_char, char);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tidepool_repr::{Alt, AltCon, CoreFrame, DataConId, JoinId, Literal, RecursiveTree, VarId};
+    use tidepool_repr::{
+        Alt, AltCon, CoreFrame, DataConId, JoinId, Literal, PrimOpKind, RecursiveTree, VarId,
+    };
+
+    #[test]
+    fn test_letrec_lambda_eager_eval_gap_fix() {
+        use crate::value::ThunkId;
+        // letrec {
+        //   f = \n -> g n;    // f is VarId(10)
+        //   g = \n -> n + 1;  // g is VarId(20)
+        // } in 42
+
+        let nodes = vec![
+            CoreFrame::Lit(Literal::LitInt(1)), // 0
+            CoreFrame::Var(VarId(2)),           // 1: n (for g)
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 0],
+            }, // 2: n + 1 (body of g)
+            CoreFrame::Lam {
+                binder: VarId(2),
+                body: 2,
+            }, // 3: \n -> n + 1 (RHS of g)
+            CoreFrame::Var(VarId(3)),  // 4: n (for f)
+            CoreFrame::Var(VarId(20)), // 5: g
+            CoreFrame::App { fun: 5, arg: 4 }, // 6: g n (body of f)
+            CoreFrame::Lam {
+                binder: VarId(3),
+                body: 6,
+            }, // 7: \n -> g n (RHS of f)
+            CoreFrame::Lit(Literal::LitInt(42)), // 8: body of letrec
+            CoreFrame::LetRec {
+                bindings: vec![
+                    (VarId(10), 7), // f = index 7
+                    (VarId(20), 3), // g = index 3
+                ],
+                body: 8,
+            }, // 9
+        ];
+        let expr = CoreExpr { nodes };
+        let mut heap = crate::heap::VecHeap::new();
+
+        // Evaluate the LetRec expression.
+        // The body is just 42, so we don't force f or g during body evaluation.
+        let res = eval(&expr, &Env::new(), &mut heap).unwrap();
+        assert_eq!(res.to_string(), "42");
+
+        // Check the heap state for f and g.
+        // They are allocated as the first two thunks in the LetRec.
+        // f should be at ThunkId(0), g should be at ThunkId(1).
+
+        let f_state = heap.read(ThunkId(0));
+        let g_state = heap.read(ThunkId(1));
+
+        match f_state {
+            ThunkState::Evaluated(Value::Closure(..)) => (),
+            _ => panic!(
+                "Expected f to be eagerly evaluated to a Closure, got {:?}",
+                f_state
+            ),
+        }
+
+        match g_state {
+            ThunkState::Evaluated(Value::Closure(..)) => (),
+            _ => panic!(
+                "Expected g to be eagerly evaluated to a Closure, got {:?}",
+                g_state
+            ),
+        }
+
+        // Now also verify correctness by evaluating f 5.
+        // letrec { f = \n -> g n; g = \n -> n + 1 } in f 5
+        let nodes_with_call = vec![
+            CoreFrame::Lit(Literal::LitInt(1)), // 0
+            CoreFrame::Var(VarId(2)),           // 1: n
+            CoreFrame::PrimOp {
+                op: PrimOpKind::IntAdd,
+                args: vec![1, 0],
+            }, // 2: n + 1
+            CoreFrame::Lam {
+                binder: VarId(2),
+                body: 2,
+            }, // 3: \n -> n + 1
+            CoreFrame::Var(VarId(3)),  // 4: n
+            CoreFrame::Var(VarId(20)), // 5: g
+            CoreFrame::App { fun: 5, arg: 4 }, // 6: g n
+            CoreFrame::Lam {
+                binder: VarId(3),
+                body: 6,
+            }, // 7: \n -> g n
+            CoreFrame::Var(VarId(10)),          // 8: f
+            CoreFrame::Lit(Literal::LitInt(5)), // 9
+            CoreFrame::App { fun: 8, arg: 9 },  // 10: f 5
+            CoreFrame::LetRec {
+                bindings: vec![(VarId(10), 7), (VarId(20), 3)],
+                body: 10,
+            }, // 11
+        ];
+        let expr_with_call = CoreExpr {
+            nodes: nodes_with_call,
+        };
+        let mut heap2 = crate::heap::VecHeap::new();
+        let res_with_call = eval(&expr_with_call, &Env::new(), &mut heap2).unwrap();
+        assert_eq!(res_with_call.to_string(), "6");
+    }
 
     #[test]
     fn test_eval_lit() {
@@ -2172,6 +2276,131 @@ mod tests {
             assert_eq!(n, 3);
         } else {
             panic!("Expected LitInt(3)");
+        }
+    }
+
+    #[test]
+    fn test_eval_primop_shifts() {
+        let mut heap = crate::heap::VecHeap::new();
+
+        // IntShra (Arithmetic Right Shift)
+        // 16 >> 2 = 4
+        {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitInt(16)),
+                CoreFrame::Lit(Literal::LitInt(2)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::IntShra,
+                    args: vec![0, 1],
+                },
+            ];
+            let res = eval(&CoreExpr { nodes }, &Env::new(), &mut heap).unwrap();
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, 4);
+            } else {
+                panic!("Expected LitInt(4), got {:?}", res);
+            }
+        }
+        // -16 >> 2 = -4 (preserves sign)
+        {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitInt(-16)),
+                CoreFrame::Lit(Literal::LitInt(2)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::IntShra,
+                    args: vec![0, 1],
+                },
+            ];
+            let res = eval(&CoreExpr { nodes }, &Env::new(), &mut heap).unwrap();
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, -4);
+            } else {
+                panic!("Expected LitInt(-4), got {:?}", res);
+            }
+        }
+        // 16 >> 0 = 16
+        {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitInt(16)),
+                CoreFrame::Lit(Literal::LitInt(0)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::IntShra,
+                    args: vec![0, 1],
+                },
+            ];
+            let res = eval(&CoreExpr { nodes }, &Env::new(), &mut heap).unwrap();
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, 16);
+            } else {
+                panic!("Expected LitInt(16), got {:?}", res);
+            }
+        }
+
+        // IntShrl (Logical Right Shift)
+        // -16 shrl 2 = 4611686018427387900
+        {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitInt(-16)),
+                CoreFrame::Lit(Literal::LitInt(2)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::IntShrl,
+                    args: vec![0, 1],
+                },
+            ];
+            let res = eval(&CoreExpr { nodes }, &Env::new(), &mut heap).unwrap();
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, 4611686018427387900);
+            } else {
+                panic!("Expected LitInt(4611686018427387900), got {:?}", res);
+            }
+        }
+
+        // IntShl (Logical Left Shift)
+        // 16 << 2 = 64
+        {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitInt(16)),
+                CoreFrame::Lit(Literal::LitInt(2)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::IntShl,
+                    args: vec![0, 1],
+                },
+            ];
+            let res = eval(&CoreExpr { nodes }, &Env::new(), &mut heap).unwrap();
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, 64);
+            } else {
+                panic!("Expected LitInt(64), got {:?}", res);
+            }
+        }
+    }
+
+    #[test]
+    fn test_eval_prim_sub_word_c_carry() {
+        let cases = vec![
+            (3u64, 5u64, 1), // a < b => 1 (borrow)
+            (5u64, 5u64, 0), // a == b => 0 (no borrow) - the boundary case
+            (7u64, 5u64, 0), // a > b => 0 (no borrow)
+        ];
+
+        for (a, b, expected) in cases {
+            let nodes = vec![
+                CoreFrame::Lit(Literal::LitWord(a)),
+                CoreFrame::Lit(Literal::LitWord(b)),
+                CoreFrame::PrimOp {
+                    op: PrimOpKind::SubWordCCarry,
+                    args: vec![0, 1],
+                },
+            ];
+            let expr = CoreExpr { nodes };
+            let mut heap = crate::heap::VecHeap::new();
+            let res = eval(&expr, &Env::new(), &mut heap)
+                .unwrap_or_else(|_| panic!("eval failed for a={}, b={}", a, b));
+            if let Value::Lit(Literal::LitInt(n)) = res {
+                assert_eq!(n, expected, "Failed for a={}, b={}", a, b);
+            } else {
+                panic!("Expected LitInt({}), got {:?}", expected, res);
+            }
         }
     }
 
@@ -2844,5 +3073,88 @@ mod tests {
         // Now y is forced, should FAIL
         let res = eval(&expr, &Env::new(), &mut heap);
         assert!(matches!(res, Err(EvalError::UnboundVar(VarId(999)))));
+    }
+
+    #[test]
+    fn test_transitive_thunk_forcing() {
+        let mut heap = crate::heap::VecHeap::new();
+
+        // Thunk B evaluates to 42
+        let id_b = heap.alloc(
+            Env::new(),
+            CoreExpr {
+                nodes: vec![CoreFrame::Lit(Literal::LitInt(42))],
+            },
+        );
+
+        // Thunk A is already evaluated to ThunkRef(B)
+        let id_a = heap.alloc(Env::new(), CoreExpr { nodes: vec![] });
+        heap.write(id_a, ThunkState::Evaluated(Value::ThunkRef(id_b)));
+
+        // Forcing A should transitively force B and return 42.
+        // If force() returned Ok(v) instead of recursing on Evaluated(v),
+        // it would return ThunkRef(id_b) instead of 42.
+        let res = force(Value::ThunkRef(id_a), &mut heap).unwrap();
+
+        if let Value::Lit(Literal::LitInt(n)) = res {
+            assert_eq!(n, 42);
+        } else {
+            panic!("Expected LitInt(42), got {:?}", res);
+        }
+
+        // Verify that B was also forced on the heap.
+        match heap.read(id_b) {
+            ThunkState::Evaluated(Value::Lit(Literal::LitInt(n))) => assert_eq!(*n, 42),
+            other => panic!("Expected id_b to be Evaluated(42), got {:?}", other),
+        }
+
+        // Forcing A again. It should still return 42.
+        // This time it hits: Evaluated(A) -> force(ThunkRef B) -> Evaluated(B) -> 42.
+        let res2 = force(Value::ThunkRef(id_a), &mut heap).unwrap();
+        if let Value::Lit(Literal::LitInt(n)) = res2 {
+            assert_eq!(n, 42);
+        } else {
+            panic!("Expected LitInt(42), got {:?}", res2);
+        }
+    }
+
+    #[test]
+    fn test_transitive_thunk_eval() {
+        let mut heap = crate::heap::VecHeap::new();
+        let mut env = Env::new();
+
+        // y = 42
+        let id_y = heap.alloc(
+            Env::new(),
+            CoreExpr {
+                nodes: vec![CoreFrame::Lit(Literal::LitInt(42))],
+            },
+        );
+        env.insert(VarId(10), Value::ThunkRef(id_y));
+
+        // x = y (where y is a ThunkRef)
+        let id_x = heap.alloc(
+            env.clone(),
+            CoreExpr {
+                nodes: vec![CoreFrame::Var(VarId(10))],
+            },
+        );
+
+        // Force x. This hits the Unevaluated branch for x.
+        // eval(Var y) returns force(ThunkRef y, heap) which is 42.
+        // x gets updated to Evaluated(42).
+        let res = force(Value::ThunkRef(id_x), &mut heap).unwrap();
+
+        if let Value::Lit(Literal::LitInt(n)) = res {
+            assert_eq!(n, 42);
+        } else {
+            panic!("Expected LitInt(42), got {:?}", res);
+        }
+
+        // In this case, x DOES get compressed because eval() forces.
+        match heap.read(id_x) {
+            ThunkState::Evaluated(Value::Lit(Literal::LitInt(n))) => assert_eq!(*n, 42),
+            other => panic!("Expected id_x to be Evaluated(42), got {:?}", other),
+        }
     }
 }

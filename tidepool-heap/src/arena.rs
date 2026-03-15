@@ -150,17 +150,6 @@ impl ArenaHeap {
         }
     }
 
-    /// Return all ThunkIds directly referenced by this thunk.
-    pub fn children_of(&self, id: ThunkId) -> Vec<ThunkId> {
-        match self.read(id) {
-            ThunkState::Unevaluated(env, _) => {
-                env.values().flat_map(Self::collect_thunk_refs).collect()
-            }
-            ThunkState::BlackHole => vec![],
-            ThunkState::Evaluated(val) => Self::collect_thunk_refs(val),
-        }
-    }
-
     fn collect_thunk_refs(val: &Value) -> Vec<ThunkId> {
         match val {
             Value::ThunkRef(id) => vec![*id],
@@ -193,6 +182,16 @@ impl Heap for ArenaHeap {
 
     fn write(&mut self, id: ThunkId, state: ThunkState) {
         self.thunks[id.0 as usize] = state;
+    }
+
+    fn children_of(&self, id: ThunkId) -> Vec<ThunkId> {
+        match self.read(id) {
+            ThunkState::Unevaluated(env, _) => {
+                env.values().flat_map(Self::collect_thunk_refs).collect()
+            }
+            ThunkState::BlackHole => vec![],
+            ThunkState::Evaluated(val) => Self::collect_thunk_refs(val),
+        }
     }
 }
 
@@ -387,6 +386,49 @@ mod tests {
         heap.collect_garbage(&roots);
         // Should have doubled to 2MB
         assert_eq!(heap.nursery_limit(), 2 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_nursery_growth_threshold() {
+        let mut heap = ArenaHeap::with_capacity(1024 * 1024); // 1MB
+        let env = Env::new();
+        let expr = RecursiveTree {
+            nodes: vec![CoreFrame::Var(VarId(0))],
+        };
+        let thunk_size = std::mem::size_of::<ThunkState>();
+
+        // 1. Fill to ~60% (between 50% and 75% threshold).
+        // If the threshold was mutated to 50%, this would grow.
+        let count_60pct = (1024 * 1024 * 6 / 10) / thunk_size;
+        let mut roots = Vec::new();
+        for _ in 0..count_60pct {
+            roots.push(heap.alloc(env.clone(), expr.clone()));
+        }
+
+        heap.collect_garbage(&roots);
+
+        // Should NOT have grown (75% threshold not reached).
+        assert_eq!(
+            heap.nursery_limit(),
+            1024 * 1024,
+            "Nursery should not grow at 60% utilization (threshold is 75%)"
+        );
+
+        // 2. Fill past 75% (e.g. to 80%).
+        let count_80pct = (1024 * 1024 * 8 / 10) / thunk_size;
+        // We already have count_60pct roots, add more to reach 80%.
+        for _ in 0..(count_80pct - count_60pct) {
+            roots.push(heap.alloc(env.clone(), expr.clone()));
+        }
+
+        heap.collect_garbage(&roots);
+
+        // SHOULD have grown to 2MB.
+        assert_eq!(
+            heap.nursery_limit(),
+            2 * 1024 * 1024,
+            "Nursery should grow at 80% utilization"
+        );
     }
 
     #[test]
