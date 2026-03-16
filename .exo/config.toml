@@ -1,3 +1,2 @@
-default_role = "tl"
-zellij_session = "tidepool"
-wasm_dir = "/home/inanna/.exo/wasm"
+# ExoMonad project config
+# All fields are optional — see docs for overrides

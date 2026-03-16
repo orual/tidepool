@@ -63,3 +63,9 @@ haskell/test-prelude.hs
 
 # Generated viz output
 viz/index.html
+# ExoMonad - track config and source, ignore runtime artifacts
+.exo/*
+!.exo/config.toml
+!.exo/roles/
+!.exo/lib/
+!.exo/rules/

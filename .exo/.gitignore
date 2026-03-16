@@ -1,6 +1,0 @@
-logs/*
-worktrees/*
-messages/*
-agents/*
-events.jsonl
-server.pid
