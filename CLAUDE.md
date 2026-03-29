@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Tidepool
 
 Compile freer-simple effect stacks into Cranelift-backed state machines drivable from Rust. Haskell expands, Rust collapses. The language boundary is the hylo boundary.
@@ -133,12 +137,37 @@ tidepool/
 └── CLAUDE.md              ← YOU ARE HERE
 ```
 
-### Build
+### Build & Test
 
 ```bash
-nix develop              # Enter dev shell (provides Rust + GHC 9.12)
-cargo test --workspace   # Run all tests
-cargo check --workspace  # Type check
+nix develop                              # Enter dev shell (provides Rust + GHC 9.12)
+cargo check --workspace                  # Type check
+cargo test --workspace                   # Run all tests
+cargo test -p tidepool-codegen           # Run tests for one crate
+cargo test -p tidepool-eval -- test_name # Run a single test by name
+cargo clippy --workspace                 # Lint
+cargo fmt --all -- --check               # Format check
+```
+
+### Rebuilding the Haskell Toolchain
+
+After changing `haskell/` code (Translate.hs, GhcPipeline.hs, Prelude, etc.):
+
+```bash
+cd haskell && cabal build tidepool-extract   # Build the Haskell compiler
+cp $(cabal list-bin tidepool-extract) ~/.local/bin/tidepool-extract-bin  # Install
+rm -rf ~/.cache/tidepool/                    # Clear cached CBOR (stale after binary changes)
+```
+
+The system PATH binary at `~/.local/bin/tidepool-extract-bin` is called by `~/.cargo/bin/tidepool-extract` wrapper. Both must be current.
+
+### Regenerating Test Fixtures
+
+The Haskell integration tests use pre-compiled CBOR fixtures in `haskell/test/suite_cbor/`. After changing the Haskell serializer or adding test bindings to `haskell/test/Suite.hs`:
+
+```bash
+cd haskell && cabal run tidepool-extract -- test/Suite.hs --all-closed
+# Copies .cbor files into haskell/test/suite_cbor/
 ```
 
 ### MCP Server

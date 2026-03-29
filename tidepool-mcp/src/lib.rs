@@ -278,11 +278,11 @@ pub fn ask_decl() -> EffectDecl {
     }
 }
 
-/// LLM effect: call a fast LLM (Haiku) for classification, extraction, or judgment.
+/// LLM effect: call an LLM for classification, extraction, or judgment.
 pub fn llm_decl() -> EffectDecl {
     EffectDecl {
         type_name: "Llm",
-        description: "Call a fast LLM (Haiku) for classification, extraction, or judgment.",
+        description: "Call an LLM for classification, extraction, or judgment.",
         constructors: &[
             "LlmChat       :: Text -> Llm Text",
             "LlmStructured :: Text -> Value -> Llm Value",

@@ -816,43 +816,22 @@ enum LlmReq {
 
 #[derive(Clone)]
 struct LlmHandler {
-    api_key: String,
+    client: genai::Client,
+    model: String,
     call_count: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    rt: tokio::runtime::Handle,
 }
 
-const LLM_MODEL: &str = "claude-haiku-4-5-20251001";
 const LLM_MAX_CALLS: u32 = 200;
 
 impl LlmHandler {
-    fn new() -> Self {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(Self::read_key_file)
-            .unwrap_or_default();
+    fn new(model: String) -> Self {
         Self {
-            api_key,
+            client: genai::Client::default(),
+            model,
             call_count: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            rt: tokio::runtime::Handle::current(),
         }
-    }
-
-    /// Read API key from `.tidepool/anthropic.key` (cwd or ancestors).
-    fn read_key_file() -> Option<String> {
-        let mut dir = std::env::current_dir().ok()?;
-        loop {
-            let key_path = dir.join(".tidepool").join("anthropic.key");
-            if key_path.is_file() {
-                let contents = std::fs::read_to_string(&key_path).ok()?;
-                let trimmed = contents.trim().to_string();
-                if !trimmed.is_empty() {
-                    return Some(trimmed);
-                }
-            }
-            if !dir.pop() {
-                break;
-            }
-        }
-        None
     }
 
     fn check_rate_limit(&self) -> Result<(), EffectError> {
@@ -867,44 +846,6 @@ impl LlmHandler {
         } else {
             Ok(())
         }
-    }
-
-    fn check_api_key(&self) -> Result<(), EffectError> {
-        if self.api_key.is_empty() {
-            Err(EffectError::Handler(
-                "ANTHROPIC_API_KEY not set and no .tidepool/anthropic.key found".to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn call_api(
-        &self,
-        messages: &serde_json::Value,
-        tools: Option<&serde_json::Value>,
-    ) -> Result<serde_json::Value, EffectError> {
-        let mut body = serde_json::json!({
-            "model": LLM_MODEL,
-            "max_tokens": 4096,
-            "messages": messages,
-        });
-        if let Some(tools_val) = tools {
-            body["tools"] = tools_val.clone();
-            body["tool_choice"] = serde_json::json!({"type": "any"});
-        }
-        let resp = ureq::post("https://api.anthropic.com/v1/messages")
-            .timeout(std::time::Duration::from_secs(60))
-            .set("x-api-key", &self.api_key)
-            .set("anthropic-version", "2023-06-01")
-            .set("Content-Type", "application/json")
-            .send_json(&body)
-            .map_err(|e| EffectError::Handler(format!("LLM API call failed: {}", e)))?;
-        let body_str = resp
-            .into_string()
-            .map_err(|e| EffectError::Handler(format!("LLM API response read failed: {}", e)))?;
-        serde_json::from_str(&body_str)
-            .map_err(|e| EffectError::Handler(format!("LLM API response parse failed: {}", e)))
     }
 }
 
@@ -921,35 +862,34 @@ impl EffectHandler<CapturedOutput> for LlmHandler {
         req: LlmReq,
         cx: &EffectContext<'_, CapturedOutput>,
     ) -> Result<Value, EffectError> {
-        self.check_api_key()?;
         self.check_rate_limit()?;
         match req {
             LlmReq::Chat(prompt) => {
-                let messages = serde_json::json!([{"role": "user", "content": prompt}]);
-                let resp = self.call_api(&messages, None)?;
-                let text = resp["content"][0]["text"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let req = genai::chat::ChatRequest::from_user(prompt);
+                let resp = self
+                    .rt
+                    .block_on(self.client.exec_chat(&self.model, req, None))
+                    .map_err(|e| EffectError::Handler(format!("LLM call failed: {}", e)))?;
+                let text = resp.first_text().unwrap_or("").to_string();
                 cx.respond(text)
             }
             LlmReq::Structured(prompt, schema_val) => {
                 let schema_json = tidepool_runtime::value_to_json(&schema_val, cx.table(), 0);
-                let tools = serde_json::json!([{
-                    "name": "structured_output",
-                    "description": "Return structured data matching the schema.",
-                    "input_schema": schema_json,
-                }]);
-                let messages = serde_json::json!([{"role": "user", "content": prompt}]);
-                let resp = self.call_api(&messages, Some(&tools))?;
-                // Extract tool use input from response
-                let input = resp["content"]
-                    .as_array()
-                    .and_then(|arr| arr.iter().find(|block| block["type"] == "tool_use"))
-                    .and_then(|block| block.get("input"))
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
-                cx.respond(input)
+                let json_spec = genai::chat::JsonSpec::new("structured_output", schema_json);
+                let opts = genai::chat::ChatOptions::default()
+                    .with_response_format(genai::chat::ChatResponseFormat::JsonSpec(json_spec));
+                let req = genai::chat::ChatRequest::from_user(format!(
+                    "{}\n\nRespond with ONLY valid JSON matching the provided schema. No markdown, no explanation.",
+                    prompt
+                ));
+                let resp = self
+                    .rt
+                    .block_on(self.client.exec_chat(&self.model, req, Some(&opts)))
+                    .map_err(|e| EffectError::Handler(format!("LLM structured call failed: {}", e)))?;
+                let text = resp.first_text().unwrap_or("null");
+                let parsed: serde_json::Value =
+                    serde_json::from_str(text).unwrap_or(serde_json::Value::Null);
+                cx.respond(parsed)
             }
         }
     }
@@ -1270,6 +1210,10 @@ struct Args {
     /// Enable debug effects (Meta introspection)
     #[arg(long)]
     debug: bool,
+
+    /// LLM model for the Llm effect (e.g. ollama:llama3.2, anthropic:claude-haiku-4-5-20251001)
+    #[arg(long, env = "TIDEPOOL_LLM_MODEL", default_value = "ollama:llama3.2")]
+    llm: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,7 +1332,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             HttpHandler,
             ExecHandler::new(cwd.clone()),
             MetaHandler::new(effect_names, helper_sigs),
-            LlmHandler::new()
+            LlmHandler::new(args.llm.clone())
         ];
         let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
         if let Some(addr) = http_addr {
@@ -1404,7 +1348,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             SgHandler::new(cwd.clone()),
             HttpHandler,
             ExecHandler::new(cwd.clone()),
-            LlmHandler::new()
+            LlmHandler::new(args.llm.clone())
         ];
         let server = TidepoolMcpServer::new(handlers).with_prelude(prelude_dir);
         if let Some(addr) = http_addr {
@@ -1455,7 +1399,7 @@ mod tests {
             SgHandler::new(cwd.clone()),
             HttpHandler,
             ExecHandler::new(cwd.clone()),
-            LlmHandler::new()
+            LlmHandler::new("ollama:llama3.2".to_string())
         ];
         let result = tidepool_runtime::compile_and_run(
             &source,
@@ -1930,14 +1874,14 @@ mod tests {
     // These compile Haskell through GHC + Cranelift JIT with the full handler stack.
     // They catch case trap (SIGILL) bugs that tree-walking eval misses.
 
-    #[test]
-    fn test_jit_console_roundtrip() {
+    #[tokio::test]
+    async fn test_jit_console_roundtrip() {
         let result = jit_eval(&["say \"hello from JIT\"", "pure (toJSON True)"]);
         assert_eq!(result, serde_json::json!(true));
     }
 
-    #[test]
-    fn test_jit_kv_roundtrip() {
+    #[tokio::test]
+    async fn test_jit_kv_roundtrip() {
         let result = jit_eval(&[
             "kvSet \"jit_test\" (toJSON (42 :: Int))",
             "v <- kvGet \"jit_test\"",
@@ -1946,14 +1890,14 @@ mod tests {
         assert_eq!(result, serde_json::json!(42));
     }
 
-    #[test]
-    fn test_jit_fs_exists_roundtrip() {
+    #[tokio::test]
+    async fn test_jit_fs_exists_roundtrip() {
         let result = jit_eval(&["b <- fsExists \"Cargo.toml\"", "pure (toJSON b)"]);
         assert_eq!(result, serde_json::json!(true));
     }
 
-    #[test]
-    fn test_jit_fs_listdir_roundtrip() {
+    #[tokio::test]
+    async fn test_jit_fs_listdir_roundtrip() {
         let result = jit_eval(&[
             "entries <- fsListDir \".\"",
             "pure (toJSON (length entries > 0))",
