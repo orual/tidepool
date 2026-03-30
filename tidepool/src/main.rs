@@ -556,7 +556,6 @@ impl SgHandler {
         }
         Ok(results)
     }
-
 }
 
 impl DescribeEffect for SgHandler {
@@ -885,7 +884,9 @@ impl EffectHandler<CapturedOutput> for LlmHandler {
                 let resp = self
                     .rt
                     .block_on(self.client.exec_chat(&self.model, req, Some(&opts)))
-                    .map_err(|e| EffectError::Handler(format!("LLM structured call failed: {}", e)))?;
+                    .map_err(|e| {
+                        EffectError::Handler(format!("LLM structured call failed: {}", e))
+                    })?;
                 let text = resp.first_text().unwrap_or("null");
                 let parsed: serde_json::Value =
                     serde_json::from_str(text).unwrap_or(serde_json::Value::Null);
@@ -1567,9 +1568,8 @@ mod tests {
         }
     }
 
-    const EFFECTS_WITH_ROUNDTRIP_TESTS: &[&str] = &[
-        "Console", "KV", "Fs", "SG", "Http", "Exec", "Llm", "Ask",
-    ];
+    const EFFECTS_WITH_ROUNDTRIP_TESTS: &[&str] =
+        &["Console", "KV", "Fs", "SG", "Http", "Exec", "Llm", "Ask"];
 
     #[test]
     fn all_effects_have_roundtrip_coverage() {
@@ -1594,9 +1594,7 @@ mod tests {
         let decls = tidepool_mcp::standard_decls();
         // HList order from main(): Console(0), KV(1), Fs(2), SG(3), Http(4), Exec(5), Llm(6)
         // Ask(7) is handled by MCP server, not in main HList
-        let expected = [
-            "Console", "KV", "Fs", "SG", "Http", "Exec", "Llm",
-        ];
+        let expected = ["Console", "KV", "Fs", "SG", "Http", "Exec", "Llm"];
         for (i, name) in expected.iter().enumerate() {
             assert_eq!(
                 decls[i].type_name, *name,

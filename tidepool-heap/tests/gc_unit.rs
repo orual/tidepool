@@ -84,11 +84,11 @@ fn test_thunk_state_machine() {
 
 #[test]
 fn test_gc_thunkref_tracing() {
-    use tidepool_heap::ArenaHeap;
-    use tidepool_eval::{Heap, ThunkState};
-    use tidepool_eval::value::Value;
-    use tidepool_repr::{CoreFrame, Literal, RecursiveTree, VarId};
     use tidepool_eval::env::Env;
+    use tidepool_eval::value::Value;
+    use tidepool_eval::{Heap, ThunkState};
+    use tidepool_heap::ArenaHeap;
+    use tidepool_repr::{CoreFrame, Literal, RecursiveTree, VarId};
 
     let mut heap = ArenaHeap::new();
     let env = Env::new();
@@ -109,7 +109,7 @@ fn test_gc_thunkref_tracing() {
 
     // 4. After GC, assert that B is still alive (can be read) and contains Evaluated(LitInt(99))
     let new_id_a = table.lookup(id_a).expect("Thunk A should be alive");
-    
+
     // Check what id_a points to now
     let new_id_b = match heap.read(new_id_a) {
         ThunkState::Evaluated(Value::ThunkRef(id)) => *id,
@@ -119,10 +119,16 @@ fn test_gc_thunkref_tracing() {
     // Assert id_b survived and has correct value
     match heap.read(new_id_b) {
         ThunkState::Evaluated(Value::Lit(Literal::LitInt(99))) => (),
-        other => panic!("Expected Thunk B to be Evaluated(LitInt(99)), got {:?}", other),
+        other => panic!(
+            "Expected Thunk B to be Evaluated(LitInt(99)), got {:?}",
+            other
+        ),
     }
 
     // Also verify B is in the forwarding table
-    assert!(table.lookup(id_b).is_ok(), "Thunk B should be in forwarding table");
+    assert!(
+        table.lookup(id_b).is_ok(),
+        "Thunk B should be in forwarding table"
+    );
     assert_eq!(table.lookup(id_b).unwrap(), new_id_b);
 }

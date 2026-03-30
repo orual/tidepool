@@ -29,7 +29,11 @@ impl std::fmt::Display for JitError {
             JitError::Compilation(e) => write!(f, "JIT compilation error: {}", e),
             JitError::Pipeline(e) => write!(f, "pipeline error: {}", e),
             JitError::MissingConTags(name) => {
-                write!(f, "missing freer-simple constructor '{}' in DataConTable", name)
+                write!(
+                    f,
+                    "missing freer-simple constructor '{}' in DataConTable",
+                    name
+                )
             }
             JitError::Effect(e) => write!(f, "effect dispatch error: {}", e),
             JitError::Yield(e) => write!(f, "yield error: {}", e),

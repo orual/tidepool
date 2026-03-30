@@ -225,9 +225,15 @@ mod tests {
         let bytes = std::fs::read("../haskell/test/Identity_cbor/identity.cbor")
             .expect("identity.cbor not found — run tidepool-harness first");
         let tree = read_cbor(&bytes).expect("read_cbor failed on identity.cbor");
-        assert!(tree.nodes.len() >= 2, "identity should have at least 2 nodes");
+        assert!(
+            tree.nodes.len() >= 2,
+            "identity should have at least 2 nodes"
+        );
         // identity = \x -> x — must contain a Lam (root may be LetNonRec wrapper in --all-closed mode)
-        assert!(tree.nodes.iter().any(|n| matches!(n, CoreFrame::Lam { .. })));
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|n| matches!(n, CoreFrame::Lam { .. })));
     }
 
     #[test]
@@ -237,8 +243,14 @@ mod tests {
         let tree = read_cbor(&bytes).expect("read_cbor failed on apply.cbor");
         assert!(tree.nodes.len() >= 5, "apply should have at least 5 nodes");
         // apply = \f x -> f x — must contain App and Lam
-        assert!(tree.nodes.iter().any(|n| matches!(n, CoreFrame::App { .. })));
-        assert!(tree.nodes.iter().any(|n| matches!(n, CoreFrame::Lam { .. })));
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|n| matches!(n, CoreFrame::App { .. })));
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|n| matches!(n, CoreFrame::Lam { .. })));
     }
 
     #[test]
@@ -248,7 +260,10 @@ mod tests {
         let tree = read_cbor(&bytes).expect("read_cbor failed on const'.cbor");
         assert!(tree.nodes.len() >= 3, "const' should have at least 3 nodes");
         // const' = \x _ -> x — must contain Lam
-        assert!(tree.nodes.iter().any(|n| matches!(n, CoreFrame::Lam { .. })));
+        assert!(tree
+            .nodes
+            .iter()
+            .any(|n| matches!(n, CoreFrame::Lam { .. })));
     }
 
     #[test]
@@ -256,7 +271,10 @@ mod tests {
         let bytes = std::fs::read("../haskell/test/Identity_cbor/$trModule.cbor")
             .expect("$trModule.cbor not found — run tidepool-harness first");
         let tree = read_cbor(&bytes).expect("read_cbor failed on $trModule.cbor");
-        assert!(!tree.nodes.is_empty(), "$trModule should have at least 1 node");
+        assert!(
+            !tree.nodes.is_empty(),
+            "$trModule should have at least 1 node"
+        );
     }
 
     // End-to-end: .cbor → read_cbor → pretty_print

@@ -520,9 +520,11 @@ fn expect_array(val: &Value) -> Result<&Vec<Value>, ReadError> {
 fn expect_array_len(val: &Value, n: usize) -> Result<&Vec<Value>, ReadError> {
     match val {
         Value::Array(a) if a.len() == n => Ok(a),
-        Value::Array(a) => Err(ReadError::InvalidStructure(
-            format!("expected array of length {}, got {}", n, a.len()),
-        )),
+        Value::Array(a) => Err(ReadError::InvalidStructure(format!(
+            "expected array of length {}, got {}",
+            n,
+            a.len()
+        ))),
         _ => Err(ReadError::InvalidStructure("expected array".to_string())),
     }
 }

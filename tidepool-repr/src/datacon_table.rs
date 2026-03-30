@@ -78,11 +78,7 @@ impl DataConTable {
         self.by_name.get(name).and_then(|vec| {
             vec.iter()
                 .rev()
-                .find(|&&id| {
-                    self.by_id
-                        .get(&id)
-                        .is_some_and(|dc| dc.rep_arity == arity)
-                })
+                .find(|&&id| self.by_id.get(&id).is_some_and(|dc| dc.rep_arity == arity))
                 .copied()
         })
     }

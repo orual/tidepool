@@ -2069,9 +2069,9 @@ mod tests {
                 binder: VarId(2),
                 body: 2,
             }, // 3: \n -> n + 1 (RHS of g)
-            CoreFrame::Var(VarId(3)),  // 4: n (for f)
-            CoreFrame::Var(VarId(20)), // 5: g
-            CoreFrame::App { fun: 5, arg: 4 }, // 6: g n (body of f)
+            CoreFrame::Var(VarId(3)),           // 4: n (for f)
+            CoreFrame::Var(VarId(20)),          // 5: g
+            CoreFrame::App { fun: 5, arg: 4 },  // 6: g n (body of f)
             CoreFrame::Lam {
                 binder: VarId(3),
                 body: 6,
@@ -2129,9 +2129,9 @@ mod tests {
                 binder: VarId(2),
                 body: 2,
             }, // 3: \n -> n + 1
-            CoreFrame::Var(VarId(3)),  // 4: n
-            CoreFrame::Var(VarId(20)), // 5: g
-            CoreFrame::App { fun: 5, arg: 4 }, // 6: g n
+            CoreFrame::Var(VarId(3)),           // 4: n
+            CoreFrame::Var(VarId(20)),          // 5: g
+            CoreFrame::App { fun: 5, arg: 4 },  // 6: g n
             CoreFrame::Lam {
                 binder: VarId(3),
                 body: 6,

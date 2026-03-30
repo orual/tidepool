@@ -279,7 +279,10 @@ mod tests {
         if let tidepool_eval::Value::Lit(Literal::LitInt(n)) = val_dce {
             assert_eq!(n, 100);
         } else {
-            panic!("Result after DCE should still eval to 100, got {:?}", val_dce);
+            panic!(
+                "Result after DCE should still eval to 100, got {:?}",
+                val_dce
+            );
         }
     }
 }

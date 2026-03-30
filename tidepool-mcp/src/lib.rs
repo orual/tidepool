@@ -2071,18 +2071,14 @@ mod tests {
         let preamble = build_preamble(&decls, false);
         assert!(preamble.contains("data Ask a where"));
         assert!(preamble.contains("  Ask :: Text -> Ask Value"));
-        assert!(preamble
-            .contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Llm, Ask]"));
+        assert!(preamble.contains("type M = Eff '[Console, KV, Fs, SG, Http, Exec, Llm, Ask]"));
     }
 
     #[test]
     fn test_ask_in_effect_stack_type() {
         let decls = standard_decls();
         let stack = build_effect_stack_type(&decls);
-        assert_eq!(
-            stack,
-            "'[Console, KV, Fs, SG, Http, Exec, Llm, Ask]"
-        );
+        assert_eq!(stack, "'[Console, KV, Fs, SG, Http, Exec, Llm, Ask]");
     }
 
     #[test]
@@ -2204,9 +2200,8 @@ mod tests {
 
     #[test]
     fn test_parse_constructor_nested_types() {
-        let p =
-            parse_constructor("FakeReq :: Text -> Text -> [(Text,Text)] -> Text -> Fake Value")
-                .unwrap();
+        let p = parse_constructor("FakeReq :: Text -> Text -> [(Text,Text)] -> Text -> Fake Value")
+            .unwrap();
         assert_eq!(
             p,
             ParsedConstructor {

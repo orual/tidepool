@@ -43,10 +43,7 @@ result = {body}
 
 /// Run on a thread with signal protection installed and a specific stack size.
 /// Returns Ok(json), Err(runtime_error_string), or Err("thread panicked").
-fn run_protected(
-    stack_bytes: usize,
-    body: &str,
-) -> Result<serde_json::Value, String> {
+fn run_protected(stack_bytes: usize, body: &str) -> Result<serde_json::Value, String> {
     let body = body.to_string();
     std::thread::Builder::new()
         .stack_size(stack_bytes)
@@ -81,10 +78,9 @@ fn test_nubby_int_200_green() {
 /// nubBy with show+pack comparator on 30 items — small list, safe.
 #[test]
 fn test_nubby_text_key_30_green() {
-    let json = run_result(
-        "length (nubBy (\\a b -> pack (show a) == pack (show b)) [1..30 :: Int])",
-    )
-    .unwrap();
+    let json =
+        run_result("length (nubBy (\\a b -> pack (show a) == pack (show b)) [1..30 :: Int])")
+            .unwrap();
     assert_eq!(json, serde_json::json!(30));
 }
 
