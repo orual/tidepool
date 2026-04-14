@@ -3598,6 +3598,7 @@ dependencies = [
  "blake3",
  "filetime",
  "frunk",
+ "glob",
  "proptest",
  "serde_json",
  "serial_test",
