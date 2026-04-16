@@ -28,7 +28,11 @@ pub fn env_from_datacon_table(table: &DataConTable) -> Env {
         .collect()
 }
 
-/// Evaluate a CoreExpr to a Value.
+/// Evaluate a [`CoreExpr`] to a [`Value`] under a given environment and heap.
+///
+/// Returns a value in Weak Head Normal Form (WHNF). This only forces the
+/// top-level constructor or closure; use [`deep_force`] to fully evaluate
+/// all fields.
 pub fn eval(expr: &CoreExpr, env: &Env, heap: &mut dyn Heap) -> Result<Value, EvalError> {
     if expr.nodes.is_empty() {
         return Err(EvalError::TypeMismatch {
@@ -40,7 +44,10 @@ pub fn eval(expr: &CoreExpr, env: &Env, heap: &mut dyn Heap) -> Result<Value, Ev
     force(res, heap)
 }
 
-/// Force a thunk to a value.
+/// Force a value to Weak Head Normal Form (WHNF).
+///
+/// If the value is a thunk, it is evaluated and stored back into the heap.
+/// If it is already a constructor, literal, or closure, it is returned as-is.
 pub fn force(val: Value, heap: &mut dyn Heap) -> Result<Value, EvalError> {
     match val {
         Value::ThunkRef(id) => {
@@ -68,10 +75,16 @@ pub fn force(val: Value, heap: &mut dyn Heap) -> Result<Value, EvalError> {
     }
 }
 
-/// Iteratively force a value — forces all thunks inside constructors,
-/// producing a fully-evaluated tree with no `ThunkRef` values.
+/// Iteratively evaluate a value through constructor structure.
+///
+/// Unlike [`force`], which stops at the outermost constructor (WHNF),
+/// `deep_force` recursively traverses constructor fields and `ConFun`
+/// accumulated arguments, forcing any nested thunks found there.
+/// Other value forms (such as captured environments inside closures or
+/// continuations) are treated as opaque and returned unchanged.
+///
 /// Uses an explicit work stack instead of recursion to handle deep
-/// structures (e.g. 1000-element lists) without overflowing the Rust stack.
+/// structures (e.g., long lists) without overflowing the Rust stack.
 pub fn deep_force(val: Value, heap: &mut dyn Heap) -> Result<Value, EvalError> {
     use tidepool_repr::DataConId;
 
