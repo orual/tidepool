@@ -62,7 +62,7 @@ fn test_cross_module_inspect_tags() {
     let pp = prelude_path();
     let include: Vec<&Path> = vec![pp.as_path(), effect_dir.path()];
 
-    let (expr, table, _warnings) =
+    let (expr, _table, _warnings) =
         compile_haskell(&main_src, "agent", &include).expect("compilation failed");
 
     // Pretty print the expression tree
@@ -87,15 +87,11 @@ fn test_cross_module_inspect_tags() {
                     }
                 }
             }
-            CoreFrame::Con { tag, .. } => {
-                if tag.0 == target_tag {
-                    eprintln!("  FOUND at node {} as Con", i);
-                }
+            CoreFrame::Con { tag, .. } if tag.0 == target_tag => {
+                eprintln!("  FOUND at node {} as Con", i);
             }
-            CoreFrame::Var(vid) => {
-                if vid.0 == target_tag {
-                    eprintln!("  FOUND at node {} as Var", i);
-                }
+            CoreFrame::Var(vid) if vid.0 == target_tag => {
+                eprintln!("  FOUND at node {} as Var", i);
             }
             _ => {}
         }

@@ -6,30 +6,28 @@ use syn::{parse_quote, Type};
 
 fn collect_type_params(ty: &Type, params: &HashSet<syn::Ident>, used: &mut HashSet<syn::Ident>) {
     match ty {
-        Type::Path(tp) => {
-            if tp.qself.is_none() {
-                // If it's PhantomData<T>, we DON'T consider T "used" for the purpose
-                // of adding FromCore/ToCore bounds, because our PhantomData impl
-                // doesn't require T to be FromCore/ToCore.
-                if tp
-                    .path
-                    .segments
-                    .last()
-                    .is_some_and(|s| s.ident == "PhantomData")
-                {
-                    return;
+        Type::Path(tp) if tp.qself.is_none() => {
+            // If it's PhantomData<T>, we DON'T consider T "used" for the purpose
+            // of adding FromCore/ToCore bounds, because our PhantomData impl
+            // doesn't require T to be FromCore/ToCore.
+            if tp
+                .path
+                .segments
+                .last()
+                .is_some_and(|s| s.ident == "PhantomData")
+            {
+                return;
+            }
+            if let Some(ident) = tp.path.get_ident() {
+                if params.contains(ident) {
+                    used.insert(ident.clone());
                 }
-                if let Some(ident) = tp.path.get_ident() {
-                    if params.contains(ident) {
-                        used.insert(ident.clone());
-                    }
-                }
-                for segment in &tp.path.segments {
-                    if let syn::PathArguments::AngleBracketed(ab) = &segment.arguments {
-                        for arg in &ab.args {
-                            if let syn::GenericArgument::Type(inner_ty) = arg {
-                                collect_type_params(inner_ty, params, used);
-                            }
+            }
+            for segment in &tp.path.segments {
+                if let syn::PathArguments::AngleBracketed(ab) = &segment.arguments {
+                    for arg in &ab.args {
+                        if let syn::GenericArgument::Type(inner_ty) = arg {
+                            collect_type_params(inner_ty, params, used);
                         }
                     }
                 }
@@ -45,6 +43,24 @@ fn collect_type_params(ty: &Type, params: &HashSet<syn::Ident>, used: &mut HashS
         }
         _ => {}
     }
+}
+
+/// A field is a phantom (`std::marker::PhantomData<_>`) if its outermost path
+/// segment is `PhantomData`. Such fields have no Core representation and are
+/// skipped when computing a variant/struct's Core arity and when encoding or
+/// decoding fields — analogous to how they are skipped for trait-bound
+/// inference in `collect_type_params`.
+fn is_phantom_data(ty: &Type) -> bool {
+    if let Type::Path(tp) = ty {
+        if tp.qself.is_none() {
+            return tp
+                .path
+                .segments
+                .last()
+                .is_some_and(|s| s.ident == "PhantomData");
+        }
+    }
+    false
 }
 
 fn add_trait_bounds(
@@ -84,29 +100,51 @@ pub fn generate_from_core(info: &EnumInfo) -> TokenStream {
     for variant in &info.variants {
         let rust_name = &variant.rust_name;
         let core_name = &variant.core_name;
-        let arity = variant.fields.len();
+        let rust_arity = variant.fields.len();
 
-        let field_conversions = (0..arity).map(|i| {
-            let ty = &variant.fields[i];
-            quote! {
-                <#ty as tidepool_bridge::FromCore>::from_value(&fields[#i], table)?
+        // Core arity excludes PhantomData fields — they have no Core
+        // representation and must not consume slots in the encoded Con.
+        let core_arity: usize = variant
+            .fields
+            .iter()
+            .filter(|ty| !is_phantom_data(ty))
+            .count();
+        let core_arity_u32 = core_arity as u32;
+
+        // Build per-Rust-field construction expressions. PhantomData fields
+        // get a default `PhantomData` literal; other fields pull from the next
+        // Core field slot.
+        let mut core_ix: usize = 0;
+        let mut field_exprs: Vec<TokenStream> = Vec::with_capacity(rust_arity);
+        for ty in &variant.fields {
+            if is_phantom_data(ty) {
+                field_exprs.push(quote! { <#ty as core::default::Default>::default() });
+            } else {
+                let i = core_ix;
+                core_ix += 1;
+                field_exprs.push(quote! {
+                    <#ty as tidepool_bridge::FromCore>::from_value(&fields[#i], table)?
+                });
             }
-        });
+        }
 
-        let construction = if arity == 0 {
+        let construction = if rust_arity == 0 {
             quote! { #name::#rust_name }
         } else {
-            quote! { #name::#rust_name(#(#field_conversions),*) }
+            quote! { #name::#rust_name(#(#field_exprs),*) }
         };
 
         match_arms.push(quote! {
-            let variant_id = table.get_by_name(#core_name)
-                .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConName(#core_name.to_string()))?;
+            let variant_id = table.get_by_name_arity(#core_name, #core_arity_u32)
+                .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConNameArity {
+                    name: #core_name.to_string(),
+                    arity: #core_arity,
+                })?;
             if *id == variant_id {
-                if fields.len() != #arity {
+                if fields.len() != #core_arity {
                     return Err(tidepool_bridge::BridgeError::ArityMismatch {
                         con: *id,
-                        expected: #arity,
+                        expected: #core_arity,
                         got: fields.len(),
                     });
                 }
@@ -164,23 +202,54 @@ pub fn generate_to_core(info: &EnumInfo) -> TokenStream {
     for variant in &info.variants {
         let rust_name = &variant.rust_name;
         let core_name = &variant.core_name;
-        let arity = variant.fields.len();
+        let rust_arity = variant.fields.len();
 
-        let field_names: Vec<_> = (0..arity).map(|i| quote::format_ident!("f{}", i)).collect();
-        let pattern = if arity == 0 {
+        let core_arity: usize = variant
+            .fields
+            .iter()
+            .filter(|ty| !is_phantom_data(ty))
+            .count();
+        let core_arity_u32 = core_arity as u32;
+
+        // Bind ALL rust fields (so the pattern compiles) but we underscore
+        // phantom fields since they aren't encoded.
+        let field_bindings: Vec<_> = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| {
+                let base = quote::format_ident!("f{}", i);
+                if is_phantom_data(ty) {
+                    // Bind to _<name> so the pattern is still irrefutable but unused.
+                    let under = quote::format_ident!("_f{}", i);
+                    (under, true)
+                } else {
+                    (base, false)
+                }
+            })
+            .collect();
+
+        let pattern_idents = field_bindings.iter().map(|(ident, _)| ident);
+        let pattern = if rust_arity == 0 {
             quote! { #name::#rust_name }
         } else {
-            quote! { #name::#rust_name(#(#field_names),*) }
+            quote! { #name::#rust_name(#(#pattern_idents),*) }
         };
 
-        let field_to_values = field_names.iter().map(|f| {
-            quote! { tidepool_bridge::ToCore::to_value(#f, table)? }
-        });
+        let field_to_values = field_bindings
+            .iter()
+            .filter(|(_, is_phantom)| !is_phantom)
+            .map(|(ident, _)| {
+                quote! { tidepool_bridge::ToCore::to_value(#ident, table)? }
+            });
 
         match_arms.push(quote! {
             #pattern => {
-                let id = table.get_by_name(#core_name)
-                    .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConName(#core_name.to_string()))?;
+                let id = table.get_by_name_arity(#core_name, #core_arity_u32)
+                    .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConNameArity {
+                        name: #core_name.to_string(),
+                        arity: #core_arity,
+                    })?;
                 Ok(tidepool_eval::Value::Con(id, vec![#(#field_to_values),*]))
             }
         });
@@ -212,15 +281,29 @@ pub fn generate_struct_from_core(info: &StructInfo) -> TokenStream {
     );
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let arity = info.fields.len();
 
+    let core_arity: usize = info
+        .fields
+        .iter()
+        .filter(|(_, ty)| !is_phantom_data(ty))
+        .count();
+    let core_arity_u32 = core_arity as u32;
+
+    let mut core_ix: usize = 0;
     let field_constructions: Vec<_> = info
         .fields
         .iter()
-        .enumerate()
-        .map(|(i, (field_name, field_ty))| {
-            quote! {
-                #field_name: <#field_ty as tidepool_bridge::FromCore>::from_value(&fields[#i], table)?
+        .map(|(field_name, field_ty)| {
+            if is_phantom_data(field_ty) {
+                quote! {
+                    #field_name: <#field_ty as core::default::Default>::default()
+                }
+            } else {
+                let i = core_ix;
+                core_ix += 1;
+                quote! {
+                    #field_name: <#field_ty as tidepool_bridge::FromCore>::from_value(&fields[#i], table)?
+                }
             }
         })
         .collect();
@@ -238,15 +321,18 @@ pub fn generate_struct_from_core(info: &StructInfo) -> TokenStream {
             fn from_value(value: &tidepool_eval::Value, table: &tidepool_repr::DataConTable) -> Result<Self, tidepool_bridge::BridgeError> {
                 match value {
                     tidepool_eval::Value::Con(id, fields) => {
-                        let con_id = table.get_by_name(#core_name)
-                            .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConName(#core_name.to_string()))?;
+                        let con_id = table.get_by_name_arity(#core_name, #core_arity_u32)
+                            .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConNameArity {
+                                name: #core_name.to_string(),
+                                arity: #core_arity,
+                            })?;
                         if *id != con_id {
                             return Err(tidepool_bridge::BridgeError::UnknownDataCon(*id));
                         }
-                        if fields.len() != #arity {
+                        if fields.len() != #core_arity {
                             return Err(tidepool_bridge::BridgeError::ArityMismatch {
                                 con: *id,
-                                expected: #arity,
+                                expected: #core_arity,
                                 got: fields.len(),
                             });
                         }
@@ -287,10 +373,37 @@ pub fn generate_struct_to_core(info: &StructInfo) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let field_names: Vec<_> = info.fields.iter().map(|(name, _)| name).collect();
-    let field_to_values: Vec<_> = field_names
+    let core_arity: usize = info
+        .fields
         .iter()
-        .map(|f| {
+        .filter(|(_, ty)| !is_phantom_data(ty))
+        .count();
+    let core_arity_u32 = core_arity as u32;
+
+    // Bind ALL fields in the destructure pattern; phantom fields get `_` prefix
+    // to silence unused warnings (the pattern must still cover them).
+    let field_bindings: Vec<_> = info
+        .fields
+        .iter()
+        .map(|(field_name, ty)| {
+            let is_phantom = is_phantom_data(ty);
+            (field_name.clone(), ty.clone(), is_phantom)
+        })
+        .collect();
+
+    let destructure_fields = field_bindings.iter().map(|(name, _, is_phantom)| {
+        if *is_phantom {
+            // `name: _` in a field pattern binds nothing.
+            quote! { #name: _ }
+        } else {
+            quote! { #name }
+        }
+    });
+
+    let field_to_values: Vec<_> = field_bindings
+        .iter()
+        .filter(|(_, _, is_phantom)| !is_phantom)
+        .map(|(f, _, _)| {
             quote! { tidepool_bridge::ToCore::to_value(#f, table)? }
         })
         .collect();
@@ -298,7 +411,7 @@ pub fn generate_struct_to_core(info: &StructInfo) -> TokenStream {
     let destructure = if info.fields.is_empty() {
         quote! { #name }
     } else {
-        quote! { #name { #(#field_names),* } }
+        quote! { #name { #(#destructure_fields),* } }
     };
 
     quote! {
@@ -307,8 +420,11 @@ pub fn generate_struct_to_core(info: &StructInfo) -> TokenStream {
         impl #impl_generics tidepool_bridge::ToCore for #name #ty_generics #where_clause {
             fn to_value(&self, table: &tidepool_repr::DataConTable) -> Result<tidepool_eval::Value, tidepool_bridge::BridgeError> {
                 let #destructure = self;
-                let id = table.get_by_name(#core_name)
-                    .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConName(#core_name.to_string()))?;
+                let id = table.get_by_name_arity(#core_name, #core_arity_u32)
+                    .ok_or_else(|| tidepool_bridge::BridgeError::UnknownDataConNameArity {
+                        name: #core_name.to_string(),
+                        arity: #core_arity,
+                    })?;
                 Ok(tidepool_eval::Value::Con(id, vec![#(#field_to_values),*]))
             }
         }

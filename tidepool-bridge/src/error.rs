@@ -10,6 +10,16 @@ pub enum BridgeError {
     /// The `DataConId` was found, but it has an unexpected name.
     #[error("Unknown DataCon name: {0}")]
     UnknownDataConName(String),
+    /// Lookup by (name, arity) failed — no constructor with this name has the
+    /// expected representation arity. Emitted by derived `FromCore`/`ToCore`
+    /// impls to disambiguate constructors sharing an unqualified name.
+    #[error("Unknown DataCon name: {name} (arity {arity})")]
+    UnknownDataConNameArity {
+        /// The unqualified constructor name.
+        name: String,
+        /// The expected representation arity.
+        arity: usize,
+    },
     /// The number of fields in a constructor does not match the expected arity.
     #[error("Arity mismatch for DataCon {con:?}: expected {expected}, got {got}")]
     ArityMismatch {
